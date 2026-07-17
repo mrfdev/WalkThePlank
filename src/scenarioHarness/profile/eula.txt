@@ -1,0 +1,2 @@
+# Disposable WalkThePlank scenario profile. Delete build/controlled-scenarios after testing.
+eula=true

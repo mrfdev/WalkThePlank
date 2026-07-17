@@ -2,6 +2,35 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.1.2-005] — 2026-07-17
+
+Expected artifact: `1MB-WalkThePlank-v2.1.2-005-j25-26.2.jar`
+
+### Added
+
+- A separately compiled `WalkThePlank-ScenarioHarness` Paper plugin for disposable test profiles. It depends on InfinityParkour, requires the runner's exact nonce-bound generated root/marker/working-directory/data-path contract, refuses uninstrumented targets, emits deterministic PASS/FAIL/INFO/PENDING markers, and provides headless, lifecycle, restart-marker, failpoint, queue-contention, teleport, GUI, reconnect, and run-exit probes.
+- A Java 25 Class-File API transformer that copies the production JAR to a clearly named test-only artifact and injects a bridge at reviewed durability/gameplay boundaries without changing the production source classes or deployment artifact.
+- Twenty-four named failpoints covering player/restoration journal writes, fsyncs, renames, directory fsyncs and deletion; world-block placement/restoration; start/return teleports; score completion; reward claim/dispatch/outcome; CSV/JSON export renames; and configuration backup/candidate/disk/runtime commits. Every point supports `HALT`; 17 reversible/contained boundaries additionally support `THROW` and releasable `BLOCK`, while seven irreversible boundaries reject those actions.
+- A disposable Paper 26.2 controlled-scenario profile and runner for two-start restart markers, PlaceholderAPI absent/present phases, `/walk admin reload`, terminal plugin disable/service-removal checks, fresh-JVM enable checks, scenario-marker assertions, broad plugin warning/error scans, and preserved per-phase logs.
+- Real-player scenario capture for cancelled and retargeted teleports, disconnect/reconnect recovery, every session-end reason, same-tick two-player start/queue contention, and GUI left-click, shift-click, hotbar/number-key, double-click, creative-click, and drag observations. The stale-session command separately drives the production scheduler/revalidation path with a harmless sentinel and no fabricated inventory event or packet.
+- Reflection tests that lock every gameplay/menu listener's event priority and `ignoreCancelled` contract.
+
+### Security and test isolation
+
+- `verifyReleaseJar` now rejects scenario packages, commands, manifest attributes, canaries, property prefixes, and all failpoint identifiers in the production JAR.
+- `verifyProductionScenarioIsolation` proves the negative production result and also requires positive detection in both the isolated harness and instrumented target, verifies their distinct paths/identities, and rejects provided/runtime classes shaded into the harness.
+- Test-only artifacts are written beneath `build/scenario-artifacts/`, never `build/libs/`, and are visibly prefixed `TEST-ONLY-`; the harness fails closed unless its explicit disposable-profile flag and injected bridge are present.
+- The destructive runner rejects symlinked build/runtime/profile paths. Both the early startup failpoint bridge and later harness require the same safe nonce, bounded marker, real Paper working directory, generated `build/controlled-scenarios/` layout, and exact plugin data paths.
+- Instrumentation verifies that all three exact database operation labels exist in both the production repository bytecode and injected router before it can emit a test artifact.
+- `controlledReleaseScenarios` orders the two-start profile before the automated runtime-commit exit-97/recovery profile, and test-server synchronization now depends on that clean-candidate scenario gate.
+
+### Operational notes and known limitations
+
+- Build-005 development artifacts passed the automated two-start PlaceholderAPI absent/present profile and the `config.after_runtime_commit` exit-97/recovery profile. Those runs validate the harness, but the exact clean committed candidate still needs its repeat run, freeze, Paper smoke, hash/reproducibility record, test-server sync, and human acceptance. Build-004 evidence remains historical and does not approve this artifact.
+- Headless automation proves server/plugin lifecycle and deterministic contracts; it does not synthesize a genuine Minecraft client's inventory protocol, creative behavior, movement, disconnect, or simultaneous-player actions. Any scenario logged as `PENDING` still requires the named real-player test.
+- A failpoint `HALT` terminates the JVM process; it does not emulate storage-device cache loss, host power loss, or filesystem corruption. Recovery evidence must record the actual SQLite `journal_mode`, `synchronous`, and `quick_check` values.
+- CSV and JSON exports are individually atomically renamed, not committed as one pair. A halt after the CSV rename can leave an orphan CSV, and interrupted export/config temporary files do not currently have automatic startup cleanup. These outcomes must be preserved and classified during the hard-kill matrix.
+
 ## [2.1.1-004] — 2026-07-17
 
 Expected artifact: `1MB-WalkThePlank-v2.1.1-004-j25-26.2.jar`

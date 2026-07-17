@@ -12,15 +12,15 @@ intermediate builds from this modernization and are fully superseded.
 
 The Bukkit plugin name intentionally remains `InfinityParkour`. This preserves the existing data directory at `plugins/InfinityParkour/`, so the live `config.yml`, `translations.yml`, and `database.db` can be upgraded in place without renaming player data.
 
-Current source release: **v2.1.1, build 004**
+Current source release: **v2.1.2, build 005**
 
 Expected standalone artifact:
 
 ```text
-1MB-WalkThePlank-v2.1.1-004-j25-26.2.jar
+1MB-WalkThePlank-v2.1.2-005-j25-26.2.jar
 ```
 
-> Build 004 is a beta/event-safety candidate until every release gate in [checklist-walktheplank.md](checklist-walktheplank.md) is completed against the final JAR and a production-like server copy. Implemented code and automated tests do not by themselves constitute production approval.
+> Build 005 is a destructive-testing candidate until every release gate in [checklist-walktheplank.md](checklist-walktheplank.md) is completed against the final JAR and a production-like server copy. Development artifacts passed the automated two-start and runtime-commit hard-kill/recovery profiles, but the exact clean candidate still needs those reruns plus final smoke, freeze, and human approval; implemented source and earlier automated evidence do not by themselves constitute production approval.
 
 See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-walktheplank.md](feature-improvements-walktheplank.md) for the authoritative future-development TODO and implemented-versus-remaining status.
 
@@ -83,16 +83,16 @@ Build the deployment artifact with the checked-in Gradle wrapper:
 The deployable file is:
 
 ```text
-build/libs/1MB-WalkThePlank-v2.1.1-004-j25-26.2.jar
+build/libs/1MB-WalkThePlank-v2.1.2-005-j25-26.2.jar
 ```
 
 Do not deploy the `-unshaded.jar`; it does not contain SQLite JDBC. `build` runs the automated tests, creates the shaded artifact, and executes the archive/metadata verification gate. `freezeCandidate` additionally rejects a dirty Git tree. Every candidate embeds the full source commit and strict dirty state in `build-info.properties` and the JAR manifest; `/walk info`, `/walk debug overview`, and startup show the abbreviated source label.
 
-Final build-004 machine evidence is recorded in the annotated `v2.1.1-004-rc.1` tag and the ignored operator release archive after the clean source commit is built twice and smoke-tested. The checksum is deliberately not committed back into this source tree: changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR. The build-003 tag/archive remains historical evidence for that artifact and must not be reused to approve build 004.
+Build 004's machine evidence is preserved historically in the annotated `v2.1.1-004-rc.1` tag and its ignored operator release archive. Build 005 development artifacts have passed the automated two-start and `config.after_runtime_commit` hard-kill/recovery profiles, but the exact clean committed candidate still needs two byte-identical builds, repeated scenario-profile evidence, Paper smoke, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact or build 004. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
 
 | Release property | Value |
 | --- | --- |
-| Filename | `1MB-WalkThePlank-v2.1.1-004-j25-26.2.jar` |
+| Filename | `1MB-WalkThePlank-v2.1.2-005-j25-26.2.jar` |
 | Source identity | Full Git commit plus strict clean/dirty state embedded in the JAR |
 | Final size and SHA-256 | Annotated candidate tag and operator release archive |
 | Automated test result | Must pass with zero failures/errors/skips and strict Java 25 compilation |
@@ -100,7 +100,7 @@ Final build-004 machine evidence is recorded in the annotated `v2.1.1-004-rc.1` 
 | Paper 26.2 smoke | Must pass startup/reload/shutdown on the exact final JAR |
 | Test-server synchronization | Must leave the exact final JAR as the only active InfinityParkour/WalkThePlank build |
 
-The in-game multiplayer, movement, GUI abuse, hard-kill, reward-provider, and rollback portions of the beta checklist still require a human tester before event approval. An RC tag records automated freeze evidence only; it is not production approval.
+The in-game multiplayer, movement, real-client GUI abuse, hard-kill recovery, reward-provider, and rollback portions of the beta checklist still require a human tester before event approval. An RC tag records automated freeze evidence only; it is not production approval.
 
 Useful build commands:
 
@@ -113,11 +113,11 @@ Useful build commands:
 ./gradlew syncTestServer
 ```
 
-`releaseInfo` must print version `2.1.1`, build `004`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 004 into the active plugin directory.
+`releaseInfo` must print version `2.1.2`, build `005`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 005 into the active plugin directory.
 
 ## Install or upgrade
 
-> Stop Paper and take an operator-controlled backup before the first build-004 start. The automatic SQLite migration backup is an additional safeguard, not a substitute for a full server/data backup.
+> Stop Paper and take an operator-controlled backup before the first build-005 start. The automatic SQLite migration backup is an additional safeguard, not a substitute for a full server/data backup.
 
 For an existing server:
 
@@ -126,7 +126,7 @@ For an existing server:
 3. Back up the old plugin JAR and the complete `plugins/InfinityParkour/` directory as one matched rollback set.
 4. Keep the data directory named `plugins/InfinityParkour/`.
 5. Remove or disable every older InfinityParkour/WalkThePlank JAR. Paper must see only one plugin with the `InfinityParkour` name.
-6. Copy `1MB-WalkThePlank-v2.1.1-004-j25-26.2.jar` into `plugins/`.
+6. Copy `1MB-WalkThePlank-v2.1.2-005-j25-26.2.jar` into `plugins/`.
 7. Start Paper and inspect the complete startup log. A successful live-data start should report 100 preserved scores and, on the first schema-v2 migration only, a verified pre-migration backup path.
 8. Run `/walk info`, `/walk admin validate`, `/walk admin status`, `/walk admin doctor`, `/walk debug all`, and the full beta checklist before allowing players in.
 9. Stop Paper cleanly once and require the clean restoration/disable message before the event rehearsal is accepted.
@@ -570,7 +570,35 @@ The current API intentionally does not expose mutable sessions, direct database 
 
 ## Testing and event approval
 
-The build-004 suite covers build provenance, configuration policy, SQLite schema/migration/durability and the asynchronous doctor probe, reward preparation, restoration records/policy, queue fairness, arena selection, exports, external-teleport event ordering, nonce/generation GUI authorization and duplicate-action suppression, literal dynamic text/MiniMessage compatibility, and core game policies. Record the exact final test count from the clean candidate build; public API/event behavior and real player movement remain part of the server-level integration checklist.
+The build-005 suite covers build provenance, configuration policy, SQLite schema/migration/durability and the asynchronous doctor probe, reward preparation, restoration records/policy, queue fairness, arena selection, exports, external-teleport event ordering, nonce/generation GUI authorization and duplicate-action suppression, literal dynamic text/MiniMessage compatibility, core game policies, and reflection-locked `EventHandler` priority/`ignoreCancelled` contracts. Record the exact final test count from the clean candidate build; public API/event behavior and real player movement remain part of the server-level integration checklist.
+
+Build 005 also adds an isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
+
+```bash
+./gradlew scenarioArtifacts verifyProductionScenarioIsolation
+```
+
+The test-only outputs are deliberately outside `build/libs/`:
+
+```text
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.1.2-005.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.1.2-005-Failpoints.jar
+```
+
+`verifyReleaseJar` byte-scans the production JAR for scenario packages, commands, manifest/agent markers, canaries, every scenario-property prefix, and all 24 failpoint names. `verifyProductionScenarioIsolation` repeats that negative proof and requires the harness and instrumented copy to trigger positive controls, preventing a broken scan from reporting a false pass. The runner refuses symlinked destructive roots and writes a bounded per-run nonce marker. Both the early startup failpoint controller and the scenario plugin require that marker, the exact generated root/working directory/layout/data paths, and the bridge loaded by the instrumented target's own classloader.
+
+Run the disposable Paper 26.2 profile with:
+
+```bash
+./scripts/run-controlled-scenarios.sh
+./gradlew controlledScenarios
+./gradlew controlledRuntimeCommitFailpoint
+./gradlew controlledReleaseScenarios
+```
+
+The controlled runner owns the repeatable two-start/restart, PlaceholderAPI-absent/present, `/walk admin reload`, terminal disable/service-removal, fresh-JVM enable, and automated log-assertion phases. It deliberately does not re-enable a disabled plugin instance: Paper unregisters that instance's configured classloader, so the supported recovery proof is the next clean process start. In the player-assisted profile, `/wtpscenario gui stale` exercises the production scheduler/revalidation path with a harmless sentinel and no fabricated event or packet. Real players remain responsible for actual client GUI click, drag, hotbar/number-key, double-click, creative, cancelled/retargeted teleport, reconnect/state restoration, every run-exit cause, and simultaneous two-player queue/start observations. A headless `PENDING` marker is not a pass.
+
+The 24 named points cover both player/restoration journal temp-write, fsync, rename, directory-fsync, and delete boundaries; block placement/restoration; start/return teleports; score completion; reward claim, dispatch, and outcome; CSV/JSON export renames; and configuration backup/candidate/disk/runtime commits. Every point supports `HALT`. Seventeen reversible/contained points also support `THROW` and releasable `BLOCK`; player/restoration journal rename and delete, configuration candidate rename, disk commit, and runtime commit are deliberately `HALT`-only because an exception or block timeout after those irreversible boundaries would create misleading same-process state. `HALT` is a process-kill test, not a simulated storage-device or host power loss. Inspect the actual SQLite `journal_mode`, `synchronous`, and `quick_check` result after every recovery phase rather than assuming durability settings. Also inspect retained temporary files: CSV and JSON are each atomically renamed but the pair is not one atomic transaction, so a halt after the CSV rename can leave a CSV without its matching JSON; interrupted export/config temporary files are not currently cleaned automatically.
 
 Use [checklist-walktheplank.md](checklist-walktheplank.md) for the mandatory server-level review. It includes:
 

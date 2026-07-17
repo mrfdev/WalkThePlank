@@ -1,0 +1,19 @@
+name: WalkThePlank-ScenarioHarness
+version: '${version}'
+main: com.mrfdev.walktheplank.scenario.harness.WalkThePlankScenarioPlugin
+api-version: '26.2'
+prefix: WTP-Scenario
+authors: [1MB]
+description: Test-only destructive Paper scenarios for WalkThePlank.
+depend: [InfinityParkour]
+softdepend: [PlaceholderAPI]
+commands:
+  walktheplankscenario:
+    aliases: [wtpscenario]
+    description: Runs isolated WalkThePlank test-profile scenarios.
+    usage: /wtpscenario <run|status|failpoint|restart|teleport|gui|reconnect|exits|contention>
+    permission: walktheplank.scenario.admin
+permissions:
+  walktheplank.scenario.admin:
+    description: Allows destructive test-profile WalkThePlank scenarios.
+    default: op

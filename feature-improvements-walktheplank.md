@@ -1,20 +1,20 @@
 # WalkThePlank future improvements and release status
 
-This is the authoritative future-development TODO and release-status document. It separates what is implemented in source release **v2.1.1 build 004** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
+This is the authoritative future-development TODO and release-status document. It separates what is implemented in source release **v2.1.2 build 005** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
 
 Status labels:
 
-- **Implemented** — present in build-004 source.
+- **Implemented** — present in build-005 source.
 - **Implemented; beta verification pending** — present, but the final JAR still needs the named Paper/live-data test.
 - **Partial** — a safe foundation exists, but an important workflow or assurance remains.
 - **Proposed** — not present and must not be advertised as a current feature.
 
 ## Deferred modernization queue
 
-Build 003 remains the frozen historical modernization baseline. Build 004 deliberately takes only the event-safety/operations item below; every remaining unchecked item stays deferred to a separate incremented build so its evidence cannot be confused with this candidate.
+Build 003 remains the frozen historical modernization baseline and build 004 remains the historical event-safety release. Build 005 takes only the isolated destructive-testing item below; every remaining unchecked feature stays deferred to a separate incremented build so its evidence cannot be confused with this candidate.
 
-1. [x] **v2.1.1 build 004 — event-safety and operations implemented in source; beta acceptance pending.** External-teleport decisions occur at `HIGHEST` with observation-only `MONITOR` and next-tick verification; GUI sessions bind owner UUID/nonce/generation/exact inventory with one pending action; trusted formatting is parsed separately from literal dynamic components with explicit `minimessage:` opt-in and legacy `&` compatibility; `/walk admin doctor` produces a privacy-safe report with an asynchronous SQLite probe.
-2. [ ] **Disposable Paper integration and fault-injection harness.** Reuse the controlled-scenario approach proven in other 1MB projects for two-start recovery, queue contention, event ordering, GUI abuse, PlaceholderAPI presence/absence, log assertions, and named failures at every durable boundary. Test-only hooks and harness classes must be absent from the production JAR.
+1. [x] **v2.1.1 build 004 — event-safety and operations implemented; beta acceptance still pending.** External-teleport decisions occur at `HIGHEST` with observation-only `MONITOR` and next-tick verification; GUI sessions bind owner UUID/nonce/generation/exact inventory with one pending action; trusted formatting is parsed separately from literal dynamic components with explicit `minimessage:` opt-in and legacy `&` compatibility; `/walk admin doctor` produces a privacy-safe report with an asynchronous SQLite probe.
+2. [x] **v2.1.2 build 005 — disposable Paper integration and fault-injection harness implemented; final-candidate and real-client evidence pending.** A separate test plugin, Java 25 Class-File API instrumented-copy builder, 24 named failpoints, two-start/PlaceholderAPI/lifecycle/log runner, real-player queue/teleport/GUI/reconnect/exit probes, reflection event contracts, and positive/negative production-isolation checks are present. Development-artifact runs passed the automated two-start profile and the `config.after_runtime_commit` exit-97/recovery profile; repeat them against the clean committed candidate and complete every applicable real-client/hard-kill checklist row before treating this item as release-qualified.
 3. [ ] **Two-phase off-main durability pipeline.** Keep Bukkit/Paper capture, validation, and mutation on the primary thread; move journal/audit/config filesystem work to bounded plugin-owned workers; return to the primary thread and revalidate the run generation and authoritative state before mutation. Preserve append-before-mutation, quarantine, and crash-recovery guarantees.
 4. [ ] **Summer Season feature bundle.** Preserve the imported Classic leaderboard while adding cosmetic themes, milestones, accessibility preferences, a versioned daily course and separate ranking, seasonal Momentum, quests, durable UUID claim keys, and a community plank goal. Run new scoring in shadow mode before rewards or public ranking.
 5. [ ] **Post-event command/API modernization.** Split the command, game, configuration, and repository monoliths by domain; migrate supported commands to Paper's lifecycle-registered Brigadier tree; evaluate experimental Dialog/data-component APIs only behind isolated version-gated adapters when they provide concrete value.
@@ -36,20 +36,24 @@ Future work must preserve these rules:
 - Paper and PlaceholderAPI classes remain provided; SQLite JDBC remains the only shaded runtime library.
 - Every public behavior change gets a version/build increment, immutable 1MB artifact name, documentation, tests, staging rehearsal, and rollback plan.
 
-## Implemented in v2.1.1-004
+## Implemented in v2.1.2-005
 
-Build 004 includes the complete build-003 baseline documented in [CHANGELOG.md](CHANGELOG.md) plus the focused event-safety and operations changes below.
+Build 005 includes the complete build-004 event-safety release and build-003 baseline documented in [CHANGELOG.md](CHANGELOG.md), plus the focused destructive-testing infrastructure below.
 
 ### Build, platform, and packaging
 
 | Capability | Status | Notes |
 | --- | --- | --- |
 | Gradle build and wrapper | **Implemented** | Gradle 9.6.1, Shadow 9.5.1, strict Java 25 compilation. |
-| Paper target | **Implemented; console smoke passed** | Paper API/runtime 26.2 build 60 beta passed full-stack and standalone startup/reload/shutdown; human in-game acceptance remains mandatory. |
+| Paper target | **Implemented; final build-005 smoke pending** | Paper API/runtime 26.2 build 60 beta passed the build-005 development-artifact controlled profile. Repeat the controlled profile and full candidate smoke against the clean committed artifact before approval. |
 | Standalone SQLite JAR | **Implemented** | SQLite JDBC 3.53.2.0 is shaded; MySQL/MariaDB is absent. |
 | Archive-composition gate | **Implemented** | Rejects bundled Paper/Bukkit/PlaceholderAPI/live-database classes or files and remote-database drivers. |
+| Isolated scenario artifacts | **Implemented; final-candidate rerun pending** | The harness is an independent Paper plugin and the Java 25 Class-File API transformer writes a distinct `TEST-ONLY-` copy. Neither is packaged beneath `build/libs/` or allowed to replace the production JAR. Development-artifact isolation and controlled-profile gates passed. |
+| Production-isolation proof | **Implemented; final build evidence pending** | Negative scans require no scenario classes, controls, canaries, properties, manifest markers, commands, or 24 failpoint IDs in production; positive controls require their presence in test artifacts so a broken scan cannot pass silently. |
+| Controlled Paper 26.2 profile | **Implemented; clean-candidate rerun pending** | The development-artifact two-start run passed restart-marker, PlaceholderAPI absent/present, config reload, terminal disable/service removal, fresh-JVM enable, deterministic marker, broad log, port-release, and SQLite quick-check assertions. The automated `config.after_runtime_commit` hard halt also exited 97 and recovered cleanly. Repeat both against the clean committed candidate; real-client and the remaining named hard-kill cases stay separate acceptance work. |
+| Listener annotation contracts | **Implemented** | Reflection tests lock gameplay/menu `EventHandler` priorities and `ignoreCancelled` values, including `HIGHEST` decisions and observation-only `MONITOR` callbacks. |
 | 1MB naming/build metadata | **Implemented; clean freeze pending** | The exact 1MB filename plus Git commit/dirty provenance are embedded in the resource and manifest. Final size/hash belong to the annotated candidate tag and operator release archive so recording them cannot change the embedded source commit. |
-| Dependency cleanup | **Implemented; provider content matrix pending** | PlaceholderAPI 2.12.3 is the only Java integration. CMI, UltimateFireworks, and PyroWelcomesPro are soft startup-order hints for configured roots; CMILib, Vault, and PyroLib are not dependencies. Full-stack and no-optional-plugin cold starts pass; external reward content still needs in-game rehearsal. |
+| Dependency cleanup | **Implemented; final/provider matrix pending** | PlaceholderAPI 2.12.3 is the only Java integration. CMI, UltimateFireworks, and PyroWelcomesPro are soft startup-order hints for configured roots; CMILib, Vault, and PyroLib are not dependencies. The build-005 development-artifact profile passed with PlaceholderAPI absent and with the deployable 2.12.3 plugin present; repeat it against the clean candidate and still rehearse external reward content/providers separately. |
 
 ### Persistence, identity, seasons, and history
 
@@ -120,9 +124,9 @@ These are not hidden defects; they are explicit design or release boundaries tha
 
 ### P0 — finish before event approval
 
-1. **Qualify and commit the build-004 candidate.** Repeat the clean build, archive verification, final hash/size/test record, byte-identical rebuild, Paper 26.2 build-60 full-stack/standalone console smoke, test-server sync, and plugin-log review against the new artifact. Build-003 machine evidence remains historical and cannot approve build 004.
+1. **Qualify and commit the build-005 candidate.** Commit the reviewed source, create two byte-identical clean builds, rerun the controlled two-start and automated hard-kill profiles against that exact artifact, then record archive verification, final hash/size/test result, Paper 26.2 build-60 smoke, test-server sync, and plugin-log review. Development-artifact and build-003/build-004 evidence remains historical and cannot approve a different candidate.
 2. **Repeat migration on a disposable copy of all 100 live rows.** Compare every UUID/score and top-ten position, verify both databases, and prove `_resources` stayed unchanged.
-3. **Complete the human abuse/recovery matrix.** Queue concurrency, GUI clicks/drags, all cleanup causes, world protection, signs, containers, tile PDC, conflicts, missing worlds, clean stop, and kill/restart remain server acceptance work.
+3. **Complete the real-client abuse/recovery matrix.** The test-only plugin records deterministic evidence and its player-assisted stale command exercises the real scheduled callback/revalidation path without fabricating packets. A real player must still perform simultaneous queue/start actions, GUI click/drag/hotbar/double-click/creative cases, every cleanup cause, cancelled/retargeted teleports, reconnect recovery, world protection, signs, containers, tile PDC, conflicts, and missing-world recovery. Run named hard-kill/restart cases separately.
 4. **Rehearse reward uncertainty with staging accounts.** Test PENDING discovery/abandon and UNKNOWN downstream investigation/resolution. Assign a named operator and never interpret a resolution as a replay request.
 5. **Rehearse rollback.** Restore the prior JAR and matching data folder together, measure recovery time, and document that database rollback discards later scores.
 6. **Resolve distribution rights.** No approved license file is present. Keep the build private/custom unless relevant rights holders authorize redistribution.
@@ -155,7 +159,7 @@ Do not add username ownership lookup or a “rerun reward” button.
 
 #### Persist minimal crash-recovery player return evidence
 
-**Implemented; destructive rehearsal pending.** Player/run/arena-owned state is fsynced before plugin mutation or arena teleport. It stores no inventory or names, quarantines an affected online player while exact retained-run ownership is verified, applies terminal death/teleport semantics without replaying superseded state, and deletes only the exact record after applicable cleanup succeeds. Malformed, orphaned, or ambiguous evidence is retained and fails closed; an exact valid copied record is intentionally treated as indistinguishable operator-owned evidence. The remaining gate is a disposable hard-process-kill matrix at each write/mutation/teleport/cleanup boundary.
+**Implemented; remaining named destructive rehearsal pending.** Player/run/arena-owned state is fsynced before plugin mutation or arena teleport. It stores no inventory or names, quarantines an affected online player while exact retained-run ownership is verified, applies terminal death/teleport semantics without replaying superseded state, and deletes only the exact record after applicable cleanup succeeds. Malformed, orphaned, or ambiguous evidence is retained and fails closed; an exact valid copied record is intentionally treated as indistinguishable operator-owned evidence. Build 005 supplies named test-only journal, block, and teleport failpoints plus restart evidence. The automated runtime-commit hard halt/recovery passed on development artifacts; the player-assisted hard-process-kill/reconnect matrix still has to be run and reviewed.
 
 Valid pending evidence withholds its exact arena across restarts; unreadable evidence with unknown arena ownership withholds all arenas. `/walk admin recover` reissues ownership lookups for online affected players. There is intentionally no online discard button: unverifiable evidence uses the documented stopped-server, backup-first matching-data restore/manual-resolution procedure and is preserved outside the active journal rather than deleted.
 
@@ -233,19 +237,23 @@ Create a distinct category for time-target streaks; do not retrofit multipliers 
 
 ### Reproducible Paper integration harness
 
-Automate a disposable Paper 26.2 profile with scripted players or a test plugin for enable/disable, permissions, commands, PlaceholderAPI, lifecycle events, queue concurrency, gameplay cleanup, and log assertions. Never point it at `_resources` directly.
+**Implemented; final-candidate rerun and real-client completion pending.** The separate `WalkThePlank-ScenarioHarness` plugin and disposable Paper 26.2 runner cover two starts, restart evidence, PlaceholderAPI absent/present, `/walk admin reload`, terminal disable/service removal, fresh-JVM enable, API/lifecycle checks, deterministic scenario markers, and automated log assertions. The development-artifact two-start run passed all of those automated checks. It does not attempt an unsupported same-instance re-enable after Paper unregisters the disabled plugin's configured classloader. The harness also observes real-player queue contention, run exits, teleports, reconnects, and GUI gestures, but deliberately reports those as `PENDING` until an actual client performs them. It must operate only on generated/disposable data and never point at `_resources` directly.
+
+The harness is not production code. It fails closed without an explicit disposable-profile flag, nonce-bound marker, exact real working-directory/generated-layout/data-path contract, and the test bridge loaded from the instrumented target's classloader. The early startup failpoint bridge enforces the same root/nonce/marker checks before it can halt during target enable. The runner also rejects symlinked destructive roots. Its `TEST-ONLY-` artifacts live under `build/scenario-artifacts/`; the deployable JAR remains under `build/libs/`.
 
 ### Fault injection
 
-Add controlled failpoints around:
+**Implemented for 24 reviewed boundaries; final rerun and remaining hard-kill matrix pending.** Java 25's Class-File API transforms a copy of the deployable JAR and injects `HALT` controls at every point. The development-artifact `config.after_runtime_commit` profile emitted exact `ARMED`/`REACHED` markers, halted with exit 97, released its port, and recovered on the same disposable profile with SQLite `quick_check=ok`. Seventeen reversible/contained boundaries additionally support `THROW` or releasable `BLOCK`; the player/restoration journal rename and delete points plus configuration candidate rename, disk commit, and runtime commit are `HALT`-only:
 
-- journal temp write/fsync/rename and world placement/restoration;
-- teleport/player snapshot restoration and scheduler rejection;
-- run start/completion, reward plan/claim/outcome, retention/tombstone insertion, and export rename;
-- audit append/rotation and config candidate/rollback;
-- SQLite lock, disk-full/read-only behavior, timeout, and interrupted close.
+- both player and block-restoration journal temp writes, file fsyncs, atomic renames, directory fsyncs, and deletes;
+- block placement/restoration and start/return teleports;
+- score completion plus reward claim, external dispatch, and recorded outcome;
+- CSV and JSON export renames;
+- configuration backup/candidate renames and disk/runtime commit points.
 
-Every accepted future must settle, every ambiguous external side effect must remain visible, and no fault may trigger blind replay.
+`verifyReleaseJar` and `verifyProductionScenarioIsolation` prove that the production artifact contains none of these controls while requiring positive detection in the two test artifacts. Remaining fault investments include audit append/rotation, scheduler rejection, retention/tombstone insertion, SQLite lock/disk-full/read-only behavior, timeout, and interrupted close.
+
+Every accepted future must settle, every ambiguous external side effect must remain visible, and no fault may trigger blind replay. `HALT` proves process-interruption handling only; it does not emulate power loss below the operating-system/filesystem boundary. Record actual SQLite `journal_mode`, `synchronous`, and `quick_check` values after each restart. Also preserve and classify known partial-output behavior: CSV/JSON files are each atomically renamed but not committed as one pair, and interrupted export/config temporary files are not automatically cleaned today.
 
 ### Load and soak tests
 

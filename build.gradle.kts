@@ -3,6 +3,7 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.Properties
 import java.util.jar.JarFile
+import org.gradle.api.tasks.compile.JavaCompile
 
 plugins {
     java
@@ -43,6 +44,46 @@ version = pluginVersion
 val releaseStem = "1MB-WalkThePlank-v$pluginVersion-$buildNumber-j$javaTarget-$paperTarget"
 val releaseJarName = "$releaseStem.jar"
 val pluginDescriptorVersion = "$pluginVersion-$buildNumber"
+val scenarioArtifactDirectory = layout.buildDirectory.dir("scenario-artifacts")
+val scenarioHarnessJarName =
+    "TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v$pluginVersion-$buildNumber.jar"
+val scenarioInstrumentedJarName =
+    "TEST-ONLY-1MB-WalkThePlank-v$pluginVersion-$buildNumber-Failpoints.jar"
+val scenarioFailpointIds = listOf(
+    "player_journal.after_temp_write",
+    "player_journal.after_temp_fsync",
+    "player_journal.after_rename",
+    "player_journal.after_directory_fsync",
+    "player_journal.after_delete",
+    "restoration_journal.after_temp_write",
+    "restoration_journal.after_temp_fsync",
+    "restoration_journal.after_rename",
+    "restoration_journal.after_directory_fsync",
+    "restoration_journal.after_delete",
+    "block.after_place",
+    "block.after_restore",
+    "teleport.after_start",
+    "teleport.after_return",
+    "score.after_commit",
+    "reward.after_dispatch",
+    "reward_claim.after_commit",
+    "reward_outcome.after_commit",
+    "export.csv.after_rename",
+    "export.json.after_rename",
+    "config.backup.after_rename",
+    "config.candidate.after_rename",
+    "config.after_disk_commit",
+    "config.after_runtime_commit",
+)
+val productionScenarioCanaries = listOf(
+    "WTP_SCENARIO_TEST_ONLY_7E4C0D98",
+    "walktheplank.scenario.",
+    "com/mrfdev/walktheplank/scenario/",
+    "ScenarioFailpoints",
+    "ScenarioJarInstrumenter",
+    "WalkThePlank-Test-Artifact",
+    "walktheplankscenario",
+) + scenarioFailpointIds
 
 repositories {
     mavenCentral()
@@ -62,6 +103,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("io.papermc.paper:paper-api:$paperApiVersion")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
 }
 
 dependencyLocking {
@@ -112,6 +154,138 @@ tasks.named<ShadowJar>("shadowJar") {
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
     mergeServiceFiles()
     exclude("META-INF/*.DSA", "META-INF/*.RSA", "META-INF/*.SF")
+}
+
+val scenarioHarnessClasses =
+    layout.buildDirectory.dir("classes/java/scenarioHarness")
+val scenarioInstrumentationClasses =
+    layout.buildDirectory.dir("classes/java/scenarioInstrumentation")
+val scenarioToolsClasses =
+    layout.buildDirectory.dir("classes/java/scenarioTools")
+
+val compileScenarioHarness = tasks.register<JavaCompile>("compileScenarioHarness") {
+    group = "verification"
+    description = "Compiles the isolated Paper scenario plugin."
+    dependsOn(tasks.classes)
+    source(fileTree("src/scenarioHarness/java") {
+        include("**/*.java")
+    })
+    classpath = sourceSets.main.get().output + sourceSets.main.get().compileClasspath
+    destinationDirectory.set(scenarioHarnessClasses)
+}
+
+val compileScenarioInstrumentation =
+    tasks.register<JavaCompile>("compileScenarioInstrumentation") {
+        group = "verification"
+        description = "Compiles the test-only failpoint bridge."
+        source(fileTree("src/scenarioInstrumentation/java") {
+            include("**/*.java")
+        })
+        classpath = files()
+        destinationDirectory.set(scenarioInstrumentationClasses)
+    }
+
+val compileScenarioTools = tasks.register<JavaCompile>("compileScenarioTools") {
+    group = "verification"
+    description = "Compiles the Java 25 Class-File API scenario instrumenter."
+    source(fileTree("src/scenarioTools/java") {
+        include("**/*.java")
+    })
+    classpath = files()
+    destinationDirectory.set(scenarioToolsClasses)
+}
+
+val scenarioHarnessJar = tasks.register<Jar>("scenarioHarnessJar") {
+    group = "verification"
+    description = "Builds the separate test-only Paper scenario plugin."
+    dependsOn(compileScenarioHarness)
+    archiveFileName.set(scenarioHarnessJarName)
+    destinationDirectory.set(scenarioArtifactDirectory)
+    from(scenarioHarnessClasses)
+    from("src/scenarioHarness/resources") {
+        filesMatching("plugin.yml") {
+            expand(
+                "version" to pluginDescriptorVersion,
+                "paperTarget" to paperTarget,
+            )
+        }
+    }
+    manifest.attributes(
+        "Implementation-Title" to "WalkThePlank Scenario Harness",
+        "Implementation-Version" to pluginDescriptorVersion,
+        "WalkThePlank-Test-Artifact" to "scenario-harness",
+        "WalkThePlank-Test-Canary" to "WTP_SCENARIO_TEST_ONLY_7E4C0D98",
+    )
+}
+
+val scenarioInstrumentedJar = layout.buildDirectory
+    .file("scenario-artifacts/$scenarioInstrumentedJarName")
+val instrumentScenarioJar = tasks.register<JavaExec>("instrumentScenarioJar") {
+    group = "verification"
+    description = "Copies and instruments the production JAR for destructive scenarios."
+    dependsOn(tasks.shadowJar, compileScenarioInstrumentation, compileScenarioTools)
+    val productionJar = tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile }
+    classpath = files(
+        scenarioToolsClasses,
+        scenarioInstrumentationClasses,
+        productionJar,
+    ) + sourceSets.main.get().compileClasspath
+    mainClass.set(
+        "com.mrfdev.walktheplank.scenario.tools.ScenarioJarInstrumenter")
+    inputs.file(productionJar)
+    inputs.dir(scenarioInstrumentationClasses)
+    outputs.file(scenarioInstrumentedJar)
+    doFirst {
+        args(
+            productionJar.get().asFile.absolutePath,
+            scenarioInstrumentationClasses.get().asFile.absolutePath,
+            scenarioInstrumentedJar.get().asFile.absolutePath,
+        )
+    }
+}
+
+val scenarioArtifacts = tasks.register("scenarioArtifacts") {
+    group = "verification"
+    description = "Builds every isolated test-only scenario artifact."
+    dependsOn(scenarioHarnessJar, instrumentScenarioJar)
+}
+
+val controlledScenarios = tasks.register<Exec>("controlledScenarios") {
+    group = "verification"
+    description =
+        "Runs the disposable two-start Paper 26.2 lifecycle and PlaceholderAPI scenario."
+    dependsOn("verifyProductionScenarioIsolation")
+    workingDir(rootDir)
+    commandLine(
+        "./scripts/run-controlled-scenarios.sh",
+        "--skip-build",
+    )
+}
+
+val controlledRuntimeCommitFailpoint =
+    tasks.register<Exec>("controlledRuntimeCommitFailpoint") {
+    group = "verification"
+    description =
+        "Runs the disposable config runtime-commit hard-kill and recovery scenario."
+    dependsOn("verifyProductionScenarioIsolation")
+    workingDir(rootDir)
+    commandLine(
+        "./scripts/run-controlled-scenarios.sh",
+        "--skip-build",
+        "--failpoint",
+        "config.after_runtime_commit",
+    )
+}
+
+controlledRuntimeCommitFailpoint.configure {
+    mustRunAfter(controlledScenarios)
+}
+
+val controlledReleaseScenarios = tasks.register("controlledReleaseScenarios") {
+    group = "verification"
+    description =
+        "Runs the ordered two-start and runtime-commit recovery gates for a release candidate."
+    dependsOn(controlledScenarios, controlledRuntimeCommitFailpoint)
 }
 
 tasks.build {
@@ -184,6 +358,7 @@ val verifyReleaseJar = tasks.register("verifyReleaseJar") {
                 "io/papermc/paper/",
                 "org/bukkit/",
                 "me/clip/placeholderapi/",
+                "com/mrfdev/walktheplank/scenario/",
             )
             val forbiddenClasses = names.filter { name ->
                 name.endsWith(".class") && forbiddenPrefixes.any(name::startsWith)
@@ -194,6 +369,21 @@ val verifyReleaseJar = tasks.register("verifyReleaseJar") {
             }
             check(names.none { it.lowercase().endsWith(".db") || it.lowercase().endsWith(".sqlite") }) {
                 "A database file must never be embedded in the release artifact"
+            }
+            val scenarioLeaks = mutableListOf<String>()
+            for (entry in jar.entries().asSequence().filterNot { it.isDirectory }) {
+                val content = jar.getInputStream(entry).use { stream ->
+                    stream.readAllBytes().toString(Charsets.ISO_8859_1)
+                }
+                for (marker in productionScenarioCanaries) {
+                    if (marker in content) {
+                        scenarioLeaks.add("${entry.name}:$marker")
+                    }
+                }
+            }
+            check(scenarioLeaks.isEmpty()) {
+                "Test-only scenario controls leaked into production: " +
+                    scenarioLeaks.take(10).joinToString()
             }
 
             val buildProperties = Properties().apply {
@@ -228,12 +418,129 @@ val verifyReleaseJar = tasks.register("verifyReleaseJar") {
             check(attributes.getValue("Build-Paper-Target") == paperTarget)
             check(attributes.getValue("Build-Source-Commit") == sourceCommit)
             check(attributes.getValue("Build-Source-Dirty") == sourceDirty.toString())
+            check(attributes.getValue("WalkThePlank-Test-Artifact") == null)
+            check(attributes.getValue("WalkThePlank-Test-Canary") == null)
+            check(attributes.getValue("Premain-Class") == null)
+            check(attributes.getValue("Agent-Class") == null)
+            check(attributes.getValue("Launcher-Agent-Class") == null)
+            check(attributes.getValue("Boot-Class-Path") == null)
+            check(attributes.getValue("Can-Redefine-Classes") == null)
+            check(attributes.getValue("Can-Retransform-Classes") == null)
         }
     }
 }
 
+val verifyProductionScenarioIsolation =
+    tasks.register("verifyProductionScenarioIsolation") {
+        group = "verification"
+        description =
+            "Proves scenario plugins, instrumentation, controls, and canaries are absent from production."
+        dependsOn(scenarioArtifacts)
+        val productionJar = tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile }
+        val harnessJar = scenarioHarnessJar.flatMap { it.archiveFile }
+        inputs.files(productionJar, harnessJar, scenarioInstrumentedJar)
+
+        doLast {
+            fun markerHits(path: java.nio.file.Path): Set<String> {
+                val hits = linkedSetOf<String>()
+                JarFile(path.toFile(), true).use { jar ->
+                    for (entry in jar.entries().asSequence().filterNot { it.isDirectory }) {
+                        val content = jar.getInputStream(entry).use { stream ->
+                            stream.readAllBytes().toString(Charsets.ISO_8859_1)
+                        }
+                        for (marker in productionScenarioCanaries) {
+                            if (marker in content) {
+                                hits.add(marker)
+                            }
+                        }
+                    }
+                    val attributes = jar.manifest?.mainAttributes
+                    if (attributes?.getValue("Premain-Class") != null) {
+                        hits.add("Premain-Class")
+                    }
+                    if (attributes?.getValue("Agent-Class") != null) {
+                        hits.add("Agent-Class")
+                    }
+                    if (attributes?.getValue("Launcher-Agent-Class") != null) {
+                        hits.add("Launcher-Agent-Class")
+                    }
+                }
+                return hits
+            }
+
+            val productionPath = productionJar.get().asFile.toPath()
+            val harnessPath = harnessJar.get().asFile.toPath()
+            val instrumentedPath = scenarioInstrumentedJar.get().asFile.toPath()
+            check(productionPath != instrumentedPath) {
+                "Scenario instrumentation must never replace the production JAR"
+            }
+            val productionHits = markerHits(productionPath)
+            check(productionHits.isEmpty()) {
+                "Production JAR contains test-only scenario evidence: $productionHits"
+            }
+            val harnessHits = markerHits(harnessPath)
+            check(harnessHits.isNotEmpty()) {
+                "Positive control failed: scenario harness was not recognized as test-only"
+            }
+            check(scenarioFailpointIds.all(harnessHits::contains)) {
+                "Scenario harness is missing one or more named failpoint controls"
+            }
+            val instrumentedHits = markerHits(instrumentedPath)
+            check("WTP_SCENARIO_TEST_ONLY_7E4C0D98" in instrumentedHits) {
+                "Positive control failed: instrumented JAR canary was not detected"
+            }
+            check(scenarioFailpointIds.all(instrumentedHits::contains)) {
+                "Instrumented JAR is missing one or more named failpoint controls"
+            }
+
+            JarFile(harnessPath.toFile(), true).use { harness ->
+                val names = harness.entries().asSequence().map { it.name }.toList()
+                val classes = names.filter { it.endsWith(".class") }
+                check(classes.isNotEmpty())
+                check(classes.all {
+                    it.startsWith("com/mrfdev/walktheplank/scenario/harness/")
+                }) {
+                    "Scenario harness contains a class outside its isolated package"
+                }
+                val shadedPrefixes = listOf(
+                    "com/mrfdev/walktheplank/WalkThePlankPlugin",
+                    "org/sqlite/",
+                    "org/bukkit/",
+                    "io/papermc/paper/",
+                    "me/clip/placeholderapi/",
+                )
+                check(classes.none { name -> shadedPrefixes.any(name::startsWith) }) {
+                    "Scenario harness shaded production or provided runtime classes"
+                }
+                val descriptor = harness.getJarEntry("plugin.yml")
+                check(descriptor != null) {
+                    "Scenario harness is missing its independent plugin.yml"
+                }
+                val descriptorText = harness.getInputStream(descriptor)
+                    .bufferedReader(Charsets.UTF_8)
+                    .use { it.readText() }
+                check(descriptorText.contains("name: WalkThePlank-ScenarioHarness"))
+                check(descriptorText.contains("depend: [InfinityParkour]"))
+            }
+
+            JarFile(instrumentedPath.toFile(), true).use { instrumented ->
+                check(instrumented.getJarEntry(
+                    "com/mrfdev/walktheplank/WalkThePlankPlugin.class") != null)
+                check(instrumented.getJarEntry(
+                    "com/mrfdev/walktheplank/scenario/instrumentation/ScenarioFailpoints.class") != null)
+                check(instrumented.getJarEntry("META-INF/WTP-SCENARIO-TEST-ONLY") != null)
+                check(instrumented.manifest.mainAttributes
+                    .getValue("WalkThePlank-Test-Artifact") == "instrumented-failpoints")
+            }
+        }
+    }
+
 tasks.build {
     dependsOn(verifyReleaseJar)
+}
+
+tasks.check {
+    dependsOn(verifyProductionScenarioIsolation)
 }
 
 val verifyCleanSource = tasks.register("verifyCleanSource") {
@@ -253,10 +560,18 @@ val freezeCandidate = tasks.register("freezeCandidate") {
     dependsOn(verifyCleanSource)
 }
 
+controlledScenarios.configure {
+    mustRunAfter(freezeCandidate)
+}
+controlledRuntimeCommitFailpoint.configure {
+    mustRunAfter(freezeCandidate)
+}
+
 tasks.register("syncTestServer") {
     group = "1MB release"
     description = "Builds and copies this release to the Paper 26.2 test server, disabling older builds."
     dependsOn(freezeCandidate)
+    dependsOn(controlledReleaseScenarios)
     doLast {
         val pluginsDirectory = layout.projectDirectory.dir("servers/Paper-26.2/plugins").asFile.toPath()
         val disabledDirectory = layout.projectDirectory
