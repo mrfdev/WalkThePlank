@@ -62,6 +62,7 @@ class JdbcScoreRepositoryTest {
             repository.initialize();
             repository.initialize();
             backup = repository.migrationBackup();
+            DatabaseDoctorReport doctor = repository.inspectDatabase().get(5, TimeUnit.SECONDS);
 
             ScoreSnapshot snapshot = repository.snapshot();
             assertAll(
@@ -69,7 +70,12 @@ class JdbcScoreRepositoryTest {
                     () -> assertEquals(149, snapshot.top().get(0).score()),
                     () -> assertEquals(62L, snapshot.top().get(0).id()),
                     () -> assertEquals(ALICE_UUID, snapshot.top().get(0).uuid().orElseThrow()),
-                    () -> assertTrue(snapshot.top().get(0).updatedAt().isEmpty()));
+                    () -> assertTrue(snapshot.top().get(0).updatedAt().isEmpty()),
+                    () -> assertTrue(doctor.quickCheckPassed()),
+                    () -> assertTrue(doctor.databaseBytes() > 0L),
+                    () -> assertTrue(doctor.walBytes() >= 0L),
+                    () -> assertEquals(1, doctor.migrationBackupCount()),
+                    () -> assertTrue(doctor.latencyMillis() >= 0L));
         }
 
         assertTrue(backup.isPresent());

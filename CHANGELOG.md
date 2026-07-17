@@ -2,6 +2,35 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.1.1-004] — 2026-07-17
+
+Expected artifact: `1MB-WalkThePlank-v2.1.1-004-j25-26.2.jar`
+
+### Added
+
+- Privacy-safe `/walk admin doctor` support report with build provenance, target/runtime details, hook and configured command-root status, queue/task health, restoration and reward-uncertainty counts, and an asynchronous read-only SQLite probe reporting `quick_check`, database/WAL sizes, migration-backup count, and latency.
+- Explicit MiniMessage opt-in for trusted translation templates using the `minimessage:` prefix while retaining backward compatibility for every unmarked legacy ampersand template.
+
+### Changed
+
+- External active-run teleport decisions now occur at `HIGHEST`; `MONITOR` only observes the final cancellation/destination state, followed by run/attempt/world/destination verification on the next tick before cleanup commits.
+- GUI authorization now binds the owner UUID, random nonce, monotonic generation, and exact inventory instance. Stale sessions are invalidated, duplicate clicks are suppressed, and only one action may be pending.
+- GUI actions revalidate the current view, action identity, permissions, queue state, and authoritative gameplay state immediately before execution.
+- Dynamic player, season, database, permission, and numeric values are inserted as literal Adventure components after trusted legacy or MiniMessage formatting is parsed.
+- Bundled GUI titles begin the gradual MiniMessage migration; unmarked bundled/live values continue to deserialize with legacy `&` formatting.
+
+### Security and hardening
+
+- Duplicate or stale GUI clicks, cross-player inventory reuse, and superseded menu generations cannot authorize an action.
+- Dynamic values cannot inject legacy formatting, MiniMessage tags, click/hover events, or other template behavior.
+- Doctor output excludes player and season names, coordinates, filesystem paths, raw reward commands, credentials, SQL text, stack traces, and exception messages.
+
+### Operational notes and known limitations
+
+- Build 004 requires fresh Paper, GUI-abuse, teleport-ordering, formatting-injection, asynchronous-database, privacy, and full-stack acceptance. Build-003 smoke evidence does not approve this artifact.
+- The asynchronous doctor probe is read-only operational evidence, not a backup, repair command, or substitute for stopped-server SQLite verification.
+- Human in-game/destructive, reward-provider, hard-kill, and rollback acceptance remains pending.
+
 ## [2.1.0-003] — 2026-07-14
 
 Expected artifact: `1MB-WalkThePlank-v2.1.0-003-j25-26.2.jar`
@@ -83,4 +112,4 @@ Expected artifact: `1MB-WalkThePlank-v2.1.0-003-j25-26.2.jar`
 
 ## Pre-2.1 modernization history
 
-The v2.0.x work established the Java 25/Paper 26.2 Gradle modernization, 1MB artifact naming, SQLite-only standalone packaging, modern command/permission structure, UUID-aware leaderboard migration, GUI/gameplay hardening, and the initial beta checklist. Build 003 supersedes those development artifacts; do not reuse their hashes, sizes, test counts, or server-smoke evidence for this release.
+The v2.0.x work established the Java 25/Paper 26.2 Gradle modernization, 1MB artifact naming, SQLite-only standalone packaging, modern command/permission structure, UUID-aware leaderboard migration, GUI/gameplay hardening, and the initial beta checklist. Build 003 superseded those development artifacts; do not reuse their hashes, sizes, test counts, or server-smoke evidence as build-003 evidence.

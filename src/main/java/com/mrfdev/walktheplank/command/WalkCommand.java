@@ -7,11 +7,12 @@ import com.mrfdev.walktheplank.config.ConfigurationManager;
 import com.mrfdev.walktheplank.config.ConfigurationValidationReport;
 import com.mrfdev.walktheplank.config.PermissionSettings;
 import com.mrfdev.walktheplank.config.RuntimeSettings;
+import com.mrfdev.walktheplank.database.DatabaseDoctorReport;
+import com.mrfdev.walktheplank.database.DurabilityMetrics;
 import com.mrfdev.walktheplank.database.ScoreEntry;
 import com.mrfdev.walktheplank.database.ScoreRepository;
 import com.mrfdev.walktheplank.database.ScoreSnapshot;
 import com.mrfdev.walktheplank.database.Season;
-import com.mrfdev.walktheplank.database.DurabilityMetrics;
 import com.mrfdev.walktheplank.database.RewardPlanRecord;
 import com.mrfdev.walktheplank.database.RewardPlanStatus;
 import com.mrfdev.walktheplank.database.RewardStepRecord;
@@ -39,6 +40,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -50,6 +52,7 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 
 /** Permission-filtered player, administration, and diagnostics command surface. */
 public final class WalkCommand implements CommandExecutor, TabCompleter {
@@ -73,6 +76,7 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
     private final ArenaConfigurationEditor arenaEditor;
     private final LeaderboardExportService exports;
     private final OperationalContext operations;
+    private final AtomicBoolean doctorProbePending = new AtomicBoolean();
 
     public WalkCommand(
             JavaPlugin plugin,
@@ -195,6 +199,7 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             addAdminIfAllowed(choices, sender, permissions().adminInvestigate(), "run");
             addAdminIfAllowed(choices, sender, permissions().adminDebug(), "status");
             addAdminIfAllowed(choices, sender, permissions().adminDebug(), "debug");
+            addAdminIfAllowed(choices, sender, permissions().adminDebug(), "doctor");
             return complete(args[1], choices);
         }
         if (args.length == 3 && args[1].equalsIgnoreCase("arena")
@@ -395,9 +400,9 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (seasonRequested) {
-            sendLine(sender, "&7Season: &f" + scores.activeSeason()
-                    .map(Season::name)
-                    .orElse("active season"));
+            sendLine(sender, "&7Season: &f{{seasonName}}", Map.of(
+                    "seasonName",
+                    scores.activeSeason().map(Season::name).orElse("active season")));
         }
         for (String line : messages.rawList("scoreboardRecordInChat.prefix")) {
             sendLine(sender, line);
@@ -411,11 +416,11 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
         } else {
             int index = 1;
             for (ScoreEntry entry : top) {
-                sendLine(sender, format
-                        .replace("{{index}}", Integer.toString(index))
-                        .replace("{{rank}}", Integer.toString(entry.rank()))
-                        .replace("{{playerName}}", entry.username())
-                        .replace("{{score}}", Integer.toString(entry.score())));
+                sendLine(sender, format, Map.of(
+                        "index", index,
+                        "rank", entry.rank(),
+                        "playerName", entry.username(),
+                        "score", entry.score()));
                 index++;
             }
         }
@@ -490,7 +495,8 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
                 "actor", operatorKind(sender),
                 "target_player_id", target.getUniqueId(),
                 "result", "opened"));
-        sendLine(sender, "&aOpened the WalkThePlank menu for &f" + target.getName() + "&a.");
+        sendLine(sender, "&aOpened the WalkThePlank menu for &f{{playerName}}&a.", Map.of(
+                "playerName", target.getName()));
     }
 
     private void admin(CommandSender sender, String[] args) {
@@ -514,6 +520,7 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             case "run" -> adminRun(sender, args);
             case "status" -> adminStatus(sender, args);
             case "debug" -> debug(sender, args.length >= 3 ? args[2] : "overview");
+            case "doctor" -> adminDoctor(sender, args);
             default -> showAdminHelp(sender);
         }
     }
@@ -533,6 +540,11 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
         addAdminHelp(sender, permissions().adminInvestigate(), "/walk admin run", "Query redacted retained-run evidence");
         addAdminHelp(sender, permissions().adminDebug(), "/walk admin status [player]", "Show arena or run status");
         addAdminHelp(sender, permissions().adminDebug(), "/walk admin debug [page]", "Show safe diagnostics");
+        addAdminHelp(
+                sender,
+                permissions().adminDebug(),
+                "/walk admin doctor",
+                "Create a privacy-safe asynchronous support report");
     }
 
     private void adminStop(CommandSender sender, String[] args) {
@@ -553,14 +565,16 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
                     "actor", operatorKind(sender),
                     "target_player_id", target.getUniqueId(),
                     "result", "not_active"));
-            sendLine(sender, "&e" + target.getName() + " is not in a WalkThePlank run.");
+            sendLine(sender, "&e{{playerName}} is not in a WalkThePlank run.", Map.of(
+                    "playerName", target.getName()));
             return;
         }
         operations.audit("admin.stop", operatorId(sender), null, Map.of(
                 "actor", operatorKind(sender),
                 "target_player_id", target.getUniqueId(),
                 "result", "stopped"));
-        sendLine(sender, "&aStopped &f" + target.getName() + "&a's run without rewards.");
+        sendLine(sender, "&aStopped &f{{playerName}}&a's run without rewards.", Map.of(
+                "playerName", target.getName()));
     }
 
     private void adminRecover(CommandSender sender) {
@@ -568,8 +582,11 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             return;
         }
         int recovered = games.retryQuarantinedArenas(operatorId(sender));
-        sendLine(sender, "&aRestoration retry complete: &f" + recovered + "&a arena(s) recovered, &f"
-                + games.quarantinedArenas() + "&a still quarantined.");
+        sendLine(
+                sender,
+                "&aRestoration retry complete: &f{{recovered}}&a arena(s) recovered, "
+                        + "&f{{quarantined}}&a still quarantined.",
+                Map.of("recovered", recovered, "quarantined", games.quarantinedArenas()));
     }
 
     private void adminQueue(CommandSender sender, String[] args) {
@@ -587,8 +604,10 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
                 games.setQueuePaused(false, operatorId(sender));
                 sendLine(sender, "&aThe arena queue is accepting readiness assignments again.");
             }
-            case "drain" -> sendLine(sender, "&aRemoved &f" + games.drainQueue(operatorId(sender))
-                    + "&a player(s) from the arena queue.");
+            case "drain" -> sendLine(
+                    sender,
+                    "&aRemoved &f{{players}}&a player(s) from the arena queue.",
+                    Map.of("players", games.drainQueue(operatorId(sender))));
             default -> sendLine(sender, "&cUsage: /walk admin queue <status|pause|resume|drain>");
         }
     }
@@ -635,9 +654,14 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             return;
         }
         for (Season season : seasons) {
-            sendLine(sender, "&3" + season.id() + " &7- &f" + season.name()
-                    + " &7(" + season.status() + ", changed "
-                    + SNAPSHOT_TIME.format(season.transitionedAt()) + ")");
+            sendLine(
+                    sender,
+                    "&3{{seasonId}} &7- &f{{seasonName}} &7({{status}}, changed {{changedAt}})",
+                    Map.of(
+                            "seasonId", season.id(),
+                            "seasonName", season.name(),
+                            "status", season.status(),
+                            "changedAt", SNAPSHOT_TIME.format(season.transitionedAt())));
         }
     }
 
@@ -661,7 +685,8 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             String verb,
             SeasonTransition transition) {
         if (args.length != 4) {
-            sendLine(sender, "&cUsage: /walk admin season " + args[2] + " <uuid>");
+            sendLine(sender, "&cUsage: /walk admin season {{action}} <uuid>", Map.of(
+                    "action", args[2]));
             return;
         }
         UUID id = parseUuid(sender, args[3], "Season");
@@ -679,8 +704,13 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
                 mutation,
                 season -> {
                     games.auditSeasonTransition(operatorId(sender), season);
-                    sendLine(sender, "&aSeason &f" + season.name() + " &a" + verb
-                            + ". ID: &f" + season.id());
+                    sendLine(
+                            sender,
+                            "&aSeason &f{{seasonName}} &a{{verb}}. ID: &f{{seasonId}}",
+                            Map.of(
+                                    "seasonName", season.name(),
+                                    "verb", verb,
+                                    "seasonId", season.id()));
                 },
                 "season " + verb,
                 sender);
@@ -736,7 +766,8 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
                         snapshot.scores(), category, snapshot.capturedAt());
                 games.auditLeaderboardExport(requestingOperator, category, result.rows());
                 scheduleCommandReply(sender, () -> {
-                    sendLine(sender, "&aExported &f" + result.rows() + "&a row(s).");
+                    sendLine(sender, "&aExported &f{{rows}}&a row(s).", Map.of(
+                            "rows", result.rows()));
                     sendField(sender, "CSV", result.csvFileName());
                     sendField(sender, "JSON", result.jsonFileName());
                 });
@@ -790,10 +821,11 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             try {
                 status = Optional.of(RunStatus.valueOf(args[3].toUpperCase(Locale.ROOT)));
             } catch (IllegalArgumentException invalidStatus) {
-                sendLine(sender, "&cUnknown run status. Use: all, "
-                        + String.join(", ", java.util.Arrays.stream(RunStatus.values())
+                sendLine(sender, "&cUnknown run status. Use: all, {{statuses}}", Map.of(
+                        "statuses",
+                        String.join(", ", java.util.Arrays.stream(RunStatus.values())
                                 .map(value -> value.name().toLowerCase(Locale.ROOT))
-                                .toList()));
+                                .toList())));
                 return;
             }
         }
@@ -907,12 +939,19 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
                         String plan = run.rewardPlanId()
                                 .map(id -> id + "/" + run.rewardPlanStatus().orElseThrow())
                                 .orElse("none");
-                        sendLine(sender, "&3" + run.runId() + " &7| &f" + run.status()
-                                + " &7| player &f" + run.playerId()
-                                + " &7| arena &f" + safeEvidenceText(run.arenaId(), 128)
-                                + " &7| started &f" + SNAPSHOT_TIME.format(run.startedAt())
-                                + " &7| score &f" + run.score().map(String::valueOf).orElse("-")
-                                + " &7| plan &f" + plan);
+                        sendLine(
+                                sender,
+                                "&3{{runId}} &7| &f{{status}} &7| player &f{{playerId}} "
+                                        + "&7| arena &f{{arenaId}} &7| started &f{{startedAt}} "
+                                        + "&7| score &f{{score}} &7| plan &f{{plan}}",
+                                Map.of(
+                                        "runId", run.runId(),
+                                        "status", run.status(),
+                                        "playerId", run.playerId(),
+                                        "arenaId", safeEvidenceText(run.arenaId(), 128),
+                                        "startedAt", SNAPSHOT_TIME.format(run.startedAt()),
+                                        "score", run.score().map(String::valueOf).orElse("-"),
+                                        "plan", plan));
                     }
                 },
                 "retained-run query",
@@ -1019,10 +1058,11 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             try {
                 status = RewardPlanStatus.valueOf(args[3].toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException invalidStatus) {
-                sendLine(sender, "&cUnknown reward status. Use: "
-                        + String.join(", ", java.util.Arrays.stream(RewardPlanStatus.values())
+                sendLine(sender, "&cUnknown reward status. Use: {{statuses}}", Map.of(
+                        "statuses",
+                        String.join(", ", java.util.Arrays.stream(RewardPlanStatus.values())
                                 .map(value -> value.name().toLowerCase(Locale.ROOT))
-                                .toList()));
+                                .toList())));
                 return;
             }
         }
@@ -1049,9 +1089,15 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
                         return;
                     }
                     for (RewardPlanRecord plan : plans) {
-                        sendLine(sender, "&3" + plan.planId() + " &7- &f" + plan.status()
-                                + " &7| run &f" + plan.runId()
-                                + " &7| steps &f" + plan.steps().size());
+                        sendLine(
+                                sender,
+                                "&3{{planId}} &7- &f{{status}} &7| run &f{{runId}} "
+                                        + "&7| steps &f{{steps}}",
+                                Map.of(
+                                        "planId", plan.planId(),
+                                        "status", plan.status(),
+                                        "runId", plan.runId(),
+                                        "steps", plan.steps().size()));
                     }
                 },
                 "reward-plan list",
@@ -1124,9 +1170,14 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
                 plan -> {
                     games.auditRewardResolution(
                             operatorId(sender), planId, resolvedStep, resolvedStatus);
-                    sendLine(sender, "&aResolved UNKNOWN reward step &f" + resolvedStep
-                            + " &aas &f" + resolvedStatus + "&a; plan is now &f"
-                            + plan.status() + "&a.");
+                    sendLine(
+                            sender,
+                            "&aResolved UNKNOWN reward step &f{{step}} &aas &f{{resolution}}"
+                                    + "&a; plan is now &f{{status}}&a.",
+                            Map.of(
+                                    "step", resolvedStep,
+                                    "resolution", resolvedStatus,
+                                    "status", plan.status()));
                 },
                 "UNKNOWN reward resolution",
                 sender);
@@ -1146,8 +1197,11 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
                 scores.finalizeRewardPlan(planId, Instant.now()),
                 plan -> {
                     games.auditRewardAbandon(operatorId(sender), planId, plan.status());
-                    sendLine(sender, "&aReward plan &f" + planId + " &ais now &f"
-                            + plan.status() + "&a. No command was replayed.");
+                    sendLine(
+                            sender,
+                            "&aReward plan &f{{planId}} &ais now &f{{status}}"
+                                    + "&a. No command was replayed.",
+                            Map.of("planId", planId, "status", plan.status()));
                 },
                 "reward-plan abandonment",
                 sender);
@@ -1159,9 +1213,15 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
         sendField(sender, "Status", plan.status().name());
         sendField(sender, "Created", SNAPSHOT_TIME.format(plan.createdAt()));
         for (RewardStepRecord step : plan.steps()) {
-            sendLine(sender, "&7Step &f" + step.index() + " &7| root &f" + step.commandRoot()
-                    + " &7| hash &f" + step.commandHash().substring(0, 12) + "..."
-                    + " &7| &f" + step.status());
+            sendLine(
+                    sender,
+                    "&7Step &f{{index}} &7| root &f{{root}} &7| hash &f{{hash}}... "
+                            + "&7| &f{{status}}",
+                    Map.of(
+                            "index", step.index(),
+                            "root", step.commandRoot(),
+                            "hash", step.commandHash().substring(0, 12),
+                            "status", step.status()));
         }
     }
 
@@ -1173,7 +1233,8 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             }
             return parsed;
         } catch (IllegalArgumentException invalidId) {
-            sendLine(sender, "&c" + description + " IDs must be complete UUIDs.");
+            sendLine(sender, "&c{{description}} IDs must be complete UUIDs.", Map.of(
+                    "description", description));
             return null;
         }
     }
@@ -1188,7 +1249,8 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
                 plugin.getLogger().log(Level.WARNING, "Could not complete " + operation, failure);
                 scheduleCommandReply(sender, () -> sendLine(
                         sender,
-                        "&cThe " + operation + " operation was rejected; no unsafe fallback was applied."));
+                        "&cThe {{operation}} operation was rejected; no unsafe fallback was applied.",
+                        Map.of("operation", operation)));
                 return;
             }
             scheduleCommandReply(sender, () -> success.accept(value));
@@ -1259,8 +1321,14 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             List<ArenaConfigurationEditor.ArenaSummary> arenas = arenaEditor.arenas();
             sendHeader(sender, "Configured arenas");
             for (ArenaConfigurationEditor.ArenaSummary arena : arenas) {
-                sendLine(sender, "&3" + arena.id() + " &7- &f" + arena.world() + " @ "
-                        + arena.position() + (arena.customExit() ? " &7(custom exit)" : " &7(saved return)"));
+                sendLine(
+                        sender,
+                        "&3{{arenaId}} &7- &f{{world}} @ {{position}} &7({{exitMode}})",
+                        Map.of(
+                                "arenaId", arena.id(),
+                                "world", arena.world(),
+                                "position", arena.position(),
+                                "exitMode", arena.customExit() ? "custom exit" : "saved return"));
             }
             sendField(sender, "Total", Integer.toString(arenas.size()));
         } catch (IOException | IllegalArgumentException exception) {
@@ -1274,7 +1342,8 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             String[] args,
             ArenaLocationEdit edit) {
         if (args.length != 4) {
-            sendLine(sender, "&cUsage: /walk admin arena " + edit.command() + " <id>");
+            sendLine(sender, "&cUsage: /walk admin arena {{action}} <id>", Map.of(
+                    "action", edit.command()));
             return;
         }
         Player player = requirePlayer(sender);
@@ -1311,16 +1380,21 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             try {
                 String id = ArenaId.requireValid(args[3]);
                 if (!arenaEditor.contains(id)) {
-                    sendLine(sender, "&cArena '" + id + "' does not exist.");
+                    sendLine(sender, "&cArena '{{arenaId}}' does not exist.", Map.of(
+                            "arenaId", id));
                     return;
                 }
-                sendLine(sender, "&7Checking arena &f" + id + "&7 within the complete arena layout.");
+                sendLine(
+                        sender,
+                        "&7Checking arena &f{{arenaId}}&7 within the complete arena layout.",
+                        Map.of("arenaId", id));
             } catch (IOException exception) {
                 plugin.getLogger().log(Level.WARNING, "Could not read an arena for validation", exception);
                 sendLine(sender, "&cThe arena list could not be read safely.");
                 return;
             } catch (IllegalArgumentException exception) {
-                sendLine(sender, "&c" + exception.getMessage());
+                sendLine(sender, "&c{{error}}", Map.of(
+                        "error", String.valueOf(exception.getMessage())));
                 return;
             }
         }
@@ -1371,7 +1445,10 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             if (reloadHandler.reload()) {
                 games.auditArenaEdit(
                         operatorId(sender), arenaId, editAction, "activated", result.validation().fingerprint());
-                sendLine(sender, "&a" + successMessage + " and activated the validated configuration.");
+                sendLine(
+                        sender,
+                        "&a{{successMessage}} and activated the validated configuration.",
+                        Map.of("successMessage", successMessage));
                 sendField(sender, "Config hash", "sha256:" + result.validation().fingerprint());
                 sendValidationWarnings(sender, result.validation());
                 return;
@@ -1396,7 +1473,8 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             }
         } catch (IllegalArgumentException exception) {
             games.auditArenaEdit(operatorId(sender), arenaId, editAction, "invalid", "unavailable");
-            sendLine(sender, "&c" + exception.getMessage());
+            sendLine(sender, "&c{{error}}", Map.of(
+                    "error", String.valueOf(exception.getMessage())));
         } catch (IOException exception) {
             games.auditArenaEdit(operatorId(sender), arenaId, editAction, "io_failed", "unavailable");
             plugin.getLogger().log(Level.SEVERE, "Could not persist an arena configuration edit", exception);
@@ -1415,11 +1493,13 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
         if (report.valid()) {
             sendLine(sender, "&aVALID &7- no configuration errors; active settings were not changed.");
         } else {
-            sendLine(sender, "&cINVALID &7- " + report.errors().size()
-                    + " error(s); active settings were not changed.");
+            sendLine(
+                    sender,
+                    "&cINVALID &7- {{errors}} error(s); active settings were not changed.",
+                    Map.of("errors", report.errors().size()));
         }
         for (String error : report.errors()) {
-            sendLine(sender, "&cERROR &7" + error);
+            sendLine(sender, "&cERROR &7{{error}}", Map.of("error", error));
         }
         sendValidationWarnings(sender, report);
     }
@@ -1446,7 +1526,7 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             CommandSender sender,
             ConfigurationValidationReport report) {
         for (String warning : report.warnings()) {
-            sendLine(sender, "&eWARN &7" + warning);
+            sendLine(sender, "&eWARN &7{{warning}}", Map.of("warning", warning));
         }
         sendField(sender, "Warnings", Integer.toString(report.warnings().size()));
     }
@@ -1466,7 +1546,8 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
         }
         Optional<SessionStatus> status = games.sessionStatus(target.getUniqueId());
         if (status.isEmpty()) {
-            sendLine(sender, "&e" + target.getName() + " is not in a WalkThePlank run.");
+            sendLine(sender, "&e{{playerName}} is not in a WalkThePlank run.", Map.of(
+                    "playerName", target.getName()));
             return;
         }
         SessionStatus session = status.orElseThrow();
@@ -1477,13 +1558,328 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
         sendField(sender, "Idle", session.idleSeconds() + " seconds");
     }
 
+    private void adminDoctor(CommandSender sender, String[] args) {
+        if (!requireAdministrativePermission(sender, permissions().adminDebug())) {
+            return;
+        }
+        if (args.length != 2) {
+            sendLine(sender, "&cUsage: /walk admin doctor");
+            return;
+        }
+        if (!doctorProbePending.compareAndSet(false, true)) {
+            sendLine(sender, "&eA WalkThePlank doctor probe is already running.");
+            return;
+        }
+
+        sendLine(
+                sender,
+                "&7Running a read-only SQLite check asynchronously; "
+                        + "the privacy-safe report will follow.");
+        operations.audit("admin.doctor", operatorId(sender), null, Map.of(
+                "actor", operatorKind(sender),
+                "result", "started"));
+
+        CompletableFuture<DatabaseDoctorReport> probe;
+        try {
+            probe = scores.inspectDatabase();
+        } catch (RuntimeException | LinkageError startFailure) {
+            doctorProbePending.set(false);
+            reportDoctorFailure(sender, startFailure);
+            return;
+        }
+
+        probe.whenComplete((database, failure) -> {
+            doctorProbePending.set(false);
+            if (failure != null) {
+                reportDoctorFailure(sender, failure);
+                return;
+            }
+            scheduleCommandReply(sender, () -> {
+                try {
+                    int warnings = showDoctorReport(sender, database);
+                    operations.audit("admin.doctor", operatorId(sender), null, Map.of(
+                            "actor", operatorKind(sender),
+                            "result", warnings == 0 ? "pass" : "warn",
+                            "warnings", warnings,
+                            "sqlite_quick_check", database.quickCheckPassed()));
+                } catch (RuntimeException | LinkageError reportFailure) {
+                    plugin.getLogger().log(
+                            Level.WARNING,
+                            "Could not render the privacy-safe WalkThePlank doctor report",
+                            reportFailure);
+                    sendLine(
+                            sender,
+                            "&cThe doctor report could not be rendered safely; "
+                                    + "review the server log.");
+                }
+            });
+        });
+    }
+
+    private void reportDoctorFailure(CommandSender sender, Throwable failure) {
+        plugin.getLogger().log(
+                Level.WARNING,
+                "Could not complete the read-only WalkThePlank SQLite doctor probe",
+                failure);
+        scheduleCommandReply(sender, () -> {
+            operations.audit("admin.doctor", operatorId(sender), null, Map.of(
+                    "actor", operatorKind(sender),
+                    "result", "sqlite_probe_failed"));
+            sendField(sender, "Doctor result", "SQLITE_PROBE_FAILED");
+            sendLine(
+                    sender,
+                    "&cThe read-only SQLite doctor probe failed. "
+                            + "No path, SQL text, or database content is included here; "
+                            + "review the protected server log.");
+        });
+    }
+
+    private int showDoctorReport(
+            CommandSender sender,
+            DatabaseDoctorReport database) {
+        RuntimeSettings current = settings.get();
+        ScoreSnapshot scoreSnapshot = scores.snapshot();
+        DurabilityMetrics durability = scores.durabilityMetrics();
+        var runtimeMetrics = games.operationalMetrics();
+        QueueStatus queue = games.queueStatus();
+        GameManager.TaskHealth gameTasks = games.taskHealth();
+        MenuService.Health menuHealth = menus.health();
+        var recovery = games.playerRecoveryHealth();
+
+        List<BukkitTask> pluginTasks = plugin.getServer()
+                .getScheduler()
+                .getPendingTasks()
+                .stream()
+                .filter(task -> task.getOwner().equals(plugin))
+                .toList();
+        long synchronousTasks = pluginTasks.stream().filter(BukkitTask::isSync).count();
+        long asynchronousTasks = pluginTasks.size() - synchronousTasks;
+
+        int runtimeJava = Runtime.version().feature();
+        boolean javaMatches = Integer.toString(runtimeJava).equals(buildInfo.javaTarget());
+        String runtimeMinecraft = plugin.getServer().getMinecraftVersion();
+        boolean paperMatches = runtimeMinecraft.equals(buildInfo.paperTarget());
+
+        List<String> commandRoots = current.allowedRewardCommandRoots().stream()
+                .sorted()
+                .toList();
+        int missingCommandRoots = 0;
+        for (String root : commandRoots) {
+            if (plugin.getServer().getCommandMap().getCommand(root) == null) {
+                missingCommandRoots++;
+            }
+        }
+
+        long unknownPlans = durability.rewardPlansByStatus()
+                .getOrDefault(RewardPlanStatus.UNKNOWN, 0L);
+        long pendingPlans = durability.rewardPlansByStatus()
+                .getOrDefault(RewardPlanStatus.PENDING, 0L);
+        long inProgressPlans = durability.rewardPlansByStatus()
+                .getOrDefault(RewardPlanStatus.IN_PROGRESS, 0L);
+        long unknownSteps = durability.rewardStepsByStatus()
+                .getOrDefault(RewardStepStatus.UNKNOWN, 0L);
+        long dispatchingSteps = durability.rewardStepsByStatus()
+                .getOrDefault(RewardStepStatus.DISPATCHING, 0L);
+
+        int warnings = 0;
+        if (buildInfo.sourceDirty()) {
+            warnings++;
+        }
+        if (!javaMatches) {
+            warnings++;
+        }
+        if (!paperMatches) {
+            warnings++;
+        }
+        if (!database.quickCheckPassed()) {
+            warnings++;
+        }
+        if (current.finishCommandsEnabled() && missingCommandRoots > 0) {
+            warnings++;
+        }
+        if (games.quarantinedArenas() > 0 || games.conflictedRestorations() > 0) {
+            warnings++;
+        }
+        if (!recovery.healthy()) {
+            warnings++;
+        }
+        if (unknownPlans > 0L || unknownSteps > 0L || dispatchingSteps > 0L) {
+            warnings++;
+        }
+        if (durability.lastDatabaseFailure().isPresent()) {
+            warnings++;
+        }
+        if (runtimeMetrics.degraded()) {
+            warnings++;
+        }
+
+        sendHeader(sender, "Doctor support report");
+        sendField(sender, "Release", buildInfo.releaseLabel());
+        sendField(sender, "Artifact", buildInfo.artifactFile());
+        sendField(sender, "Source commit", buildInfo.sourceCommit());
+        sendField(sender, "Source state", buildInfo.sourceDirty() ? "DIRTY" : "clean");
+        sendField(
+                sender,
+                "Java target/runtime",
+                buildInfo.javaTarget() + " / " + System.getProperty("java.version", "unknown")
+                        + (javaMatches ? " (match)" : " (MISMATCH)"));
+        sendField(
+                sender,
+                "Paper target/runtime",
+                buildInfo.paperApiVersion() + " / " + plugin.getServer().getVersion()
+                        + (paperMatches ? " (match)" : " (MISMATCH)"));
+
+        sendHeader(sender, "Doctor: hooks and command roots");
+        sendDoctorHook(sender, "PlaceholderAPI", true);
+        for (String pluginName : List.of(
+                "CMI",
+                "CMILib",
+                "Vault",
+                "UltimateFireworks",
+                "PyroWelcomesPro",
+                "PyroLib")) {
+            sendDoctorHook(sender, pluginName, false);
+        }
+        sendField(
+                sender,
+                "Reward commands",
+                current.finishCommandsEnabled() ? "enabled" : "disabled");
+        sendField(
+                sender,
+                "Configured roots",
+                commandRoots.size() + " total / " + missingCommandRoots + " missing");
+        for (String root : commandRoots) {
+            boolean available = plugin.getServer().getCommandMap().getCommand(root) != null;
+            sendField(sender, "Root " + root, available ? "available" : "missing");
+        }
+
+        sendHeader(sender, "Doctor: SQLite and durability");
+        sendField(
+                sender,
+                "SQLite quick_check",
+                database.quickCheckPassed() ? "ok" : "FAILED");
+        sendField(sender, "Database size", database.databaseBytes() + " bytes");
+        sendField(sender, "WAL size", database.walBytes() + " bytes");
+        sendField(sender, "Probe latency", database.latencyMillis() + " ms");
+        sendField(
+                sender,
+                "Migration backups",
+                Integer.toString(database.migrationBackupCount()));
+        sendField(sender, "Score rows", Integer.toString(scoreSnapshot.totalEntries()));
+        sendField(sender, "Pending database writes", Integer.toString(durability.pendingMutations()));
+        sendField(
+                sender,
+                "Restoration journal",
+                games.pendingRestorations() + " pending / "
+                        + games.conflictedRestorations() + " conflicted / "
+                        + games.quarantinedArenas() + " quarantined arenas");
+        sendField(
+                sender,
+                "Player recovery journal",
+                recovery.pendingRecords() + " pending / "
+                        + recovery.invalidRecords() + " invalid / "
+                        + (recovery.healthy() ? "healthy" : "degraded"));
+        sendField(
+                sender,
+                "Uncertain rewards",
+                unknownPlans + " UNKNOWN plans / "
+                        + unknownSteps + " UNKNOWN steps / "
+                        + dispatchingSteps + " DISPATCHING steps");
+        sendField(
+                sender,
+                "Unfinished rewards",
+                pendingPlans + " PENDING plans / "
+                        + inProgressPlans + " IN_PROGRESS plans");
+        durability.lastDatabaseFailure().ifPresent(lastFailure -> sendField(
+                sender,
+                "Last database failure",
+                lastFailure.category() + "/" + lastFailure.exceptionType()));
+
+        sendHeader(sender, "Doctor: queue and tasks");
+        sendField(
+                sender,
+                "Queue",
+                (queue.enabled() ? "enabled" : "disabled") + " / "
+                        + (queue.paused() ? "paused" : "running") + " / "
+                        + queue.total() + " total / "
+                        + queue.waiting() + " waiting / "
+                        + queue.ready() + " ready");
+        sendField(
+                sender,
+                "Gameplay",
+                games.activeSessions() + " active / "
+                        + gameTasks.pendingStarts() + " pending starts / "
+                        + gameTasks.pendingExternalTeleportChecks() + " teleport checks / "
+                        + gameTasks.pendingPlayerRecoveryLookups() + " recovery lookups");
+        sendField(
+                sender,
+                "GUI",
+                menuHealth.openSessions() + " sessions / "
+                        + menuHealth.pendingActions() + " pending actions");
+        sendField(
+                sender,
+                "Paper tasks",
+                pluginTasks.size() + " owned / "
+                        + synchronousTasks + " sync / "
+                        + asynchronousTasks + " async");
+        sendField(
+                sender,
+                "Runtime failures",
+                runtimeMetrics.restorationFailures() + " restoration / "
+                        + runtimeMetrics.rewardFailures() + " reward / "
+                        + runtimeMetrics.repositoryFailures() + " repository / "
+                        + runtimeMetrics.auditFailures() + " audit");
+        if (runtimeMetrics.lastFailure() != null) {
+            sendField(
+                    sender,
+                    "Last runtime failure",
+                    runtimeMetrics.lastFailure().subsystem() + "/"
+                            + runtimeMetrics.lastFailure().summary());
+        }
+
+        sendField(
+                sender,
+                "Result",
+                warnings == 0 ? "PASS" : "WARN (" + warnings + ")");
+        sendLine(
+                sender,
+                "&7Privacy: no player/season names, coordinates, filesystem paths, "
+                        + "raw reward command lines, credentials, SQL text, or exception messages "
+                        + "are included.");
+        return warnings;
+    }
+
+    private void sendDoctorHook(
+            CommandSender sender,
+            String pluginName,
+            boolean placeholderApi) {
+        Plugin dependency = plugin.getServer().getPluginManager().getPlugin(pluginName);
+        if (dependency == null) {
+            sendField(sender, pluginName, "not installed");
+            return;
+        }
+        String state = dependency.isEnabled() ? "enabled" : "disabled";
+        if (placeholderApi) {
+            state += placeholderRegistered.getAsBoolean()
+                    ? ", expansion active"
+                    : ", expansion inactive";
+        } else {
+            state += ", presence only";
+        }
+        sendField(
+                sender,
+                pluginName,
+                dependency.getPluginMeta().getVersion() + " (" + state + ")");
+    }
+
     private void debug(CommandSender sender, String requestedPage) {
         if (!requireAdministrativePermission(sender, permissions().adminDebug())) {
             return;
         }
         String page = requestedPage.toLowerCase(Locale.ROOT);
         if (!DEBUG_PAGES.contains(page)) {
-            sendLine(sender, "&cUnknown debug page. Use: " + String.join(", ", DEBUG_PAGES));
+            sendLine(sender, "&cUnknown debug page. Use: {{pages}}", Map.of(
+                    "pages", String.join(", ", DEBUG_PAGES)));
             return;
         }
         if (page.equals("all")) {
@@ -1573,7 +1969,10 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
     private void showCommands(CommandSender sender) {
         sendHeader(sender, "Diagnostics: commands");
         sendLine(sender, "&7Player: &f/walk, play, queue, leave, stats, top, info, help");
-        sendLine(sender, "&7Staff: &f/walk admin open, reload, stop, recover, validate, arena, queue, season, export, reward, run, status, debug");
+        sendLine(
+                sender,
+                "&7Staff: &f/walk admin open, reload, stop, recover, validate, arena, queue, "
+                        + "season, export, reward, run, status, debug, doctor");
         sendLine(sender, "&7Compatibility: &f/walk open, reload, version; aliases /infp and /infinityparkour");
     }
 
@@ -1601,8 +2000,14 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
                 Map.entry("admin.export", permissionSettings.adminExport()),
                 Map.entry("admin.reward", permissionSettings.adminReward()),
                 Map.entry("admin.investigate", permissionSettings.adminInvestigate())).entrySet()) {
-            String state = sender.hasPermission(entry.getValue()) ? "&aYES" : "&cNO";
-            sendLine(sender, "&7" + entry.getKey() + ": &f" + entry.getValue() + " " + state);
+            String stateColor = sender.hasPermission(entry.getValue()) ? "&a" : "&c";
+            sendLine(
+                    sender,
+                    "&7{{permissionKey}}: &f{{permissionName}} " + stateColor + "{{state}}",
+                    Map.of(
+                            "permissionKey", entry.getKey(),
+                            "permissionName", entry.getValue(),
+                            "state", sender.hasPermission(entry.getValue()) ? "YES" : "NO"));
         }
     }
 
@@ -1752,19 +2157,32 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
     }
 
     private void sendHeader(CommandSender sender, String title) {
-        sendLine(sender, "&7---------- &3&lWalkThePlank &8| &f" + title + " &7----------");
+        sendLine(
+                sender,
+                "&7---------- &3&lWalkThePlank &8| &f{{title}} &7----------",
+                Map.of("title", title));
     }
 
     private void sendField(CommandSender sender, String name, String value) {
-        sendLine(sender, "&7" + name + ": &f" + value);
+        sendLine(sender, "&7{{name}}: &f{{value}}", Map.of("name", name, "value", value));
     }
 
     private void sendCommandHelp(CommandSender sender, String syntax, String description) {
-        sendLine(sender, "&3" + syntax + " &7- &f" + description);
+        sendLine(
+                sender,
+                "&3{{syntax}} &7- &f{{description}}",
+                Map.of("syntax", syntax, "description", description));
     }
 
     private void sendLine(CommandSender sender, String line) {
         sender.sendMessage(messages.deserialize(line));
+    }
+
+    private void sendLine(
+            CommandSender sender,
+            String trustedTemplate,
+            Map<String, ?> literalReplacements) {
+        sender.sendMessage(messages.render(trustedTemplate, literalReplacements));
     }
 
     private List<String> onlinePlayerNames() {

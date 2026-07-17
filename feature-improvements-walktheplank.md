@@ -1,19 +1,19 @@
 # WalkThePlank future improvements and release status
 
-This is the authoritative future-development TODO and release-status document. It separates what is implemented in source release **v2.1.0 build 003** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
+This is the authoritative future-development TODO and release-status document. It separates what is implemented in source release **v2.1.1 build 004** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
 
 Status labels:
 
-- **Implemented** — present in build-003 source.
+- **Implemented** — present in build-004 source.
 - **Implemented; beta verification pending** — present, but the final JAR still needs the named Paper/live-data test.
 - **Partial** — a safe foundation exists, but an important workflow or assurance remains.
 - **Proposed** — not present and must not be advertised as a current feature.
 
 ## Deferred modernization queue
 
-These items are explicitly excluded from v2.1.0 build 003. Complete them in separate, incremented builds after build 003 is frozen and accepted so their evidence cannot be confused with the event candidate.
+Build 003 remains the frozen historical modernization baseline. Build 004 deliberately takes only the event-safety/operations item below; every remaining unchecked item stays deferred to a separate incremented build so its evidence cannot be confused with this candidate.
 
-1. [ ] **v2.1.1 build 004 — event-safety and operations.** Correct external-teleport event priority, add owner UUID/nonce/generation GUI sessions, render dynamic text as literal Adventure components, and add a privacy-safe `/walk admin doctor` report.
+1. [x] **v2.1.1 build 004 — event-safety and operations implemented in source; beta acceptance pending.** External-teleport decisions occur at `HIGHEST` with observation-only `MONITOR` and next-tick verification; GUI sessions bind owner UUID/nonce/generation/exact inventory with one pending action; trusted formatting is parsed separately from literal dynamic components with explicit `minimessage:` opt-in and legacy `&` compatibility; `/walk admin doctor` produces a privacy-safe report with an asynchronous SQLite probe.
 2. [ ] **Disposable Paper integration and fault-injection harness.** Reuse the controlled-scenario approach proven in other 1MB projects for two-start recovery, queue contention, event ordering, GUI abuse, PlaceholderAPI presence/absence, log assertions, and named failures at every durable boundary. Test-only hooks and harness classes must be absent from the production JAR.
 3. [ ] **Two-phase off-main durability pipeline.** Keep Bukkit/Paper capture, validation, and mutation on the primary thread; move journal/audit/config filesystem work to bounded plugin-owned workers; return to the primary thread and revalidate the run generation and authoritative state before mutation. Preserve append-before-mutation, quarantine, and crash-recovery guarantees.
 4. [ ] **Summer Season feature bundle.** Preserve the imported Classic leaderboard while adding cosmetic themes, milestones, accessibility preferences, a versioned daily course and separate ranking, seasonal Momentum, quests, durable UUID claim keys, and a community plank goal. Run new scoring in shadow mode before rewards or public ranking.
@@ -36,7 +36,9 @@ Future work must preserve these rules:
 - Paper and PlaceholderAPI classes remain provided; SQLite JDBC remains the only shaded runtime library.
 - Every public behavior change gets a version/build increment, immutable 1MB artifact name, documentation, tests, staging rehearsal, and rollback plan.
 
-## Implemented in v2.1.0-003
+## Implemented in v2.1.1-004
+
+Build 004 includes the complete build-003 baseline documented in [CHANGELOG.md](CHANGELOG.md) plus the focused event-safety and operations changes below.
 
 ### Build, platform, and packaging
 
@@ -80,6 +82,7 @@ Future work must preserve these rules:
 | Stale temporary handling | **Implemented** | Recognizable regular pre-commit temp files are removed; unknown/non-regular temp entries fail startup. |
 | Platform material policy | **Implemented; live server verification pending** | Existing physical checks plus centralized non-deprecated exact/suffix denial for stateful/workstation families, including copper chests/shelves; `STONE` and live `JACK_O_LANTERN` remain eligible. |
 | Safe return fallback/quarantine | **Implemented; teleport-failure rehearsal pending** | Every custom/captured/world-spawn candidate is live-validated for physical safety and exclusion from all arena volumes. Unresolved return evidence is durable across a hard kill and is cleared only after verified state plus teleport recovery. |
+| External teleport ordering | **Implemented; Paper listener-order rehearsal pending** | Active-run decisions occur at `HIGHEST`; `MONITOR` only records the final cancelled/destination state, and cleanup commits next tick only when the player, run, attempt, world, and destination still match. |
 
 ### Capacity, commands, and operator tooling
 
@@ -97,12 +100,14 @@ Future work must preserve these rules:
 | Nested shape and reward-size validation | **Implemented** | Explicit v2 rejects unknown arena/exit/tier keys; legacy reports them; an inclusive overlap sweep rejects any score that could exceed 100 durable reward steps. |
 | Permission separation | **Implemented; role matrix pending** | Player leaves plus separate arena/queue/season/export/reward/run-investigation/recover/validate/debug/open/stop duties. |
 | Safe health/debug pages | **Implemented; log review pending** | Bounded database, queue, arena, season, restoration, reward, hook, and runtime summaries. |
+| Privacy-safe doctor report | **Implemented; server/privacy verification pending** | `/walk admin doctor` reports source provenance, target/runtime, hooks/command roots, queue/task and recovery/reward health, then schedules read-only SQLite `quick_check`, database/WAL sizes, backup count, and latency off the primary thread. Player/season names, coordinates, paths, raw reward commands, credentials, SQL, and exception details are excluded. |
 
 ### GUI, placeholders, API, and operations
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| Typed-holder GUI | **Implemented; exploit matrix pending** | Inventory ownership is not inferred from title/lore; click/drag cancellation and 750 ms open limiter. |
+| Nonce/generation GUI sessions | **Implemented; exploit matrix pending** | Owner UUID, random nonce, monotonic generation, exact inventory identity, stale-session invalidation, duplicate-click suppression, one pending action, and immediate permission/state revalidation supplement typed-holder click/drag cancellation and the 750 ms open limiter. |
+| Literal dynamic components and MiniMessage opt-in | **Implemented; live translation verification pending** | Trusted templates are parsed before dynamic values are inserted literally. Unmarked values retain legacy `&` compatibility; only an explicit `minimessage:` marker opts an operator-controlled template into MiniMessage, and bundled GUI titles begin the gradual migration. |
 | PlaceholderAPI expansion | **Implemented; server verification pending** | All-time, active season, top ten, capacity, queue, and active-run values; game state is served from immutable async-safe publications. |
 | Read-only Bukkit API | **Implemented** | Release, UUID player/all-time leaderboard, active run, capacity, active season, per-player queue, and bounded recent-run views on the primary thread. |
 | Lifecycle events | **Implemented** | Cancellable run start/reward-plan plus jump, run end, and personal-best events. |
@@ -115,7 +120,7 @@ These are not hidden defects; they are explicit design or release boundaries tha
 
 ### P0 — finish before event approval
 
-1. **Commit the machine-qualified candidate.** Clean build, archive verification, final hash/size/test record, byte-identical rebuild, Paper 26.2 build-60 full-stack/standalone console smoke, test-server sync, and plugin-log review pass. The working tree still needs a final reviewed commit before source identity is immutable.
+1. **Qualify and commit the build-004 candidate.** Repeat the clean build, archive verification, final hash/size/test record, byte-identical rebuild, Paper 26.2 build-60 full-stack/standalone console smoke, test-server sync, and plugin-log review against the new artifact. Build-003 machine evidence remains historical and cannot approve build 004.
 2. **Repeat migration on a disposable copy of all 100 live rows.** Compare every UUID/score and top-ten position, verify both databases, and prove `_resources` stayed unchanged.
 3. **Complete the human abuse/recovery matrix.** Queue concurrency, GUI clicks/drags, all cleanup causes, world protection, signs, containers, tile PDC, conflicts, missing worlds, clean stop, and kill/restart remain server acceptance work.
 4. **Rehearse reward uncertainty with staging accounts.** Test PENDING discovery/abandon and UNKNOWN downstream investigation/resolution. Assign a named operator and never interpret a resolution as a replay request.
@@ -126,7 +131,7 @@ These are not hidden defects; they are explicit design or release boundaries tha
 
 #### Extend staff run/reward investigation
 
-**Core retained-run queries implemented; export/annotation workflow proposed.** Build 003 now has a separate investigation permission and redacted commands for recent runs by status, player UUID, exact run UUID, arena, or season, plus one-run inspection with linked reward-plan status. The repository additionally supports exact release and a complete start-time interval capped at 366 days. All results are newest-first and capped at 100, and every successful query audits the operator UUID, safe filter, and count.
+**Core retained-run queries implemented; export/annotation workflow proposed.** Build 003 introduced a separate investigation permission and redacted commands for recent runs by status, player UUID, exact run UUID, arena, or season, plus one-run inspection with linked reward-plan status. The repository additionally supports exact release and a complete start-time interval capped at 366 days. All results are newest-first and capped at 100, and every successful query audits the operator UUID, safe filter, and count.
 
 Remaining design work:
 
@@ -143,7 +148,7 @@ Do not add username ownership lookup or a “rerun reward” button.
 
 #### SQLite maintenance and shutdown runbook
 
-- Add an operator maintenance/status command for database size, WAL/journal state, backup inventory, and read-only `quick_check` scheduling.
+- **Build-004 doctor probe implemented; beta verification pending.** `/walk admin doctor` schedules read-only `quick_check` plus database/WAL size, migration-backup count, and latency reporting on the repository worker, while combining it with privacy-safe runtime/journal/reward/queue/task health.
 - Define backup retention; automatic migration backups currently accumulate intentionally rather than being deleted without policy.
 - Document that queued operations settle on close timeout, while an already-running SQLite JDBC call may outlive an unsuccessful close if interruption is ignored.
 - Add disk-space preflight and clearer full/read-only filesystem categories without exposing absolute paths to players.
@@ -156,7 +161,7 @@ Valid pending evidence withholds its exact arena across restarts; unreadable evi
 
 #### Close equipment and attribute movement-fairness gaps
 
-**Implemented; custom-item beta matrix pending.** Build 003 rejects a changed movement-speed base and every modifier except the exact vanilla sprint modifier at admission, immediately before activation, and during the one-second active sweep. A newly ineligible run ends without rewards, and held-slot changes are denied while active. WalkThePlank does not delete, rewrite, or serialize equipment. Test ordinary sprinting plus standard/custom Paper/PDC equipment and external attribute providers before event approval.
+**Implemented; custom-item beta matrix pending.** Build 003 introduced rejection of a changed movement-speed base and every modifier except the exact vanilla sprint modifier at admission, immediately before activation, and during the one-second active sweep. A newly ineligible run ends without rewards, and held-slot changes are denied while active. WalkThePlank does not delete, rewrite, or serialize equipment. Test ordinary sprinting plus standard/custom Paper/PDC equipment and external attribute providers before event approval.
 
 #### Explicit offline UUID import tool
 
@@ -221,7 +226,7 @@ Create a distinct category for time-target streaks; do not retrofit multipliers 
 - Add score-rate anomaly logging with evidence and no automatic ban.
 - Consider hash-chained or signed audit segments if tamper evidence becomes a requirement.
 - Add privacy retention policy for run history/audit exports and a documented operator deletion workflow that preserves referential integrity.
-- Add explicit confirmation/nonces for every destructive future GUI action; never authorize from title, lore, material, or slot alone.
+- Reuse build 004's owner/nonce/generation/exact-inventory session identity, duplicate suppression, one-pending-action gate, and immediate revalidation for every future GUI action; destructive actions additionally need explicit confirmation and a purpose-specific nonce. Never authorize from title, lore, material, or slot alone.
 - Continue rejecting unsafe paths, symlinks, control characters, oversized values, nested audit data, and malformed identifiers.
 
 ## Testing investments
@@ -261,7 +266,7 @@ Unless a future requirement changes with a documented design review, do not add:
 - direct live-database access for websites;
 - mutable session/database handles in the Bukkit API;
 - bundled Paper, Bukkit, PlaceholderAPI, CMI, or CMILib classes;
-- compatibility shims for unsupported 1.20.x, 1.21.x, or 26.1.x servers in the build-003 artifact.
+- compatibility shims for unsupported 1.20.x, 1.21.x, or 26.1.x servers in the current Paper 26.2 artifact.
 
 ## Definition of done for any future item
 

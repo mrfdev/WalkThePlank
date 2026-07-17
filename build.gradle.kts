@@ -167,6 +167,16 @@ val verifyReleaseJar = tasks.register("verifyReleaseJar") {
             check("META-INF/services/java.sql.Driver" in names) {
                 "Standalone release is missing the JDBC service registration"
             }
+            val driverProviders = jar.getInputStream(
+                checkNotNull(jar.getJarEntry("META-INF/services/java.sql.Driver")),
+            ).bufferedReader(Charsets.UTF_8).useLines { lines ->
+                lines.map { it.trim() }
+                    .filter { it.isNotEmpty() && !it.startsWith("#") }
+                    .toSet()
+            }
+            check(driverProviders == setOf("org.sqlite.JDBC")) {
+                "Standalone release must register only the SQLite JDBC driver: $driverProviders"
+            }
 
             val forbiddenPrefixes = listOf(
                 "com/mysql/",

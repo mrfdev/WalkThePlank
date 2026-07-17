@@ -12,15 +12,15 @@ intermediate builds from this modernization and are fully superseded.
 
 The Bukkit plugin name intentionally remains `InfinityParkour`. This preserves the existing data directory at `plugins/InfinityParkour/`, so the live `config.yml`, `translations.yml`, and `database.db` can be upgraded in place without renaming player data.
 
-Current source release: **v2.1.0, build 003**
+Current source release: **v2.1.1, build 004**
 
 Expected standalone artifact:
 
 ```text
-1MB-WalkThePlank-v2.1.0-003-j25-26.2.jar
+1MB-WalkThePlank-v2.1.1-004-j25-26.2.jar
 ```
 
-> Build 003 is a beta/event candidate until every release gate in [checklist-walktheplank.md](checklist-walktheplank.md) is completed against the final JAR and a production-like server copy. Implemented code and automated tests do not by themselves constitute production approval.
+> Build 004 is a beta/event-safety candidate until every release gate in [checklist-walktheplank.md](checklist-walktheplank.md) is completed against the final JAR and a production-like server copy. Implemented code and automated tests do not by themselves constitute production approval.
 
 See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-walktheplank.md](feature-improvements-walktheplank.md) for the authoritative future-development TODO and implemented-versus-remaining status.
 
@@ -33,13 +33,14 @@ See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-w
 - Configurable start and optional exit positions, platform palette, horizontal radius, fall distance, particles, queue timing, rewards, and permissions.
 - Player-state capture and restoration for return location, health, food, saturation, exhaustion, walk speed, flight, and collision state; arena admission clears residual velocity and applies the normal walk speed for the run, and controlled cleanup leaves velocity and fall distance at zero rather than restoring their pre-run values.
 - Cleanup for normal leaves, falls, teleports, timeouts, quits, deaths, game-mode changes, reloads, errors, and shutdown.
+- External active-run teleports are decided at `HIGHEST`; `MONITOR` only observes the final cancellation/destination state, and cleanup commits only after a next-tick run/attempt/world/destination verification.
 - A synchronous write-ahead restoration journal created before each world-block change. Startup recovery restores only an expected plugin block, recognizes an already restored exact snapshot, and quarantines conflicts or missing worlds instead of overwriting them blindly.
 - Paper one-block structure snapshots for original block data and block-entity contents. Known stateful/workstation material families—including furnaces, barrels, chests, copper-chest variants, shelves, and note blocks—are denied as generated platforms without using Paper's deprecated interactable test. Restoration of a pre-existing tile/container/sign/PDC block remains a required beta acceptance test.
 - Active-arena protection against interaction, breaking, placement, buckets, fluids, sponges, fire, block transforms, explosions, pistons, and entity block changes.
 - Movement hardening while playing: damage and hunger are cancelled; flight, gliding, vehicles, external velocity, configured potion-effect advantages, and non-vanilla movement-speed attribute modifiers are blocked; residual velocity and Bukkit walk speed are normalized; Survival or Adventure mode is required. Eligibility is rechecked before activation and every second.
 - Active-run interaction isolation: outgoing player/projectile damage, item pickup/drop, inventory click/drag, hand swaps, held-slot changes, and entity interaction are denied while the run is active.
 - Server-side landing checks for ground support, finite non-ascending vertical velocity, and the exact intact target block.
-- A typed-holder 27-slot GUI with tutorial, play/queue behavior, personal statistics, permission-filtered leaderboard lore, click/drag cancellation, and a bounded menu-open cooldown.
+- A typed-holder 27-slot GUI with tutorial, play/queue behavior, personal statistics, permission-filtered leaderboard lore, click/drag cancellation, and a bounded menu-open cooldown. Every server-side session binds its owner UUID, a random nonce, a monotonic generation, and the exact inventory; stale/duplicate clicks are suppressed, only one action may be pending, and current permission/game state is revalidated immediately before execution.
 - UUID-owned all-time personal bests with competition ranking, last-known-name refresh, and a live top ten.
 - Explicit event seasons with planned, active, closed, and archived lifecycle states. Starting a run captures the active season, so closing a season does not silently redirect an already-started result.
 - Durable run history containing run UUID, player UUID, last-known name, arena, start/end, score or interruption state, end reason, release, season, and reward-plan association. The newest 10,000 prunable terminal rows are retained in addition to every active or unresolved row.
@@ -51,6 +52,8 @@ See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-w
 - A built-in PlaceholderAPI expansion for all-time, season, queue, arena, and active-run values, backed by one immutable game-state publication per callback so asynchronous requests never traverse Bukkit-thread mutable collections.
 - A read-only Bukkit services API plus primary-thread lifecycle events.
 - Permission-filtered help, build information, safe diagnostics, health counters, configuration validation, and guarded in-game arena editing.
+- Trusted translation formatting is parsed before dynamic values are inserted as literal Adventure components. Existing unmarked ampersand templates remain supported, while an explicit `minimessage:` prefix opts a trusted template into MiniMessage.
+- `/walk admin doctor` creates a bounded privacy-safe support report and schedules its read-only SQLite integrity/storage probe off the primary server thread.
 - A compact rotating JSONL audit stream for plugin, run, queue, and reward lifecycle events. Raw reward commands and arbitrary nested data are excluded.
 - SQLite-only standalone packaging. The shaded JAR includes SQLite JDBC and intentionally includes no MySQL/MariaDB connector, Paper classes, PlaceholderAPI classes, or live `.db` data.
 - Strict Java compilation with `-Xlint:all -Werror`; startup configuration, database, journal, or identity failures disable the plugin instead of deliberately continuing with partial state. A partially completed enable is explicitly reported as startup-aborted and never claims clean restoration.
@@ -80,16 +83,16 @@ Build the deployment artifact with the checked-in Gradle wrapper:
 The deployable file is:
 
 ```text
-build/libs/1MB-WalkThePlank-v2.1.0-003-j25-26.2.jar
+build/libs/1MB-WalkThePlank-v2.1.1-004-j25-26.2.jar
 ```
 
 Do not deploy the `-unshaded.jar`; it does not contain SQLite JDBC. `build` runs the automated tests, creates the shaded artifact, and executes the archive/metadata verification gate. `freezeCandidate` additionally rejects a dirty Git tree. Every candidate embeds the full source commit and strict dirty state in `build-info.properties` and the JAR manifest; `/walk info`, `/walk debug overview`, and startup show the abbreviated source label.
 
-Final build-003 machine evidence is recorded in the annotated `v2.1.0-003-rc.1` tag and the ignored operator release archive after the clean source commit is built twice and smoke-tested. The checksum is deliberately not committed back into this source tree: changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
+Final build-004 machine evidence is recorded in the annotated `v2.1.1-004-rc.1` tag and the ignored operator release archive after the clean source commit is built twice and smoke-tested. The checksum is deliberately not committed back into this source tree: changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR. The build-003 tag/archive remains historical evidence for that artifact and must not be reused to approve build 004.
 
 | Release property | Value |
 | --- | --- |
-| Filename | `1MB-WalkThePlank-v2.1.0-003-j25-26.2.jar` |
+| Filename | `1MB-WalkThePlank-v2.1.1-004-j25-26.2.jar` |
 | Source identity | Full Git commit plus strict clean/dirty state embedded in the JAR |
 | Final size and SHA-256 | Annotated candidate tag and operator release archive |
 | Automated test result | Must pass with zero failures/errors/skips and strict Java 25 compilation |
@@ -110,11 +113,11 @@ Useful build commands:
 ./gradlew syncTestServer
 ```
 
-`releaseInfo` must print version `2.1.0`, build `003`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 003 into the active plugin directory.
+`releaseInfo` must print version `2.1.1`, build `004`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 004 into the active plugin directory.
 
 ## Install or upgrade
 
-> Stop Paper and take an operator-controlled backup before the first build-003 start. The automatic SQLite migration backup is an additional safeguard, not a substitute for a full server/data backup.
+> Stop Paper and take an operator-controlled backup before the first build-004 start. The automatic SQLite migration backup is an additional safeguard, not a substitute for a full server/data backup.
 
 For an existing server:
 
@@ -123,9 +126,9 @@ For an existing server:
 3. Back up the old plugin JAR and the complete `plugins/InfinityParkour/` directory as one matched rollback set.
 4. Keep the data directory named `plugins/InfinityParkour/`.
 5. Remove or disable every older InfinityParkour/WalkThePlank JAR. Paper must see only one plugin with the `InfinityParkour` name.
-6. Copy `1MB-WalkThePlank-v2.1.0-003-j25-26.2.jar` into `plugins/`.
+6. Copy `1MB-WalkThePlank-v2.1.1-004-j25-26.2.jar` into `plugins/`.
 7. Start Paper and inspect the complete startup log. A successful live-data start should report 100 preserved scores and, on the first schema-v2 migration only, a verified pre-migration backup path.
-8. Run `/walk info`, `/walk admin validate`, `/walk admin status`, `/walk debug all`, and the full beta checklist before allowing players in.
+8. Run `/walk info`, `/walk admin validate`, `/walk admin status`, `/walk admin doctor`, `/walk debug all`, and the full beta checklist before allowing players in.
 9. Stop Paper cleanly once and require the clean restoration/disable message before the event rehearsal is accepted.
 
 For a fresh installation, install the shaded JAR, start and stop Paper once, then edit `plugins/InfinityParkour/config.yml` and `translations.yml` while the server is stopped.
@@ -173,6 +176,7 @@ The primary command is `/walktheplank`. `/walk`, `/infinityparkour`, and `/infp`
 | `/walk admin validate` | `infinityparkour.admin.validate` | Validates on-disk config/translations without applying them; reports errors, warnings, and the safe SHA-256 config fingerprint. |
 | `/walk admin run` | `infinityparkour.admin.investigate` | Queries bounded, redacted retained-run evidence without name-based ownership. |
 | `/walk admin status [player]` | `infinityparkour.admin.debug` | Shows global health or an online player's active-run status. |
+| `/walk admin doctor` | `infinityparkour.admin.debug` | Starts an asynchronous read-only SQLite probe and prints a bounded privacy-safe support report covering source provenance, targets/runtime, hooks/command roots, storage health, journals/quarantine, uncertain rewards, and queue/task health. |
 | `/walk admin debug [page]` | `infinityparkour.admin.debug` | Shows a safe diagnostic page. |
 | `/walk debug [page]` | `infinityparkour.admin.debug` | Root-level shortcut for the same diagnostics. |
 
@@ -290,6 +294,7 @@ Examples:
 /walk admin run inspect 00000000-0000-0000-0000-000000000000
 /walk admin run player 00000000-0000-0000-0000-000000000000 20
 /walk admin status
+/walk admin doctor
 /walk debug all
 ```
 
@@ -310,7 +315,7 @@ Defaults below are declared in `plugin.yml`. Leaf strings may be remapped under 
 | `infinityparkour.help` | False; player parent grants it | Permission-filtered help. |
 | `infinityparkour.reload` | False; admin parent grants it | Root/nested reload. |
 | `infinityparkour.admin.open` | False; admin parent grants it | Open another player's menu. |
-| `infinityparkour.admin.debug` | False; admin parent grants it | Status and debug pages. |
+| `infinityparkour.admin.debug` | False; admin parent grants it | Status/debug pages and the privacy-safe `/walk admin doctor` support report. |
 | `infinityparkour.admin.stop` | False; admin parent grants it | Stop another run without rewards. |
 | `infinityparkour.admin.recover` | False; admin parent grants it | Retry restoration/quarantine recovery. |
 | `infinityparkour.admin.validate` | False; admin parent grants it | Read-only configuration validation. |
@@ -414,6 +419,12 @@ Legacy configuration behavior is deliberate:
 - With explicit `configVersion: 2`, unknown keys are errors at the top level and inside every arena, nested `endPos`, and reward-tier mapping. A present `endPos` must be a mapping even when custom exit use is disabled. Any explicit version other than `2` is an error.
 - A failed validation/reload keeps the previously active runtime settings. A successful reload drains runs and queue state before rebuilding arenas.
 
+### Translation formatting and literal values
+
+Translation strings are trusted operator templates. Existing unmarked values continue to use legacy ampersand formatting, so current live `translations.yml` files remain backward compatible. Prefix one trusted value with `minimessage:` to opt only that value into MiniMessage; for example, `minimessage:<dark_blue><bold>WalkThePlank</bold>`. The bundled GUI titles use this explicit marker while the remaining bundled legacy values continue to work unchanged.
+
+Runtime `{{placeholders}}`—including player and season names, database values, permission nodes, and counts—are replaced with literal Adventure components only after the trusted template is parsed. Replacement text cannot introduce legacy colors, MiniMessage tags, click/hover events, or other template behavior. Do not add `minimessage:` to an untrusted dynamic value; the marker belongs only on an operator-controlled template.
+
 Reward commands are trusted console authority. They must be single-line, at most 2048 characters, and use a safe command root. When rewards are enabled, unavailable roots fail configuration validation. Matching ranges may overlap deliberately; validation warns because commands from every matching tier will be combined. An inclusive interval sweep rejects any configuration in which a possible score would combine more than the durable ledger limit of 100 non-empty steps.
 
 ## SQLite schema v2, migration, and UUID ownership
@@ -482,7 +493,7 @@ Before any run changes the captured player state or performs the arena teleport,
 
 Player-recovery records are integrity checked, limited to 1,024 files, 16 KiB per file, and 8 MiB in aggregate, and use the same fsynced temporary-file plus required atomic-move discipline as block restoration. Malformed, duplicated, orphaned, or ownership-mismatched evidence is retained and fails closed; it is not guessed from. A byte-for-byte copy that preserves the exact valid player/run/arena ownership cannot be distinguished from its source and therefore remains operator-owned recovery evidence. A journal record owned by a live active/pending run is write-ahead protection, not crash quarantine, so it does not freeze the healthy runner. During asynchronous orphaned-evidence ownership verification, the affected online player is quarantined from movement, teleport, damage, inventory, item, entity, and world interactions. A valid reconnect recovery verifies the retained run UUID/player/arena ownership, restores state, then live-validates the configured exit when applicable, captured return, and loaded-world spawns against hazards and every configured arena volume. The exact record is deleted only after the applicable cleanup succeeds. A terminal accepted external teleport is confirmed on the next server tick at the same run, world, and destination before state is restored and evidence is cleared; cancellation, destination modification, or failed commit retains the run and journal. Terminal death/respawn preserves respawn health, hunger, and destination while clearing temporary movement/flight/collision state.
 
-Build 003 rejects admission when the movement-speed attribute base differs from Paper's default or any modifier other than the exact vanilla sprint modifier is present. It repeats this check before activation and every second, ending a run without rewards if the attribute becomes ineligible, and it freezes held-slot changes while active. It never edits, removes, or serializes player equipment; the beta matrix must still exercise ordinary sprinting plus custom equipment/PDC items and external attribute providers.
+The current release rejects admission when the movement-speed attribute base differs from Paper's default or any modifier other than the exact vanilla sprint modifier is present. It repeats this check before activation and every second, ending a run without rewards if the attribute becomes ineligible, and it freezes held-slot changes while active. It never edits, removes, or serializes player equipment; the beta matrix must still exercise ordinary sprinting plus custom equipment/PDC items and external attribute providers.
 
 On controlled cleanup or startup recovery:
 
@@ -516,13 +527,17 @@ Safety limits are 1,024 pending records, 16 MiB of original structure data per s
 - reward-plan status counts when rewards are enabled;
 - sanitized last database/runtime failure categories.
 
+`/walk admin doctor` supplements those snapshot pages with a copy/paste-safe support report. The command immediately acknowledges that work is pending, then schedules a read-only SQLite `quick_check` and storage inspection on the repository worker rather than blocking the primary server thread. The completed report contains the exact source commit and clean/dirty provenance, compile targets versus the current Java/Paper runtime, optional-hook and configured command-root availability, journal/quarantine and uncertain-reward totals, queue/task health, integrity result, database and WAL byte counts, migration-backup count, and probe latency.
+
+Doctor output deliberately excludes player and season names, coordinates, filesystem paths, raw reward commands or arguments, credentials, SQL text, stack traces, and exception messages. A failed probe returns a bounded safe failure category and does not expose the underlying path or database contents.
+
 The structured audit stream is:
 
 ```text
 plugins/InfinityParkour/audit/audit.jsonl
 ```
 
-It rotates before exceeding 10 MiB and retains up to 10 timestamped archives. Records are fsynced JSON lines with timestamp, event, release, optional player/operator UUID and arena, and bounded scalar fields. It currently covers plugin enable/disable/failure, run start/end/persistence and staff investigation queries, queue lifecycle, reward lifecycle and staff reward decisions, season transitions, leaderboard exports, arena-edit attempts/results, and startup/administrative restoration retries. It deliberately excludes IPs, inventory contents, chat, raw commands, credentials, and arbitrary paths. An unsafe or unwritable audit location during initialization is a startup failure. After the audit stream opens successfully, an append/rotation failure degrades diagnostics and is logged/counted without recursively mutating gameplay state.
+It rotates before exceeding 10 MiB and retains up to 10 timestamped archives. Records are fsynced JSON lines with timestamp, event, release, optional player/operator UUID and arena, and bounded scalar fields. It currently covers plugin enable/disable/failure, run start/end/persistence and staff investigation queries, queue lifecycle, reward lifecycle and staff reward decisions, season transitions, leaderboard exports, arena-edit attempts/results, doctor probe outcomes, and startup/administrative restoration retries. It deliberately excludes IPs, inventory contents, chat, raw commands, credentials, and arbitrary paths. An unsafe or unwritable audit location during initialization is a startup failure. After the audit stream opens successfully, an append/rotation failure degrades diagnostics and is logged/counted without recursively mutating gameplay state.
 
 Player operator attribution and an explicit `player`/`system` actor category are included for arena edits, explicit restoration recovery, queue pause/resume/drain, admin stop/open, reload, validate, seasons, exports, and reward/run investigation. Safe target/result/fingerprint fields are included where applicable; raw configuration, coordinates not needed for the decision, and command bodies are excluded.
 
@@ -555,7 +570,7 @@ The current API intentionally does not expose mutable sessions, direct database 
 
 ## Testing and event approval
 
-The build-003 suite covers build provenance, configuration policy, SQLite schema/migration/durability, reward preparation, restoration records/policy, queue fairness, arena selection, exports, GUI rate limiting, and core game policies. Record the exact final test count from the clean candidate build; public API/event behavior and real player movement remain part of the server-level integration checklist.
+The build-004 suite covers build provenance, configuration policy, SQLite schema/migration/durability and the asynchronous doctor probe, reward preparation, restoration records/policy, queue fairness, arena selection, exports, external-teleport event ordering, nonce/generation GUI authorization and duplicate-action suppression, literal dynamic text/MiniMessage compatibility, and core game policies. Record the exact final test count from the clean candidate build; public API/event behavior and real player movement remain part of the server-level integration checklist.
 
 Use [checklist-walktheplank.md](checklist-walktheplank.md) for the mandatory server-level review. It includes:
 
@@ -565,7 +580,7 @@ Use [checklist-walktheplank.md](checklist-walktheplank.md) for the mandatory ser
 - seasons, run capture, history, and UUID-only exports;
 - reward crash/uncertainty boundaries;
 - restoration of ordinary blocks, signs, containers, and PDC-bearing tile state;
-- conflict, missing-world, kill/restart, shutdown, GUI abuse, permission, and dependency cases.
+- conflict, missing-world, kill/restart, shutdown, GUI abuse, teleport-ordering, formatting-injection, doctor privacy/threading, permission, and dependency cases.
 
 ## Rollback
 
@@ -575,7 +590,7 @@ Use [checklist-walktheplank.md](checklist-walktheplank.md) for the mandatory ser
 4. Start with the previous supported Java/Paper combination.
 5. Verify leaderboard rows/top ten and arena blocks before admitting players.
 
-Rolling the database back discards scores written after that backup. Never reconcile them by username. If a build-003 journal contains pending world restoration, resolve or preserve it before starting an old plugin that does not understand that journal.
+Rolling the database back discards scores written after that backup. Never reconcile them by username. If the current candidate's journal contains pending world restoration, resolve or preserve it before starting an old plugin that does not understand that journal.
 
 During a clean disable, the repository stops accepting work, drains accepted operations for up to 15 seconds, and deterministically rejects accepted operations that never started if the timeout/interruption path is taken. A SQLite JDBC call that is already running may still outlive an unsuccessful repository close when the driver or operating system does not honor interruption. Treat the disable timeout as a no-go signal, preserve the database/logs, and do not immediately start a second server process against the same file.
 

@@ -15,8 +15,8 @@ class BuildInfoTest {
         try (InputStream stream = BuildInfoTest.class.getResourceAsStream("/build-info.properties")) {
             assertNotNull(stream);
             BuildInfo info = BuildInfo.loadProperties(stream);
-            assertEquals("v2.1.0 build 003", info.releaseLabel());
-            assertEquals("1MB-WalkThePlank-v2.1.0-003-j25-26.2.jar", info.artifactFile());
+            assertEquals("v2.1.1 build 004", info.releaseLabel());
+            assertEquals("1MB-WalkThePlank-v2.1.1-004-j25-26.2.jar", info.artifactFile());
             assertEquals("26.2.build.60-beta", info.paperApiVersion());
             assertEquals(40, info.sourceCommit().length());
         }

@@ -75,12 +75,12 @@ helpCommand:
   - '&7------------------------------------------------'
 
 mainGui:
-  title: '&9&lWalkThePlank'
+  title: 'minimessage:<dark_blue><bold>WalkThePlank</bold>'
   useFillItem: true
   fillItem: WHITE_STAINED_GLASS_PANE
   tutorialItem:
     item: BOOK
-    title: '&9&lHow to play'
+    title: 'minimessage:<dark_blue><bold>How to play</bold>'
     glow: false
     lore:
       - '&7Jump to the next generated block.'
@@ -90,7 +90,7 @@ mainGui:
       - '&fClick the diamond boots to start.'
   playItem:
     item: DIAMOND_BOOTS
-    title: '&9&lPlay'
+    title: 'minimessage:<dark_blue><bold>Play</bold>'
     glow: true
     lore:
       - '&7Start a new endless parkour run.'
@@ -99,7 +99,7 @@ mainGui:
       - '&7Use &c/walk leave &7to finish safely.'
   scoreboardItem:
     item: OAK_SIGN
-    title: '&9&lTop 10'
+    title: 'minimessage:<dark_blue><bold>Top 10</bold>'
     glow: false
     scoreboardRecord: '&f{{rank}}. &9{{playerName}} &7({{score}})'
     noPermissionLore:

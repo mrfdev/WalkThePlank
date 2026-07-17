@@ -15,19 +15,31 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.logging.Level;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerKickEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.java.JavaPlugin;
 
 public final class MenuService {
     private static final Duration MENU_OPEN_COOLDOWN = Duration.ofMillis(750);
 
+    private final JavaPlugin plugin;
     private final ConfigurationManager configuration;
     private final Supplier<RuntimeSettings> settings;
     private final ScoreRepository scores;
@@ -35,14 +47,18 @@ public final class MenuService {
     private final MessageService messages;
     private final ItemFactory items;
     private final ActionRateLimiter rateLimiter = new ActionRateLimiter();
+    private final GuiSessionRegistry<Inventory, ParkourMenu> sessions = new GuiSessionRegistry<>();
+    private final GuiActionGate actionGate = new GuiActionGate();
 
     public MenuService(
+            JavaPlugin plugin,
             ConfigurationManager configuration,
             Supplier<RuntimeSettings> settings,
             ScoreRepository scores,
             GameManager games,
             MessageService messages,
             ItemFactory items) {
+        this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.configuration = Objects.requireNonNull(configuration, "configuration");
         this.settings = Objects.requireNonNull(settings, "settings");
         this.scores = Objects.requireNonNull(scores, "scores");
@@ -52,6 +68,21 @@ public final class MenuService {
     }
 
     public void open(Player player) {
+        Objects.requireNonNull(player, "player");
+        if (!Bukkit.isPrimaryThread()) {
+            try {
+                plugin.getServer().getScheduler().runTask(plugin, () -> open(player));
+            } catch (RuntimeException | LinkageError schedulingFailure) {
+                plugin.getLogger().log(
+                        Level.WARNING,
+                        "Could not schedule a WalkThePlank menu open on the main thread",
+                        schedulingFailure);
+            }
+            return;
+        }
+        if (!plugin.isEnabled() || !player.isOnline()) {
+            return;
+        }
         if (!rateLimiter.tryAcquire(
                         player.getUniqueId(),
                         "menu.open",
@@ -61,15 +92,59 @@ public final class MenuService {
             messages.send(player, "chat.slowDown");
             return;
         }
-        new ParkourMenu(player).open();
+
+        ParkourMenu menu = new ParkourMenu(player);
+        UUID ownerId = player.getUniqueId();
+        GuiSessionRegistry.Session<Inventory, ParkourMenu> previous = sessions.current(ownerId);
+        GuiSessionRegistry.Session<Inventory, ParkourMenu> current = sessions.activate(
+                ownerId,
+                menu.nonce(),
+                menu.getInventory(),
+                menu);
+        menu.bindGeneration(current.generation());
+        if (previous != null) {
+            actionGate.invalidate(previous.key());
+        }
+
+        try {
+            player.openInventory(menu.getInventory());
+        } catch (RuntimeException | LinkageError openFailure) {
+            invalidate(current);
+            plugin.getLogger().log(
+                    Level.WARNING,
+                    "Could not open the WalkThePlank menu safely",
+                    openFailure);
+            try {
+                player.sendMessage(messages.prefixedTemplate(
+                        "&cThe menu could not be opened safely.", Map.of()));
+            } catch (RuntimeException | LinkageError messageFailure) {
+                openFailure.addSuppressed(messageFailure);
+            }
+            return;
+        }
+        if (!isCurrentView(player, current)) {
+            invalidate(current);
+        }
     }
 
     public void closeOpenMenus() {
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if (player.getOpenInventory().getTopInventory().getHolder() instanceof ParkourMenu) {
-                player.closeInventory();
+        for (GuiSessionRegistry.Session<Inventory, ParkourMenu> session : sessions.snapshot()) {
+            Player player = Bukkit.getPlayer(session.ownerId());
+            boolean shouldClose = player != null && isCurrentView(player, session);
+            invalidate(session);
+            if (shouldClose) {
+                try {
+                    player.closeInventory();
+                } catch (RuntimeException | LinkageError closeFailure) {
+                    plugin.getLogger().log(
+                            Level.WARNING,
+                            "Could not close a WalkThePlank menu during shutdown or reload",
+                            closeFailure);
+                }
             }
         }
+        sessions.clear();
+        actionGate.clear();
     }
 
     public void sendStats(Player player) {
@@ -86,15 +161,151 @@ public final class MenuService {
                 "playerScore", stats.bestScore()));
     }
 
+    public Health health() {
+        return new Health(sessions.size(), actionGate.pendingCount());
+    }
+
+    private void scheduleAction(
+            Player player,
+            GuiSessionRegistry.Session<Inventory, ParkourMenu> session,
+            int slot,
+            Consumer<Player> action,
+            org.bukkit.event.inventory.ClickType clickType) {
+        GuiActionGate.BeginResult result = actionGate.tryBegin(
+                session.key(),
+                slot,
+                clickType,
+                System.nanoTime());
+        if (result != GuiActionGate.BeginResult.ACCEPTED) {
+            return;
+        }
+
+        try {
+            plugin.getServer().getScheduler().runTask(
+                    plugin,
+                    () -> executeAction(player, session, slot, action));
+        } catch (RuntimeException | LinkageError schedulingFailure) {
+            actionGate.complete(session.key());
+            plugin.getLogger().log(
+                    Level.WARNING,
+                    "Could not schedule a WalkThePlank GUI action",
+                    schedulingFailure);
+        }
+    }
+
+    private void executeAction(
+            Player player,
+            GuiSessionRegistry.Session<Inventory, ParkourMenu> session,
+            int slot,
+            Consumer<Player> action) {
+        try {
+            if (!isCurrentView(player, session)
+                    || session.page().actionAt(slot) != action) {
+                return;
+            }
+            /*
+             * Actions obtain the latest permissions, queue state, arena
+             * availability and score data inside accept(), immediately before
+             * invoking the authoritative service method.
+             */
+            action.accept(player);
+        } catch (RuntimeException | LinkageError actionFailure) {
+            plugin.getLogger().log(
+                    Level.WARNING,
+                    "WalkThePlank GUI action failed safely",
+                    actionFailure);
+        } finally {
+            actionGate.complete(session.key());
+        }
+    }
+
+    private GuiSessionRegistry.Session<Inventory, ParkourMenu> currentSession(
+            Player player,
+            ParkourMenu menu,
+            Inventory topInventory) {
+        if (menu.service() != this
+                || !menu.ownerId().equals(player.getUniqueId())
+                || menu.getInventory() != topInventory
+                || !sessions.isCurrent(
+                        menu.ownerId(),
+                        menu.nonce(),
+                        menu.generation(),
+                        topInventory)) {
+            return null;
+        }
+        GuiSessionRegistry.Session<Inventory, ParkourMenu> session =
+                sessions.current(menu.ownerId());
+        return session != null && session.page() == menu ? session : null;
+    }
+
+    private boolean isCurrentView(
+            Player player,
+            GuiSessionRegistry.Session<Inventory, ParkourMenu> session) {
+        if (!player.isOnline()
+                || !player.getUniqueId().equals(session.ownerId())
+                || !sessions.isCurrent(session)) {
+            return false;
+        }
+        Inventory topInventory = player.getOpenInventory().getTopInventory();
+        if (topInventory != session.inventory()) {
+            return false;
+        }
+        return topInventory.getHolder(false) instanceof ParkourMenu menu
+                && menu.service() == this
+                && menu.ownerId().equals(session.ownerId())
+                && menu.nonce().equals(session.nonce())
+                && menu.generation() == session.generation()
+                && menu.getInventory() == session.inventory()
+                && session.page() == menu;
+    }
+
+    private void invalidate(GuiSessionRegistry.Session<Inventory, ParkourMenu> session) {
+        sessions.removeIfCurrent(session);
+        actionGate.invalidate(session.key());
+    }
+
+    private void invalidate(UUID playerId) {
+        GuiSessionRegistry.Session<Inventory, ParkourMenu> session = sessions.remove(playerId);
+        actionGate.invalidateOwner(playerId);
+        rateLimiter.clear(playerId);
+        if (session != null) {
+            actionGate.invalidate(session.key());
+        }
+    }
+
+    private void closeForLifecycle(Player player) {
+        GuiSessionRegistry.Session<Inventory, ParkourMenu> session =
+                sessions.current(player.getUniqueId());
+        if (session == null) {
+            return;
+        }
+        boolean shouldClose = isCurrentView(player, session);
+        invalidate(session);
+        if (shouldClose) {
+            try {
+                player.closeInventory();
+            } catch (RuntimeException | LinkageError closeFailure) {
+                plugin.getLogger().log(
+                        Level.WARNING,
+                        "Could not close a stale WalkThePlank menu",
+                        closeFailure);
+            }
+        }
+    }
+
     private final class ParkourMenu implements InventoryHolder {
         private static final int SIZE = 27;
 
         private final Player player;
+        private final UUID ownerId;
+        private final UUID nonce = UUID.randomUUID();
         private final Inventory inventory;
         private final Map<Integer, Consumer<Player>> actions = new HashMap<>();
+        private long generation;
 
         private ParkourMenu(Player player) {
             this.player = player;
+            ownerId = player.getUniqueId();
             Component title = messages.translated("mainGui.title", Map.of());
             inventory = Bukkit.createInventory(this, SIZE, title);
             populate();
@@ -105,15 +316,34 @@ public final class MenuService {
             return inventory;
         }
 
-        private void open() {
-            player.openInventory(inventory);
+        private MenuService service() {
+            return MenuService.this;
         }
 
-        private void click(int rawSlot, Player clicker) {
-            Consumer<Player> action = actions.get(rawSlot);
-            if (action != null) {
-                action.accept(clicker);
+        private UUID ownerId() {
+            return ownerId;
+        }
+
+        private UUID nonce() {
+            return nonce;
+        }
+
+        private long generation() {
+            if (generation <= 0L) {
+                throw new IllegalStateException("GUI generation has not been bound");
             }
+            return generation;
+        }
+
+        private void bindGeneration(long assignedGeneration) {
+            if (generation != 0L || assignedGeneration <= 0L) {
+                throw new IllegalStateException("GUI generation can only be bound once");
+            }
+            generation = assignedGeneration;
+        }
+
+        private Consumer<Player> actionAt(int rawSlot) {
+            return actions.get(rawSlot);
         }
 
         private void populate() {
@@ -126,37 +356,46 @@ public final class MenuService {
             }
 
             inventory.setItem(10, items.create(requireSection("mainGui.tutorialItem")));
-            setAction(13, items.create(requireSection("mainGui.playItem")), clicker -> {
-                String permission = settings.get().permissions().playGame();
-                if (!clicker.hasPermission(permission)) {
-                    messages.send(clicker, "chat.noPermissionPlay", Map.of("permissionName", permission));
-                    clicker.closeInventory();
-                    return;
-                }
-                GameManager.QueueStatus queue = games.queueStatus(clicker.getUniqueId());
-                if (queue.playerReadyUntil().isPresent()) {
-                    games.startReady(clicker);
-                } else if (settings.get().queue().enabled()
-                        && (queue.playerPosition() > 0
-                                || queue.total() > 0
-                                || games.availableArenas() == 0)) {
-                    games.joinQueue(clicker);
-                } else {
-                    games.start(clicker);
-                }
-            });
+            setAction(13, items.create(requireSection("mainGui.playItem")), this::play);
 
             ConfigurationSection scoreboardSection = requireSection("mainGui.scoreboardItem");
-            setAction(16, items.create(scoreboardSection, scoreboardLore(scoreboardSection)), clicker -> {
-                String permission = settings.get().permissions().stats();
-                if (!clicker.hasPermission(permission)) {
-                    messages.send(clicker, "chat.noPermissionStats", Map.of("permissionName", permission));
-                    clicker.closeInventory();
-                    return;
-                }
-                sendStats(clicker);
+            setAction(
+                    16,
+                    items.create(scoreboardSection, scoreboardLore(scoreboardSection)),
+                    this::showStats);
+        }
+
+        private void play(Player clicker) {
+            RuntimeSettings current = settings.get();
+            String permission = current.permissions().playGame();
+            if (!clicker.hasPermission(permission)) {
+                messages.send(clicker, "chat.noPermissionPlay", Map.of("permissionName", permission));
                 clicker.closeInventory();
-            });
+                return;
+            }
+
+            GameManager.QueueStatus queue = games.queueStatus(clicker.getUniqueId());
+            if (queue.playerReadyUntil().isPresent()) {
+                games.startReady(clicker);
+            } else if (current.queue().enabled()
+                    && (queue.playerPosition() > 0
+                            || queue.total() > 0
+                            || games.availableArenas() == 0)) {
+                games.joinQueue(clicker);
+            } else {
+                games.start(clicker);
+            }
+        }
+
+        private void showStats(Player clicker) {
+            String permission = settings.get().permissions().stats();
+            if (!clicker.hasPermission(permission)) {
+                messages.send(clicker, "chat.noPermissionStats", Map.of("permissionName", permission));
+                clicker.closeInventory();
+                return;
+            }
+            sendStats(clicker);
+            clicker.closeInventory();
         }
 
         private List<Component> scoreboardLore(ConfigurationSection section) {
@@ -169,25 +408,26 @@ public final class MenuService {
                     lore.add(messages.deserialize(line));
                     continue;
                 }
-                if (!player.hasPermission(settings.get().permissions().top())) {
+                String topPermission = settings.get().permissions().top();
+                if (!player.hasPermission(topPermission)) {
                     List<String> hiddenLore = section.getStringList("noPermissionLore");
                     if (hiddenLore.isEmpty()) {
                         hiddenLore = List.of("&cYou do not have permission to view the leaderboard.");
                     }
                     for (String hiddenLine : hiddenLore) {
-                        lore.add(messages.deserialize(hiddenLine.replace(
-                                "{{permissionName}}",
-                                settings.get().permissions().top())));
+                        lore.add(messages.render(
+                                hiddenLine,
+                                Map.of("permissionName", topPermission)));
                     }
                     continue;
                 }
                 int index = 1;
                 for (ScoreEntry entry : scores.top()) {
-                    lore.add(messages.deserialize(format
-                            .replace("{{playerName}}", entry.username())
-                            .replace("{{score}}", Integer.toString(entry.score()))
-                            .replace("{{index}}", Integer.toString(index))
-                            .replace("{{rank}}", Integer.toString(entry.rank()))));
+                    lore.add(messages.render(format, Map.of(
+                            "playerName", entry.username(),
+                            "score", entry.score(),
+                            "index", index,
+                            "rank", entry.rank())));
                     index++;
                 }
             }
@@ -196,7 +436,7 @@ public final class MenuService {
 
         private void setAction(int slot, ItemStack item, Consumer<Player> action) {
             inventory.setItem(slot, item);
-            actions.put(slot, action);
+            actions.put(slot, Objects.requireNonNull(action, "action"));
         }
 
         private ConfigurationSection requireSection(String path) {
@@ -209,29 +449,89 @@ public final class MenuService {
     }
 
     public static final class Listener implements org.bukkit.event.Listener {
-        @org.bukkit.event.EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST)
-        public void onClick(org.bukkit.event.inventory.InventoryClickEvent event) {
-            if (!(event.getView().getTopInventory().getHolder() instanceof MenuService.ParkourMenu menu)) {
+        private final MenuService menus;
+
+        public Listener(MenuService menus) {
+            this.menus = Objects.requireNonNull(menus, "menus");
+        }
+
+        @EventHandler(priority = EventPriority.HIGHEST)
+        public void onClick(InventoryClickEvent event) {
+            Inventory topInventory = event.getView().getTopInventory();
+            if (!(topInventory.getHolder(false) instanceof MenuService.ParkourMenu menu)
+                    || menu.service() != menus) {
                 return;
             }
+
+            boolean previouslyCancelled = event.isCancelled();
             event.setCancelled(true);
-            if (!(event.getWhoClicked() instanceof Player player)) {
+            if (previouslyCancelled || !(event.getWhoClicked() instanceof Player player)) {
                 return;
             }
+            GuiSessionRegistry.Session<Inventory, ParkourMenu> session =
+                    menus.currentSession(player, menu, topInventory);
+            if (session == null || event.getClickedInventory() != topInventory) {
+                return;
+            }
+
             int rawSlot = event.getRawSlot();
-            if (rawSlot >= 0 && rawSlot < event.getView().getTopInventory().getSize()) {
-                menu.click(rawSlot, player);
+            if (rawSlot < 0 || rawSlot >= topInventory.getSize()) {
+                return;
+            }
+            Consumer<Player> action = menu.actionAt(rawSlot);
+            if (action != null) {
+                menus.scheduleAction(player, session, rawSlot, action, event.getClick());
             }
         }
 
-        @org.bukkit.event.EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST)
-        public void onDrag(org.bukkit.event.inventory.InventoryDragEvent event) {
-            if (!(event.getView().getTopInventory().getHolder() instanceof MenuService.ParkourMenu)) {
+        @EventHandler(priority = EventPriority.HIGHEST)
+        public void onDrag(InventoryDragEvent event) {
+            Inventory topInventory = event.getView().getTopInventory();
+            if (topInventory.getHolder(false) instanceof MenuService.ParkourMenu menu
+                    && menu.service() == menus) {
+                event.setCancelled(true);
+            }
+        }
+
+        @EventHandler(priority = EventPriority.MONITOR)
+        public void onClose(InventoryCloseEvent event) {
+            Inventory topInventory = event.getView().getTopInventory();
+            if (!(topInventory.getHolder(false) instanceof MenuService.ParkourMenu menu)
+                    || menu.service() != menus) {
                 return;
             }
-            int topSize = event.getView().getTopInventory().getSize();
-            if (event.getRawSlots().stream().anyMatch(slot -> slot < topSize)) {
-                event.setCancelled(true);
+            if (menus.sessions.removeIfCurrent(
+                    event.getPlayer().getUniqueId(),
+                    menu.nonce(),
+                    menu.generation(),
+                    topInventory)) {
+                menus.actionGate.invalidate(new GuiSessionRegistry.SessionKey(
+                        menu.ownerId(),
+                        menu.nonce(),
+                        menu.generation()));
+            }
+        }
+
+        @EventHandler(priority = EventPriority.MONITOR)
+        public void onQuit(PlayerQuitEvent event) {
+            menus.invalidate(event.getPlayer().getUniqueId());
+        }
+
+        @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+        public void onKick(PlayerKickEvent event) {
+            menus.invalidate(event.getPlayer().getUniqueId());
+        }
+
+        @EventHandler(priority = EventPriority.MONITOR)
+        public void onChangedWorld(PlayerChangedWorldEvent event) {
+            menus.closeForLifecycle(event.getPlayer());
+        }
+    }
+
+    public record Health(int openSessions, int pendingActions) {
+        public Health {
+            if (openSessions < 0 || pendingActions < 0) {
+                throw new IllegalArgumentException("GUI health counts cannot be negative");
             }
         }
     }

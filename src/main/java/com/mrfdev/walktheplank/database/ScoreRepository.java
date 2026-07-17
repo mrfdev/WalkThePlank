@@ -128,6 +128,14 @@ public interface ScoreRepository extends AutoCloseable {
     /** Lock-free operational durability counts. */
     DurabilityMetrics durabilityMetrics();
 
+    /**
+     * Runs a read-only SQLite integrity and storage probe on the repository executor.
+     *
+     * <p>The returned report contains counts and byte sizes only; it never exposes a path, SQL
+     * text, player identity, or reward command.</p>
+     */
+    CompletableFuture<DatabaseDoctorReport> inspectDatabase();
+
     /** Returns the current immutable in-memory snapshot without database I/O. */
     ScoreSnapshot snapshot();
 

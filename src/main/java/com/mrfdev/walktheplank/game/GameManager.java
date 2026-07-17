@@ -927,9 +927,7 @@ public final class GameManager {
             String template = scoreMessages.isEmpty()
                     ? "Score: &f{{score}}"
                     : scoreMessages.get(ThreadLocalRandom.current().nextInt(scoreMessages.size()));
-            player.sendMessage(messages.deserialize(
-                    messages.raw("chat.prefix", "&3WalkThePlank » &7")
-                            + template.replace("{{score}}", Integer.toString(score))));
+            player.sendMessage(messages.prefixedTemplate(template, Map.of("score", score)));
         } catch (RuntimeException | LinkageError exception) {
             failActiveSession(player, session, "score_message", exception);
         }
@@ -1084,30 +1082,27 @@ public final class GameManager {
         return internalTeleports.contains(player.getUniqueId());
     }
 
-    /** Defers destructive TELEPORT cleanup until Paper has committed the external destination. */
-    public boolean deferExternalTeleportCompletion(Player player, Location expectedDestination) {
+    /**
+     * Reserves and schedules an external-teleport verification before the event decision phase
+     * ends. An empty result means the caller must reject the teleport at HIGHEST priority.
+     */
+    public Optional<UUID> prepareExternalTeleportCompletion(Player player) {
         Objects.requireNonNull(player, "player");
-        Objects.requireNonNull(expectedDestination, "expectedDestination");
         GameSession session = sessions.get(player.getUniqueId());
-        if (session == null
-                || expectedDestination.getWorld() == null
-                || !Double.isFinite(expectedDestination.getX())
-                || !Double.isFinite(expectedDestination.getY())
-                || !Double.isFinite(expectedDestination.getZ())) {
-            return false;
+        if (shuttingDown
+                || session == null
+                || pendingExternalTeleports.containsKey(player.getUniqueId())) {
+            return Optional.empty();
         }
-        PendingExternalTeleport pending = new PendingExternalTeleport(
-                session.runId(),
-                expectedDestination.getWorld().getUID(),
-                expectedDestination.getX(),
-                expectedDestination.getY(),
-                expectedDestination.getZ());
+        UUID attemptId = UUID.randomUUID();
+        PendingExternalTeleport pending = PendingExternalTeleport.awaiting(
+                session.runId(), attemptId);
         pendingExternalTeleports.put(player.getUniqueId(), pending);
         try {
             plugin.getServer().getScheduler().runTask(
                     plugin,
-                    () -> completeExternalTeleport(player, pending));
-            return true;
+                    () -> completeExternalTeleport(player, attemptId));
+            return Optional.of(attemptId);
         } catch (RuntimeException | LinkageError schedulingFailure) {
             pendingExternalTeleports.remove(player.getUniqueId(), pending);
             recordLifecycleFailure(
@@ -1115,12 +1110,39 @@ public final class GameManager {
                     player.getUniqueId(),
                     session.arena().id(),
                     schedulingFailure);
-            return false;
+            return Optional.empty();
         }
     }
 
-    private void completeExternalTeleport(Player player, PendingExternalTeleport pending) {
-        if (!pendingExternalTeleports.remove(player.getUniqueId(), pending)) {
+    /** Records the final event state at MONITOR without modifying the event. */
+    public void observeExternalTeleportCompletion(
+            Player player,
+            UUID attemptId,
+            boolean eventAccepted,
+            Location finalDestination) {
+        Objects.requireNonNull(player, "player");
+        Objects.requireNonNull(attemptId, "attemptId");
+        PendingExternalTeleport pending = pendingExternalTeleports.get(player.getUniqueId());
+        if (pending == null || !pending.matches(attemptId)) {
+            return;
+        }
+        World destinationWorld = finalDestination == null ? null : finalDestination.getWorld();
+        PendingExternalTeleport observed = pending.observe(
+                eventAccepted,
+                destinationWorld == null ? null : destinationWorld.getUID(),
+                finalDestination == null ? Double.NaN : finalDestination.getX(),
+                finalDestination == null ? Double.NaN : finalDestination.getY(),
+                finalDestination == null ? Double.NaN : finalDestination.getZ());
+        if (pendingExternalTeleports.get(player.getUniqueId()) == pending) {
+            pendingExternalTeleports.put(player.getUniqueId(), observed);
+        }
+    }
+
+    private void completeExternalTeleport(Player player, UUID attemptId) {
+        PendingExternalTeleport pending = pendingExternalTeleports.get(player.getUniqueId());
+        if (pending == null
+                || !pending.matches(attemptId)
+                || !pendingExternalTeleports.remove(player.getUniqueId(), pending)) {
             return;
         }
         GameSession session = sessions.get(player.getUniqueId());
@@ -1129,11 +1151,9 @@ public final class GameManager {
         }
         Location actual = player.getLocation();
         UUID actualWorldId = actual.getWorld() == null ? null : actual.getWorld().getUID();
-        if (!player.isOnline() || !ExternalTeleportCommitPolicy.reached(
-                pending.worldId(),
-                pending.x(),
-                pending.y(),
-                pending.z(),
+        boolean playerOnline = player.isOnline();
+        if (!pending.reached(
+                playerOnline,
                 actualWorldId,
                 actual.getX(),
                 actual.getY(),
@@ -1143,7 +1163,9 @@ public final class GameManager {
                         "run.external_teleport_not_committed",
                         player.getUniqueId(),
                         session.arena().id(),
-                        Map.of("run_id", session.runId()));
+                        Map.of(
+                                "run_id", session.runId(),
+                                "reason", pending.notCommittedReason(playerOnline)));
             } catch (RuntimeException | LinkageError auditFailure) {
                 recordLifecycleFailure(
                         "run.external_teleport_audit_failed",
@@ -1229,6 +1251,14 @@ public final class GameManager {
 
     public OperationalMetrics.Snapshot operationalMetrics() {
         return operations.metrics().snapshot();
+    }
+
+    /** Privacy-safe counts for pending gameplay work owned by the main server thread. */
+    public TaskHealth taskHealth() {
+        return new TaskHealth(
+                pendingStarts.size(),
+                pendingExternalTeleports.size(),
+                playerRecoveryLookups.size());
     }
 
     public void auditRewardResolution(
@@ -2810,6 +2840,19 @@ public final class GameManager {
         }
     }
 
+    public record TaskHealth(
+            int pendingStarts,
+            int pendingExternalTeleportChecks,
+            int pendingPlayerRecoveryLookups) {
+        public TaskHealth {
+            if (pendingStarts < 0
+                    || pendingExternalTeleportChecks < 0
+                    || pendingPlayerRecoveryLookups < 0) {
+                throw new IllegalArgumentException("Task-health counts must not be negative");
+            }
+        }
+    }
+
     public record PlaceholderSnapshot(
             QueueStatus queue,
             int activeArenas,
@@ -2926,18 +2969,112 @@ public final class GameManager {
         }
     }
 
-    private record PendingExternalTeleport(
-            UUID runId,
-            UUID worldId,
-            double x,
-            double y,
-            double z) {
-        private PendingExternalTeleport {
-            Objects.requireNonNull(runId, "runId");
-            Objects.requireNonNull(worldId, "worldId");
-            if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) {
-                throw new IllegalArgumentException("External teleport destination must be finite");
+    static final class PendingExternalTeleport {
+        private final UUID runId;
+        private final UUID attemptId;
+        private final ExternalTeleportOutcome outcome;
+        private final UUID worldId;
+        private final double x;
+        private final double y;
+        private final double z;
+
+        private PendingExternalTeleport(
+                UUID runId,
+                UUID attemptId,
+                ExternalTeleportOutcome outcome,
+                UUID worldId,
+                double x,
+                double y,
+                double z) {
+            this.runId = Objects.requireNonNull(runId, "runId");
+            this.attemptId = Objects.requireNonNull(attemptId, "attemptId");
+            this.outcome = Objects.requireNonNull(outcome, "outcome");
+            this.worldId = worldId;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+
+        static PendingExternalTeleport awaiting(UUID runId, UUID attemptId) {
+            return terminal(runId, attemptId, ExternalTeleportOutcome.AWAITING);
+        }
+
+        PendingExternalTeleport observe(
+                boolean eventAccepted,
+                UUID observedWorldId,
+                double observedX,
+                double observedY,
+                double observedZ) {
+            if (!eventAccepted) {
+                return terminal(runId, attemptId, ExternalTeleportOutcome.CANCELLED);
             }
+            if (observedWorldId == null
+                    || !Double.isFinite(observedX)
+                    || !Double.isFinite(observedY)
+                    || !Double.isFinite(observedZ)) {
+                return terminal(runId, attemptId, ExternalTeleportOutcome.INVALID_DESTINATION);
+            }
+            return new PendingExternalTeleport(
+                    runId,
+                    attemptId,
+                    ExternalTeleportOutcome.ACCEPTED,
+                    observedWorldId,
+                    observedX,
+                    observedY,
+                    observedZ);
+        }
+
+        UUID runId() {
+            return runId;
+        }
+
+        boolean matches(UUID candidateAttemptId) {
+            return attemptId.equals(candidateAttemptId);
+        }
+
+        boolean reached(
+                boolean playerOnline,
+                UUID actualWorldId,
+                double actualX,
+                double actualY,
+                double actualZ) {
+            return playerOnline
+                    && outcome == ExternalTeleportOutcome.ACCEPTED
+                    && ExternalTeleportCommitPolicy.reached(
+                            worldId,
+                            x,
+                            y,
+                            z,
+                            actualWorldId,
+                            actualX,
+                            actualY,
+                            actualZ);
+        }
+
+        String notCommittedReason(boolean playerOnline) {
+            if (!playerOnline) {
+                return "player_offline";
+            }
+            return switch (outcome) {
+                case AWAITING -> "monitor_not_observed";
+                case CANCELLED -> "event_cancelled";
+                case INVALID_DESTINATION -> "invalid_destination";
+                case ACCEPTED -> "destination_not_reached";
+            };
+        }
+
+        private static PendingExternalTeleport terminal(
+                UUID runId,
+                UUID attemptId,
+                ExternalTeleportOutcome outcome) {
+            return new PendingExternalTeleport(runId, attemptId, outcome, null, 0.0, 0.0, 0.0);
+        }
+
+        private enum ExternalTeleportOutcome {
+            AWAITING,
+            CANCELLED,
+            INVALID_DESTINATION,
+            ACCEPTED
         }
     }
 

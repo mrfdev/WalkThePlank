@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -560,6 +561,42 @@ public final class JdbcScoreRepository implements ScoreRepository {
                 oldest == null ? Optional.empty() : Optional.of(oldest.submittedAt()),
                 Optional.ofNullable(lastSuccessfulWriteAt),
                 Optional.ofNullable(lastDatabaseFailure));
+    }
+
+    @Override
+    public CompletableFuture<DatabaseDoctorReport> inspectDatabase() {
+        return submitRead(() -> {
+            long startedAt = System.nanoTime();
+            boolean quickCheckPassed;
+            try (Connection connection = openConnection();
+                    Statement statement = connection.createStatement();
+                    ResultSet result = statement.executeQuery("PRAGMA quick_check(1)")) {
+                quickCheckPassed = result.next() && "ok".equalsIgnoreCase(result.getString(1));
+            } catch (SQLException exception) {
+                throw new ScoreRepositoryException(
+                        "Could not complete the read-only SQLite health probe", exception);
+            }
+
+            try {
+                Path databasePath = settings.databasePath();
+                long databaseBytes = regularFileSize(databasePath, true);
+                long walBytes = regularFileSize(
+                        databasePath.resolveSibling(databasePath.getFileName() + "-wal"),
+                        false);
+                int migrationBackups = countMigrationBackups(databasePath);
+                long latencyMillis = TimeUnit.NANOSECONDS.toMillis(
+                        Math.max(0L, System.nanoTime() - startedAt));
+                return new DatabaseDoctorReport(
+                        quickCheckPassed,
+                        databaseBytes,
+                        walBytes,
+                        migrationBackups,
+                        latencyMillis);
+            } catch (IOException exception) {
+                throw new ScoreRepositoryException(
+                        "Could not inspect SQLite storage metadata", exception);
+            }
+        });
     }
 
     @Override
@@ -2192,6 +2229,44 @@ public final class JdbcScoreRepository implements ScoreRepository {
 
     private <T> CompletableFuture<T> submitRead(Callable<T> operation) {
         return submitOperation(operation, false);
+    }
+
+    private static long regularFileSize(Path path, boolean required) throws IOException {
+        if (Files.isSymbolicLink(path)) {
+            throw new IOException("SQLite storage metadata contains a symbolic link");
+        }
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+            if (required) {
+                throw new IOException("SQLite database is missing");
+            }
+            return 0L;
+        }
+        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("SQLite storage metadata is not a regular file");
+        }
+        return Files.size(path);
+    }
+
+    private static int countMigrationBackups(Path databasePath) throws IOException {
+        Path parent = databasePath.getParent();
+        if (parent == null || Files.isSymbolicLink(parent)
+                || !Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("SQLite backup directory is unavailable");
+        }
+        String prefix = databasePath.getFileName() + ".pre-migration-v";
+        int count = 0;
+        try (DirectoryStream<Path> entries = Files.newDirectoryStream(parent)) {
+            for (Path entry : entries) {
+                String name = entry.getFileName().toString();
+                if (name.startsWith(prefix)
+                        && name.endsWith(".sqlite")
+                        && !Files.isSymbolicLink(entry)
+                        && Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)) {
+                    count = Math.addExact(count, 1);
+                }
+            }
+        }
+        return count;
     }
 
     private <T> CompletableFuture<T> submitOperation(

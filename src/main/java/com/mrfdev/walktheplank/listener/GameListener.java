@@ -5,8 +5,11 @@ import com.mrfdev.walktheplank.game.BlockKey;
 import com.mrfdev.walktheplank.game.GameManager;
 import com.mrfdev.walktheplank.game.SessionEndReason;
 import com.mrfdev.walktheplank.text.MessageService;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.logging.Level;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
@@ -67,6 +70,7 @@ public final class GameListener implements Listener {
     private final GameManager games;
     private final ScoreRepository scores;
     private final MessageService messages;
+    private final Map<PlayerTeleportEvent, UUID> externalTeleportAttempts = new IdentityHashMap<>();
 
     public GameListener(
             JavaPlugin plugin,
@@ -115,23 +119,42 @@ public final class GameListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onRecoveryTeleport(PlayerTeleportEvent event) {
-        if (!games.isInternalTeleport(event.getPlayer()) && games.isRecovering(event.getPlayer())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onTeleport(PlayerTeleportEvent event) {
-        if (games.isInternalTeleport(event.getPlayer())) {
+    public void onTeleportDecision(PlayerTeleportEvent event) {
+        Player player = event.getPlayer();
+        if (games.isInternalTeleport(player)) {
             return;
         }
-        if (games.isPlaying(event.getPlayer())) {
-            if (!games.deferExternalTeleportCompletion(event.getPlayer(), event.getTo())) {
-                event.setCancelled(true);
-            }
-        } else if (event.getFrom().getWorld() != event.getTo().getWorld()) {
-            games.removeQueuedPlayer(event.getPlayer(), "WORLD_CHANGE");
+        if (games.isRecovering(player)) {
+            event.setCancelled(true);
+            return;
+        }
+        if (!games.isPlaying(player)) {
+            return;
+        }
+        games.prepareExternalTeleportCompletion(player).ifPresentOrElse(
+                attemptId -> externalTeleportAttempts.put(event, attemptId),
+                () -> event.setCancelled(true));
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onTeleportOutcome(PlayerTeleportEvent event) {
+        Player player = event.getPlayer();
+        UUID attemptId = externalTeleportAttempts.remove(event);
+        if (attemptId != null) {
+            games.observeExternalTeleportCompletion(
+                    player,
+                    attemptId,
+                    !event.isCancelled(),
+                    event.getTo());
+            return;
+        }
+        if (event.isCancelled() || games.isInternalTeleport(player)) {
+            return;
+        }
+        if (!games.isPlaying(player)
+                && event.getTo() != null
+                && event.getFrom().getWorld() != event.getTo().getWorld()) {
+            games.removeQueuedPlayer(player, "WORLD_CHANGE");
         }
     }
 

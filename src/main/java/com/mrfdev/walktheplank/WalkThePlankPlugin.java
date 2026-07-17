@@ -85,6 +85,7 @@ public final class WalkThePlankPlugin extends JavaPlugin {
 
             ItemFactory itemFactory = new ItemFactory(messages, getLogger());
             menus = new MenuService(
+                    this,
                     configuration,
                     configuration::runtimeSettings,
                     scores,
@@ -94,7 +95,7 @@ public final class WalkThePlankPlugin extends JavaPlugin {
 
             getServer().getPluginManager().registerEvents(
                     new GameListener(this, games, scores, messages), this);
-            getServer().getPluginManager().registerEvents(new MenuService.Listener(), this);
+            getServer().getPluginManager().registerEvents(new MenuService.Listener(menus), this);
 
             PluginCommand command = Objects.requireNonNull(
                     getCommand("walktheplank"),
