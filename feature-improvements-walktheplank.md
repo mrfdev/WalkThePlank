@@ -1,21 +1,21 @@
 # WalkThePlank future improvements and release status
 
-This is the authoritative future-development TODO and release-status document. It separates what is implemented in source release **v2.1.2 build 005** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
+This is the authoritative future-development TODO and release-status document. It separates what is implemented in source release **v2.2.0 build 006** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
 
 Status labels:
 
-- **Implemented** — present in build-005 source.
+- **Implemented** — present in build-006 source.
 - **Implemented; beta verification pending** — present, but the final JAR still needs the named Paper/live-data test.
 - **Partial** — a safe foundation exists, but an important workflow or assurance remains.
 - **Proposed** — not present and must not be advertised as a current feature.
 
 ## Deferred modernization queue
 
-Build 003 remains the frozen historical modernization baseline and build 004 remains the historical event-safety release. Build 005 takes only the isolated destructive-testing item below; every remaining unchecked feature stays deferred to a separate incremented build so its evidence cannot be confused with this candidate.
+Build 003 remains the frozen historical modernization baseline, build 004 the historical event-safety release, and build 005 the destructive-testing foundation. Build 006 takes the off-main durability pipeline below; every remaining unchecked feature stays deferred to a separate incremented build so its evidence cannot be confused with this candidate.
 
 1. [x] **v2.1.1 build 004 — event-safety and operations implemented; beta acceptance still pending.** External-teleport decisions occur at `HIGHEST` with observation-only `MONITOR` and next-tick verification; GUI sessions bind owner UUID/nonce/generation/exact inventory with one pending action; trusted formatting is parsed separately from literal dynamic components with explicit `minimessage:` opt-in and legacy `&` compatibility; `/walk admin doctor` produces a privacy-safe report with an asynchronous SQLite probe.
 2. [x] **v2.1.2 build 005 — disposable Paper integration and fault-injection harness implemented; final-candidate and real-client evidence pending.** A separate test plugin, Java 25 Class-File API instrumented-copy builder, 24 named failpoints, two-start/PlaceholderAPI/lifecycle/log runner, real-player queue/teleport/GUI/reconnect/exit probes, reflection event contracts, and positive/negative production-isolation checks are present. Development-artifact runs passed the automated two-start profile and the `config.after_runtime_commit` exit-97/recovery profile; repeat them against the clean committed candidate and complete every applicable real-client/hard-kill checklist row before treating this item as release-qualified.
-3. [ ] **Two-phase off-main durability pipeline.** Keep Bukkit/Paper capture, validation, and mutation on the primary thread; move journal/audit/config filesystem work to bounded plugin-owned workers; return to the primary thread and revalidate the run generation and authoritative state before mutation. Preserve append-before-mutation, quarantine, and crash-recovery guarantees.
+3. [x] **v2.2.0 build 006 — two-phase off-main durability pipeline implemented; Paper/destructive acceptance pending.** Bukkit/Paper capture, validation, restoration, and mutation remain on the primary thread. Immutable journal bytes go to a bounded FIFO recovery writer; audit/export/config work uses an independent bounded operations writer. Exclusive lifetime ownership is acquired before recovery journals open and remains held until any delayed writer truly terminates. Successful completion returns to the primary thread and revalidates exact run/session/platform generations, arena/block leases, player state, permissions, and block fingerprints. Uncertain post-rename commits and failed discards retain exact evidence for retry. Successor preparation begins while the player traverses the current jump and pre-placement occurs when ready; an early landing waits/rechecks without async world mutation. Predecessor journal deletion/fsync completes off-thread. Reload, administrative recovery, and shutdown use explicit barriers/completion queues without async Bukkit access or caller-thread durability fallback.
 4. [ ] **Summer Season feature bundle.** Preserve the imported Classic leaderboard while adding cosmetic themes, milestones, accessibility preferences, a versioned daily course and separate ranking, seasonal Momentum, quests, durable UUID claim keys, and a community plank goal. Run new scoring in shadow mode before rewards or public ranking.
 5. [ ] **Post-event command/API modernization.** Split the command, game, configuration, and repository monoliths by domain; migrate supported commands to Paper's lifecycle-registered Brigadier tree; evaluate experimental Dialog/data-component APIs only behind isolated version-gated adapters when they provide concrete value.
 
@@ -36,16 +36,16 @@ Future work must preserve these rules:
 - Paper and PlaceholderAPI classes remain provided; SQLite JDBC remains the only shaded runtime library.
 - Every public behavior change gets a version/build increment, immutable 1MB artifact name, documentation, tests, staging rehearsal, and rollback plan.
 
-## Implemented in v2.1.2-005
+## Implemented in v2.2.0-006
 
-Build 005 includes the complete build-004 event-safety release and build-003 baseline documented in [CHANGELOG.md](CHANGELOG.md), plus the focused destructive-testing infrastructure below.
+Build 006 includes the complete build-005 destructive-testing foundation, build-004 event-safety release, and build-003 modernization baseline documented in [CHANGELOG.md](CHANGELOG.md), plus the runtime durability modernization below.
 
 ### Build, platform, and packaging
 
 | Capability | Status | Notes |
 | --- | --- | --- |
 | Gradle build and wrapper | **Implemented** | Gradle 9.6.1, Shadow 9.5.1, strict Java 25 compilation. |
-| Paper target | **Implemented; final build-005 smoke pending** | Paper API/runtime 26.2 build 60 beta passed the build-005 development-artifact controlled profile. Repeat the controlled profile and full candidate smoke against the clean committed artifact before approval. |
+| Paper target | **Implemented; final build-006 smoke pending** | Paper API/runtime 26.2 build 60 beta passed the prior build-005 development-artifact controlled profile. Repeat the controlled profile and full candidate smoke against the clean build-006 artifact before approval. |
 | Standalone SQLite JAR | **Implemented** | SQLite JDBC 3.53.2.0 is shaded; MySQL/MariaDB is absent. |
 | Archive-composition gate | **Implemented** | Rejects bundled Paper/Bukkit/PlaceholderAPI/live-database classes or files and remote-database drivers. |
 | Isolated scenario artifacts | **Implemented; final-candidate rerun pending** | The harness is an independent Paper plugin and the Java 25 Class-File API transformer writes a distinct `TEST-ONLY-` copy. Neither is packaged beneath `build/libs/` or allowed to replace the production JAR. Development-artifact isolation and controlled-profile gates passed. |
@@ -53,7 +53,7 @@ Build 005 includes the complete build-004 event-safety release and build-003 bas
 | Controlled Paper 26.2 profile | **Implemented; clean-candidate rerun pending** | The development-artifact two-start run passed restart-marker, PlaceholderAPI absent/present, config reload, terminal disable/service removal, fresh-JVM enable, deterministic marker, broad log, port-release, and SQLite quick-check assertions. The automated `config.after_runtime_commit` hard halt also exited 97 and recovered cleanly. Repeat both against the clean committed candidate; real-client and the remaining named hard-kill cases stay separate acceptance work. |
 | Listener annotation contracts | **Implemented** | Reflection tests lock gameplay/menu `EventHandler` priorities and `ignoreCancelled` values, including `HIGHEST` decisions and observation-only `MONITOR` callbacks. |
 | 1MB naming/build metadata | **Implemented; clean freeze pending** | The exact 1MB filename plus Git commit/dirty provenance are embedded in the resource and manifest. Final size/hash belong to the annotated candidate tag and operator release archive so recording them cannot change the embedded source commit. |
-| Dependency cleanup | **Implemented; final/provider matrix pending** | PlaceholderAPI 2.12.3 is the only Java integration. CMI, UltimateFireworks, and PyroWelcomesPro are soft startup-order hints for configured roots; CMILib, Vault, and PyroLib are not dependencies. The build-005 development-artifact profile passed with PlaceholderAPI absent and with the deployable 2.12.3 plugin present; repeat it against the clean candidate and still rehearse external reward content/providers separately. |
+| Dependency cleanup | **Implemented; final/provider matrix pending** | PlaceholderAPI 2.12.3 is the only Java integration. CMI, UltimateFireworks, and PyroWelcomesPro are soft startup-order hints for configured roots; CMILib, Vault, and PyroLib are not dependencies. The build-005 development-artifact profile passed with PlaceholderAPI absent and with the deployable 2.12.3 plugin present; repeat it against the clean build-006 candidate and still rehearse external reward content/providers separately. |
 
 ### Persistence, identity, seasons, and history
 
@@ -80,7 +80,9 @@ Build 005 includes the complete build-004 event-safety release and build-003 bas
 | Player-state restoration | **Implemented; hard-kill rehearsal pending** | A privacy-bounded atomic journal captures UUID/run/arena-owned return and state before mutation. Controlled exits and verified reconnects restore it; velocity and fall distance are normalized to zero, not captured/restored. |
 | World protection | **Implemented; abuse matrix pending** | Blocks common interaction, fluids, fire, explosion, piston, and entity mutation across protected bounds. |
 | Active-run isolation | **Implemented; abuse matrix pending** | Incoming/outgoing damage, movement advantages, item pickup/drop, inventory click/drag, hand swaps, held-slot changes, and entity interactions are denied during a run; unresolved reconnect evidence quarantines the affected player during verification. |
-| Persistent restoration journal | **Implemented; tile/PDC crash test pending** | Synchronous pre-mutation record, exact structure snapshot, hashes, atomic move, idempotent recovery. |
+| Persistent restoration journal | **Implemented; tile/PDC crash test pending** | Primary-thread exact structure capture, bounded FIFO off-thread hash/write/fsync/atomic move, primary-thread fingerprint revalidation/mutation, and idempotent recovery. |
+| Successor durability pipeline | **Implemented; latency/gameplay verification pending** | Durable preparation begins during traversal and the next platform is pre-placed when ready; an early landing waits/rechecks without async mutation. Predecessor world restoration stays primary-thread while journal deletion and exact lease release complete off-thread. |
+| Recovery ownership leases | **Implemented** | Arena ownership binds run UUID/session generation; block ownership additionally binds platform generation, preventing late callbacks from releasing newer work. |
 | Conflict quarantine | **Implemented** | Missing worlds and third-party block changes remain pending/quarantined instead of being overwritten. |
 | Journal hard limits | **Implemented** | 1,024 records, 16 MiB original snapshot, 24 MiB record, 256 MiB aggregate. |
 | Stale temporary handling | **Implemented** | Recognizable regular pre-commit temp files are removed; unknown/non-regular temp entries fail startup. |
@@ -93,7 +95,7 @@ Build 005 includes the complete build-004 event-safety release and build-003 bas
 | Capability | Status | Notes |
 | --- | --- | --- |
 | FIFO queue/readiness | **Implemented; multiplayer rehearsal pending** | Join/leave/status/ready, cooldown, expiry/reminders, action-bar state, pause with frozen positions/deadlines, resume, and drain. |
-| Guarded arena editor | **Implemented; rollback rehearsal pending** | Atomic candidate write, validation, backup, compare-before-write, conditional rollback. |
+| Guarded arena editor | **Implemented; rollback rehearsal pending** | Worker capture/persistence, primary-thread Paper validation, generation CAS, exact token-bound backup, final disk verification, pending-work idle gate, and shutdown reconciliation. |
 | Season administration | **Implemented** | Create/list/activate/close/reopen/archive with separate permission. |
 | Export administration | **Implemented** | Separate permission and audited successful export. |
 | Reward investigation | **Implemented; crash rehearsal pending** | Status list, redacted inspect, explicit UNKNOWN resolution, and inspected-PENDING reconciliation by confirmed abandon with audit. |
@@ -104,7 +106,7 @@ Build 005 includes the complete build-004 event-safety release and build-003 bas
 | Nested shape and reward-size validation | **Implemented** | Explicit v2 rejects unknown arena/exit/tier keys; legacy reports them; an inclusive overlap sweep rejects any score that could exceed 100 durable reward steps. |
 | Permission separation | **Implemented; role matrix pending** | Player leaves plus separate arena/queue/season/export/reward/run-investigation/recover/validate/debug/open/stop duties. |
 | Safe health/debug pages | **Implemented; log review pending** | Bounded database, queue, arena, season, restoration, reward, hook, and runtime summaries. |
-| Privacy-safe doctor report | **Implemented; server/privacy verification pending** | `/walk admin doctor` reports source provenance, target/runtime, hooks/command roots, queue/task and recovery/reward health, then schedules read-only SQLite `quick_check`, database/WAL sizes, backup count, and latency off the primary thread. Player/season names, coordinates, paths, raw reward commands, credentials, SQL, and exception details are excluded. |
+| Privacy-safe doctor report | **Implemented; server/privacy verification pending** | `/walk admin doctor` reports source provenance, target/runtime, hooks/command roots, queue/task, both I/O workers, and recovery/reward health, then schedules read-only SQLite `quick_check`, database/WAL sizes, backup count, and latency off the primary thread. Player/season names, coordinates, paths, raw reward commands, credentials, SQL, and exception details are excluded. |
 
 ### GUI, placeholders, API, and operations
 
@@ -115,7 +117,7 @@ Build 005 includes the complete build-004 event-safety release and build-003 bas
 | PlaceholderAPI expansion | **Implemented; server verification pending** | All-time, active season, top ten, capacity, queue, and active-run values; game state is served from immutable async-safe publications. |
 | Read-only Bukkit API | **Implemented** | Release, UUID player/all-time leaderboard, active run, capacity, active season, per-player queue, and bounded recent-run views on the primary thread. |
 | Lifecycle events | **Implemented** | Cancellable run start/reward-plan plus jump, run end, and personal-best events. |
-| Structured audit | **Implemented; log review pending** | Plugin/run/queue/reward/season/export events, arena edits, recovery retries, admin stop/open/reload/validate, result categories, player operator UUIDs, and explicit player/system actor categories are covered without raw commands or configuration. |
+| Structured audit | **Implemented; log review pending** | Immutable bounded records are written/rotated/fsynced on the independent operations worker. Plugin/run/queue/reward/season/export events, arena edits, recovery retries, admin stop/open/reload/validate, result categories, player operator UUIDs, and explicit player/system actor categories are covered without raw commands or configuration. |
 | Release health policy | **Partial** | Metrics and bounded shutdown exist; server-level alerting/runbook ownership remains operational work. |
 
 ## Known limitations and incomplete work
@@ -124,7 +126,7 @@ These are not hidden defects; they are explicit design or release boundaries tha
 
 ### P0 — finish before event approval
 
-1. **Qualify and commit the build-005 candidate.** Commit the reviewed source, create two byte-identical clean builds, rerun the controlled two-start and automated hard-kill profiles against that exact artifact, then record archive verification, final hash/size/test result, Paper 26.2 build-60 smoke, test-server sync, and plugin-log review. Development-artifact and build-003/build-004 evidence remains historical and cannot approve a different candidate.
+1. **Qualify and commit the build-006 candidate.** Commit the reviewed source, create two byte-identical clean builds, rerun the controlled two-start and automated hard-kill profiles against that exact artifact, then record archive verification, final hash/size/test result, Paper 26.2 build-60 smoke, test-server sync, and plugin-log review. Development-artifact and build-003/build-004/build-005 evidence remains historical and cannot approve a different candidate.
 2. **Repeat migration on a disposable copy of all 100 live rows.** Compare every UUID/score and top-ten position, verify both databases, and prove `_resources` stayed unchanged.
 3. **Complete the real-client abuse/recovery matrix.** The test-only plugin records deterministic evidence and its player-assisted stale command exercises the real scheduled callback/revalidation path without fabricating packets. A real player must still perform simultaneous queue/start actions, GUI click/drag/hotbar/double-click/creative cases, every cleanup cause, cancelled/retargeted teleports, reconnect recovery, world protection, signs, containers, tile PDC, conflicts, and missing-world recovery. Run named hard-kill/restart cases separately.
 4. **Rehearse reward uncertainty with staging accounts.** Test PENDING discovery/abandon and UNKNOWN downstream investigation/resolution. Assign a named operator and never interpret a resolution as a replay request.
@@ -239,7 +241,7 @@ Create a distinct category for time-target streaks; do not retrofit multipliers 
 
 **Implemented; final-candidate rerun and real-client completion pending.** The separate `WalkThePlank-ScenarioHarness` plugin and disposable Paper 26.2 runner cover two starts, restart evidence, PlaceholderAPI absent/present, `/walk admin reload`, terminal disable/service removal, fresh-JVM enable, API/lifecycle checks, deterministic scenario markers, and automated log assertions. The development-artifact two-start run passed all of those automated checks. It does not attempt an unsupported same-instance re-enable after Paper unregisters the disabled plugin's configured classloader. The harness also observes real-player queue contention, run exits, teleports, reconnects, and GUI gestures, but deliberately reports those as `PENDING` until an actual client performs them. It must operate only on generated/disposable data and never point at `_resources` directly.
 
-The harness is not production code. It fails closed without an explicit disposable-profile flag, nonce-bound marker, exact real working-directory/generated-layout/data-path contract, and the test bridge loaded from the instrumented target's classloader. The early startup failpoint bridge enforces the same root/nonce/marker checks before it can halt during target enable. The runner also rejects symlinked destructive roots. Its `TEST-ONLY-` artifacts live under `build/scenario-artifacts/`; the deployable JAR remains under `build/libs/`.
+The harness is not production code. It fails closed without an explicit disposable-profile flag, nonce-bound marker, exact real working-directory/generated-layout/data-path contract, and the test bridge loaded from the instrumented target's classloader. The property-armed failpoint bridge enforces the same root/nonce/marker checks before it can halt at a selected startup or runtime boundary. The runner also rejects symlinked destructive roots. Its `TEST-ONLY-` artifacts live under `build/scenario-artifacts/`; the deployable JAR remains under `build/libs/`.
 
 ### Fault injection
 

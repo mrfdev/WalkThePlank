@@ -48,7 +48,7 @@ Modes:
                                 then present, with restart, reload, and terminal-disable assertions.
   --player-assisted             Start an interactive real-client profile. No GUI,
                                 teleport, reconnect, or packet result is synthesized.
-  --failpoint NAME              Arm a named startup HALT failpoint and require exit 97,
+  --failpoint NAME              Arm a named HALT failpoint and require exit 97,
                                 then restart the same profile without the failpoint.
 
 Failpoint options:
@@ -74,10 +74,6 @@ Examples:
   scripts/run-controlled-scenarios.sh /path/to/Paper-26.2.jar
   scripts/run-controlled-scenarios.sh --player-assisted
   scripts/run-controlled-scenarios.sh --failpoint config.after_runtime_commit
-  scripts/run-controlled-scenarios.sh \
-    --failpoint config.after_runtime_commit \
-    --occurrence 2 \
-    --trigger-command "walk admin reload"
   scripts/run-controlled-scenarios.sh \
     --failpoint teleport.after_start \
     --wait-for-player
@@ -920,7 +916,7 @@ run_failpoint() {
             && "$failpoint_occurrence" == 1 \
             && -z "$trigger_command" \
             && "$wait_for_player" == false ]]; then
-        automatic_startup=true
+        trigger_command="walk admin reload"
     fi
     if [[ "$automatic_startup" == false \
             && -z "$trigger_command" \

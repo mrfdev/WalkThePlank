@@ -1,156 +1,171 @@
 package com.mrfdev.walktheplank.config;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
-/** Guarded arena-list editing with validation-before-write and atomic persistence. */
+/**
+ * Staged arena editing with main-thread validation and worker-only durable persistence.
+ *
+ * <p>Callers capture files on the operations worker, prepare an edit on the primary thread,
+ * commit it on the operations worker, then return to the primary thread to revalidate and publish.
+ * A failed publication can restore the exact backup on the same worker.</p>
+ */
 public final class ArenaConfigurationEditor {
     private final ConfigurationManager validator;
     private final AtomicConfigFile atomicFile;
-    private final Path configFile;
-    private AtomicConfigFile.CommitToken pendingRollback;
 
     public ArenaConfigurationEditor(JavaPlugin plugin, ConfigurationManager validator) {
         Objects.requireNonNull(plugin, "plugin");
         this.validator = Objects.requireNonNull(validator, "validator");
-        this.configFile = plugin.getDataFolder().toPath().resolve("config.yml");
+        Path configFile = plugin.getDataFolder().toPath().resolve("config.yml");
         this.atomicFile = new AtomicConfigFile(configFile);
     }
 
-    public synchronized List<ArenaSummary> arenas() throws IOException {
-        List<Map<String, Object>> entries = arenaEntries(load().configuration());
-        List<ArenaSummary> summaries = new ArrayList<>();
-        for (int index = 0; index < entries.size(); index++) {
-            Map<String, Object> entry = entries.get(index);
-            String id = String.valueOf(entry.getOrDefault("id", "arena-" + (index + 1)));
-            String world = String.valueOf(entry.getOrDefault("world", "unknown"));
-            String position = coordinate(entry.get("x")) + ","
-                    + coordinate(entry.get("y")) + ","
-                    + coordinate(entry.get("z"));
-            boolean customExit = Boolean.TRUE.equals(entry.get("useCustomEndPosition"));
-            summaries.add(new ArenaSummary(id, world, position, customExit));
-        }
-        return List.copyOf(summaries);
-    }
-
-    public synchronized boolean contains(String id) throws IOException {
-        return find(arenaEntries(load().configuration()), id) != null;
-    }
-
-    public synchronized EditResult create(String id, Location location) throws IOException {
+    public boolean contains(ConfigurationManager.ConfigurationFiles files, String id)
+            throws IOException {
         String safeId = ArenaId.requireValid(id);
-        EditableConfig loaded = load();
-        YamlConfiguration candidate = loaded.configuration();
-        List<Map<String, Object>> entries = arenaEntries(candidate);
-        if (find(entries, safeId) != null) {
-            throw new IllegalArgumentException("Arena '" + safeId + "' already exists");
-        }
-        Map<String, Object> arena = new LinkedHashMap<>();
-        arena.put("id", safeId);
-        arena.putAll(locationValues(location, true));
-        arena.put("useCustomEndPosition", false);
-        entries.add(arena);
-        return validateAndPersist(candidate, entries, loaded.sourceBytes());
+        return find(arenaEntries(validator.editableConfig(files)), safeId) != null;
     }
 
-    public synchronized EditResult setStart(String id, Location location) throws IOException {
+    public EditPreparation prepareCreate(
+            ConfigurationManager.ConfigurationFiles files,
+            long expectedGeneration,
+            String id,
+            LocationData location) throws IOException {
         String safeId = ArenaId.requireValid(id);
-        EditableConfig loaded = load();
-        YamlConfiguration candidate = loaded.configuration();
-        List<Map<String, Object>> entries = arenaEntries(candidate);
-        Map<String, Object> arena = requireArena(entries, safeId);
-        arena.put("id", safeId);
-        arena.putAll(locationValues(location, true));
-        return validateAndPersist(candidate, entries, loaded.sourceBytes());
+        LocationData checkedLocation = Objects.requireNonNull(location, "location");
+        return prepare(files, expectedGeneration, entries -> {
+            if (find(entries, safeId) != null) {
+                throw new IllegalArgumentException("Arena '" + safeId + "' already exists");
+            }
+            Map<String, Object> arena = new LinkedHashMap<>();
+            arena.put("id", safeId);
+            arena.putAll(locationValues(checkedLocation, true));
+            arena.put("useCustomEndPosition", false);
+            entries.add(arena);
+        });
     }
 
-    public synchronized EditResult setExit(String id, Location location) throws IOException {
+    public EditPreparation prepareSetStart(
+            ConfigurationManager.ConfigurationFiles files,
+            long expectedGeneration,
+            String id,
+            LocationData location) throws IOException {
         String safeId = ArenaId.requireValid(id);
-        EditableConfig loaded = load();
-        YamlConfiguration candidate = loaded.configuration();
-        List<Map<String, Object>> entries = arenaEntries(candidate);
-        Map<String, Object> arena = requireArena(entries, safeId);
-        arena.put("id", safeId);
-        arena.put("useCustomEndPosition", true);
-        arena.put("endPos", locationValues(location, false));
-        return validateAndPersist(candidate, entries, loaded.sourceBytes());
+        LocationData checkedLocation = Objects.requireNonNull(location, "location");
+        return prepare(files, expectedGeneration, entries -> {
+            Map<String, Object> arena = requireArena(entries, safeId);
+            arena.put("id", safeId);
+            arena.putAll(locationValues(checkedLocation, true));
+        });
     }
 
-    public synchronized EditResult clearExit(String id) throws IOException {
+    public EditPreparation prepareSetExit(
+            ConfigurationManager.ConfigurationFiles files,
+            long expectedGeneration,
+            String id,
+            LocationData location) throws IOException {
         String safeId = ArenaId.requireValid(id);
-        EditableConfig loaded = load();
-        YamlConfiguration candidate = loaded.configuration();
-        List<Map<String, Object>> entries = arenaEntries(candidate);
-        Map<String, Object> arena = requireArena(entries, safeId);
-        arena.put("id", safeId);
-        arena.put("useCustomEndPosition", false);
-        arena.remove("endPos");
-        return validateAndPersist(candidate, entries, loaded.sourceBytes());
+        LocationData checkedLocation = Objects.requireNonNull(location, "location");
+        return prepare(files, expectedGeneration, entries -> {
+            Map<String, Object> arena = requireArena(entries, safeId);
+            arena.put("id", safeId);
+            arena.put("useCustomEndPosition", true);
+            arena.put("endPos", locationValues(checkedLocation, false));
+        });
     }
 
-    public synchronized EditResult remove(String id) throws IOException {
+    public EditPreparation prepareClearExit(
+            ConfigurationManager.ConfigurationFiles files,
+            long expectedGeneration,
+            String id) throws IOException {
         String safeId = ArenaId.requireValid(id);
-        EditableConfig loaded = load();
-        YamlConfiguration candidate = loaded.configuration();
-        List<Map<String, Object>> entries = arenaEntries(candidate);
-        Map<String, Object> arena = requireArena(entries, safeId);
-        entries.remove(arena);
-        return validateAndPersist(candidate, entries, loaded.sourceBytes());
+        return prepare(files, expectedGeneration, entries -> {
+            Map<String, Object> arena = requireArena(entries, safeId);
+            arena.put("id", safeId);
+            arena.put("useCustomEndPosition", false);
+            arena.remove("endPos");
+        });
     }
 
-    public synchronized void restoreBackup() throws IOException {
-        AtomicConfigFile.CommitToken commitToken = pendingRollback;
-        pendingRollback = null;
-        if (commitToken == null) {
-            throw new IOException("No arena-editor commit is available for rollback");
-        }
-        atomicFile.restoreBackup(commitToken);
+    public EditPreparation prepareRemove(
+            ConfigurationManager.ConfigurationFiles files,
+            long expectedGeneration,
+            String id) throws IOException {
+        String safeId = ArenaId.requireValid(id);
+        return prepare(files, expectedGeneration, entries -> entries.remove(requireArena(entries, safeId)));
     }
 
-    private EditResult validateAndPersist(
-            YamlConfiguration candidate,
-            List<Map<String, Object>> entries,
-            byte[] sourceBytes) throws IOException {
-        pendingRollback = null;
-        candidate.set("startPositions", entries);
-        ConfigurationValidationReport validation = validator.validateCandidate(candidate);
-        if (!validation.valid()) {
-            return new EditResult(false, validation);
-        }
-        pendingRollback = atomicFile.replaceWithBackup(sourceBytes, candidate.saveToString());
-        return new EditResult(true, validation);
-    }
-
-    private EditableConfig load() throws IOException {
-        Path parent = Objects.requireNonNull(configFile.getParent(), "config parent");
-        if (Files.isSymbolicLink(parent)
-                || !Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS)
-                || Files.isSymbolicLink(configFile)
-                || !Files.isRegularFile(configFile, LinkOption.NOFOLLOW_LINKS)) {
-            throw new IOException("config.yml is not a safe regular file");
-        }
-        byte[] sourceBytes = Files.readAllBytes(configFile);
-        YamlConfiguration loaded = new YamlConfiguration();
-        loaded.options().parseComments(true);
+    /** Worker-only CAS persistence. */
+    public synchronized CommittedEdit commit(PreparedEdit prepared) throws IOException {
+        PreparedEdit checked = Objects.requireNonNull(prepared, "prepared");
+        validator.requireFilesUnchanged(checked.source());
+        validator.requireDatabaseStorageSafe(checked.snapshot().databaseSettings());
+        AtomicConfigFile.CommitToken token = atomicFile.replaceWithBackup(
+                checked.source().configBytes(), checked.contents());
         try {
-            loaded.loadFromString(new String(sourceBytes, StandardCharsets.UTF_8));
-        } catch (InvalidConfigurationException exception) {
-            throw new IOException("config.yml is not valid YAML");
+            validator.requireTranslationsUnchanged(checked.source());
+        } catch (IOException failure) {
+            try {
+                atomicFile.restoreBackup(token);
+            } catch (IOException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+            throw failure;
         }
-        return new EditableConfig(loaded, sourceBytes);
+        return new CommittedEdit(checked, token);
+    }
+
+    /** Worker-only rollback, refused if the committed file was externally changed. */
+    public synchronized void rollback(CommittedEdit committed) throws IOException {
+        CommittedEdit checked = Objects.requireNonNull(committed, "committed");
+        atomicFile.restoreBackup(checked.commitToken);
+    }
+
+    /** Worker-only final CAS check before or immediately after runtime publication. */
+    public synchronized void requireCommittedUnchanged(CommittedEdit committed)
+            throws IOException {
+        CommittedEdit checked = Objects.requireNonNull(committed, "committed");
+        atomicFile.requireCommittedUnchanged(checked.commitToken);
+        validator.requireTranslationsUnchanged(checked.prepared().source());
+    }
+
+    private EditPreparation prepare(
+            ConfigurationManager.ConfigurationFiles files,
+            long expectedGeneration,
+            ArenaMutation mutation) throws IOException {
+        ConfigurationManager.ConfigurationFiles checked =
+                Objects.requireNonNull(files, "files");
+        if (expectedGeneration < 0L) {
+            throw new IllegalArgumentException("expectedGeneration cannot be negative");
+        }
+        YamlConfiguration candidate = validator.editableConfig(checked);
+        List<Map<String, Object>> entries = arenaEntries(candidate);
+        mutation.apply(entries);
+        candidate.set("startPositions", entries);
+        ConfigurationValidationReport validation = validator.validateCandidate(candidate, checked);
+        if (!validation.valid()) {
+            return new EditPreparation(validation, Optional.empty());
+        }
+        ConfigurationManager.ConfigurationSnapshot snapshot =
+                validator.prepareCandidate(candidate, checked);
+        PreparedEdit prepared = new PreparedEdit(
+                checked,
+                candidate.saveToString(),
+                snapshot,
+                validation,
+                expectedGeneration);
+        return new EditPreparation(validation, Optional.of(prepared));
     }
 
     private static List<Map<String, Object>> arenaEntries(YamlConfiguration source) {
@@ -213,46 +228,108 @@ public final class ArenaConfigurationEditor {
         return null;
     }
 
-    private static Map<String, Object> locationValues(Location location, boolean blockAligned) {
-        Objects.requireNonNull(location, "location");
-        World world = Objects.requireNonNull(location.getWorld(), "location world");
+    private static Map<String, Object> locationValues(
+            LocationData location,
+            boolean blockAligned) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("x", blockAligned ? location.getBlockX() : location.getX());
-        values.put("y", blockAligned ? location.getBlockY() : location.getY());
-        values.put("z", blockAligned ? location.getBlockZ() : location.getZ());
-        values.put("pitch", location.getPitch());
-        values.put("yaw", location.getYaw());
-        values.put("world", world.getName());
+        values.put("x", blockAligned ? location.blockX() : location.x());
+        values.put("y", blockAligned ? location.blockY() : location.y());
+        values.put("z", blockAligned ? location.blockZ() : location.z());
+        values.put("pitch", location.pitch());
+        values.put("yaw", location.yaw());
+        values.put("world", location.world());
         return values;
     }
 
-    private static String coordinate(Object value) {
-        return value instanceof Number number ? Double.toString(number.doubleValue()) : "?";
+    @FunctionalInterface
+    private interface ArenaMutation {
+        void apply(List<Map<String, Object>> entries);
     }
 
-    public record EditResult(boolean persisted, ConfigurationValidationReport validation) {
-        public EditResult {
+    public record EditPreparation(
+            ConfigurationValidationReport validation,
+            Optional<PreparedEdit> prepared) {
+        public EditPreparation {
             Objects.requireNonNull(validation, "validation");
+            prepared = Objects.requireNonNull(prepared, "prepared");
+            if (validation.valid() != prepared.isPresent()) {
+                throw new IllegalArgumentException(
+                        "A valid edit must have exactly one prepared candidate");
+            }
         }
     }
 
-    public record ArenaSummary(String id, String world, String position, boolean customExit) {
-        public ArenaSummary {
-            Objects.requireNonNull(id, "id");
-            Objects.requireNonNull(world, "world");
-            Objects.requireNonNull(position, "position");
+    public record PreparedEdit(
+            ConfigurationManager.ConfigurationFiles source,
+            String contents,
+            ConfigurationManager.ConfigurationSnapshot snapshot,
+            ConfigurationValidationReport validation,
+            long expectedGeneration) {
+        public PreparedEdit {
+            Objects.requireNonNull(source, "source");
+            Objects.requireNonNull(contents, "contents");
+            Objects.requireNonNull(snapshot, "snapshot");
+            Objects.requireNonNull(validation, "validation");
+            if (!validation.valid()) {
+                throw new IllegalArgumentException("Prepared edit must be valid");
+            }
+            if (expectedGeneration < 0L) {
+                throw new IllegalArgumentException("expectedGeneration cannot be negative");
+            }
         }
     }
 
-    private record EditableConfig(YamlConfiguration configuration, byte[] sourceBytes) {
-        private EditableConfig {
-            Objects.requireNonNull(configuration, "configuration");
-            sourceBytes = Objects.requireNonNull(sourceBytes, "sourceBytes").clone();
+    public static final class CommittedEdit {
+        private final PreparedEdit prepared;
+        private final AtomicConfigFile.CommitToken commitToken;
+
+        private CommittedEdit(
+                PreparedEdit prepared,
+                AtomicConfigFile.CommitToken commitToken) {
+            this.prepared = Objects.requireNonNull(prepared, "prepared");
+            this.commitToken = Objects.requireNonNull(commitToken, "commitToken");
         }
 
-        @Override
-        public byte[] sourceBytes() {
-            return sourceBytes.clone();
+        public PreparedEdit prepared() {
+            return prepared;
+        }
+    }
+
+    /** Immutable scalar location captured from a Player on the primary thread. */
+    public record LocationData(
+            String world,
+            double x,
+            double y,
+            double z,
+            int blockX,
+            int blockY,
+            int blockZ,
+            float yaw,
+            float pitch) {
+        public LocationData {
+            world = Objects.requireNonNull(world, "world");
+            if (world.isBlank()) {
+                throw new IllegalArgumentException("world cannot be blank");
+            }
+            if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
+                    || !Float.isFinite(yaw) || !Float.isFinite(pitch)) {
+                throw new IllegalArgumentException("location values must be finite");
+            }
+        }
+
+        public static LocationData capture(Location location) {
+            Location checked = Objects.requireNonNull(location, "location");
+            World world = Objects.requireNonNull(checked.getWorld(), "location world");
+            return new LocationData(
+                    world.getName(),
+                    checked.getX(),
+                    checked.getY(),
+                    checked.getZ(),
+                    checked.getBlockX(),
+                    checked.getBlockY(),
+                    checked.getBlockZ(),
+                    checked.getYaw(),
+                    checked.getPitch());
         }
     }
 }

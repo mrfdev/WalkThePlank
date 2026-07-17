@@ -44,6 +44,22 @@ final class AtomicConfigFileTest {
     }
 
     @Test
+    void rollbackUsesTokenBoundBytesEvenIfSharedBackupIsTampered(
+            @TempDir Path directory) throws Exception {
+        Path config = directory.resolve("config.yml");
+        Path backup = directory.resolve("config.yml.backup");
+        Files.writeString(config, "version: exact-original\n", StandardCharsets.UTF_8);
+        AtomicConfigFile file = new AtomicConfigFile(config);
+        AtomicConfigFile.CommitToken commit =
+                file.replaceWithBackup(Files.readAllBytes(config), "version: candidate\n");
+        Files.writeString(backup, "version: attacker-controlled\n", StandardCharsets.UTF_8);
+
+        file.restoreBackup(commit);
+
+        assertEquals("version: exact-original\n", Files.readString(config, StandardCharsets.UTF_8));
+    }
+
+    @Test
     void refusesToOverwriteAConfigurationChangedSinceLoad(@TempDir Path directory) throws Exception {
         Path config = directory.resolve("config.yml");
         Files.writeString(config, "version: original\n", StandardCharsets.UTF_8);
@@ -56,5 +72,21 @@ final class AtomicConfigFileTest {
                 () -> file.replaceWithBackup(loaded, "version: candidate\n"));
 
         assertEquals("version: manually-edited\n", Files.readString(config, StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void onlyTheFirstCompetingCandidateCanCommitTheSameCapturedBytes(
+            @TempDir Path directory) throws Exception {
+        Path config = directory.resolve("config.yml");
+        Files.writeString(config, "version: original\n", StandardCharsets.UTF_8);
+        byte[] sharedCapture = Files.readAllBytes(config);
+        AtomicConfigFile file = new AtomicConfigFile(config);
+
+        file.replaceWithBackup(sharedCapture, "version: first\n");
+
+        assertThrows(
+                java.io.IOException.class,
+                () -> file.replaceWithBackup(sharedCapture, "version: stale-second\n"));
+        assertEquals("version: first\n", Files.readString(config, StandardCharsets.UTF_8));
     }
 }

@@ -2,6 +2,7 @@ package com.mrfdev.walktheplank.recovery;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -12,6 +13,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -62,6 +66,31 @@ class PlayerRecoveryJournalTest {
         assertEquals(0, journal.pendingCount());
         assertFalse(journal.requiresRecovery(PLAYER_ID));
         assertEquals(0, PlayerRecoveryJournal.open(dataDirectory()).pendingCount());
+    }
+
+    @Test
+    void reportsPublishedRecordWhenPostRenameDirectoryFsyncFails() throws Exception {
+        IOException fsyncFailure = new IOException("simulated directory fsync failure");
+        PlayerRecoveryJournal journal = PlayerRecoveryJournal.open(
+                dataDirectory(),
+                ignored -> {
+                    throw fsyncFailure;
+                });
+        PlayerRecoveryRecord record = record(PLAYER_ID, RUN_ID);
+
+        PlayerRecoveryJournalCommitUncertainException failure = assertThrows(
+                PlayerRecoveryJournalCommitUncertainException.class,
+                () -> journal.append(record));
+
+        assertSame(fsyncFailure, failure.getCause());
+        assertSame(record, failure.record());
+        assertSame(record, journal.pending(PLAYER_ID).orElseThrow());
+        assertTrue(journal.requiresRecovery(PLAYER_ID));
+        assertFalse(journal.health().writesAvailable());
+        assertTrue(Files.isRegularFile(recordFile(PLAYER_ID)));
+
+        PlayerRecoveryJournal reopened = PlayerRecoveryJournal.open(dataDirectory());
+        assertEquals(record, reopened.pending(PLAYER_ID).orElseThrow());
     }
 
     @Test
@@ -182,6 +211,31 @@ class PlayerRecoveryJournalTest {
                 false, true, true));
     }
 
+    @Test
+    void runtimeQueriesDoNotWaitForTheDiskMutationMonitor() throws Exception {
+        PlayerRecoveryJournal journal = journal();
+        PlayerRecoveryRecord record = record(PLAYER_ID, RUN_ID);
+        journal.append(record);
+
+        assertReadsDoNotWaitForMutationMonitor(journal, () -> {
+            assertEquals(record, journal.pending(PLAYER_ID).orElseThrow());
+            assertTrue(journal.requiresRecovery(PLAYER_ID));
+            assertFalse(journal.requiresRecovery(SECOND_PLAYER_ID));
+            assertEquals(java.util.List.of(record), journal.pendingRecords());
+            assertEquals(1, journal.pendingCount());
+            assertFalse(journal.canSafelyRecord(PLAYER_ID));
+            assertTrue(journal.canSafelyRecord(SECOND_PLAYER_ID));
+            assertEquals(new PlayerRecoveryJournal.Health(
+                    true, 1, 0, true, java.util.Optional.empty()), journal.health());
+        });
+
+        journal.complete(PLAYER_ID, RUN_ID, "main");
+        assertTrue(journal.pending(PLAYER_ID).isEmpty());
+        assertEquals(java.util.List.of(), journal.pendingRecords());
+        assertEquals(0, journal.pendingCount());
+        assertTrue(journal.canSafelyRecord(PLAYER_ID));
+    }
+
     private PlayerRecoveryJournal journal() throws IOException {
         return PlayerRecoveryJournal.open(dataDirectory());
     }
@@ -221,6 +275,55 @@ class PlayerRecoveryJournalTest {
                 returnX, record.returnY(), record.returnZ(), record.returnYaw(), record.returnPitch(),
                 record.health(), record.foodLevel(), record.saturation(), record.exhaustion(), record.walkSpeed(),
                 record.allowFlight(), record.flying(), record.collidable());
+    }
+
+    private static void assertReadsDoNotWaitForMutationMonitor(
+            Object monitor,
+            CheckedRead reads) throws Exception {
+        CountDownLatch monitorHeld = new CountDownLatch(1);
+        CountDownLatch releaseMonitor = new CountDownLatch(1);
+        Thread holder = Thread.ofPlatform()
+                .name("player-recovery-journal-monitor-holder")
+                .daemon(true)
+                .start(() -> {
+                    synchronized (monitor) {
+                        monitorHeld.countDown();
+                        awaitUnchecked(releaseMonitor);
+                    }
+                });
+        assertTrue(monitorHeld.await(2, TimeUnit.SECONDS));
+
+        FutureTask<Void> query = new FutureTask<>(() -> {
+            reads.run();
+            return null;
+        });
+        Thread reader = Thread.ofPlatform()
+                .name("player-recovery-journal-snapshot-reader")
+                .daemon(true)
+                .start(query);
+        try {
+            query.get(2, TimeUnit.SECONDS);
+        } finally {
+            releaseMonitor.countDown();
+            holder.join(2_000L);
+            reader.join(2_000L);
+        }
+        assertFalse(holder.isAlive());
+        assertFalse(reader.isAlive());
+    }
+
+    private static void awaitUnchecked(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Interrupted while holding the mutation monitor", exception);
+        }
+    }
+
+    @FunctionalInterface
+    private interface CheckedRead {
+        void run() throws Exception;
     }
 
     private static Properties load(Path path) throws IOException {

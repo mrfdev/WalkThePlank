@@ -2,6 +2,47 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.2.0-006] — 2026-07-17
+
+Expected artifact: `1MB-WalkThePlank-v2.2.0-006-j25-26.2.jar`
+
+### Runtime durability
+
+- Added a bounded, plugin-owned, single-writer recovery executor. Restoration and player-recovery records now receive only immutable scalar values and cloned bytes; hashing, write, file fsync, atomic rename, directory fsync, and durable deletion run off the primary server thread.
+- Added cancellation-safe one-shot preparation tickets. Pre-publication cancellation settles cleanly; cancellation racing a published append uses exact retryable deletion. Post-rename directory-fsync uncertainty and failed discard retain the published ownership record instead of claiming clean absence. A saturated/closing queue rejects without caller-thread fallback.
+- Published immutable lock-free restoration and player-recovery journal views. Main-thread ownership, protection, doctor, placeholder, and health reads no longer wait behind the journal monitor while its writer is inside filesystem durability work.
+- Added exclusive lifetime locks for the recovery and operations writers. Recovery ownership is acquired before journal open, temporary-file cleanup, or record loading; both locks remain held through a timed-out close and release automatically only when the corresponding writer actually terminates.
+- Added exact arena leases `(run UUID, session generation)` and block leases `(run UUID, session generation, platform generation)`. Late completions cannot release or mutate a newer run's arena or coordinate.
+- Administrative recovery now excludes the authoritative set of all arena-lease owners, including pending starts, active sessions, and quarantined cleanup; it cannot delete a pending-start write-ahead record before activation.
+- Added primary-thread commit gates that revalidate the live session, player, permission, arena lease, block lease, exact original block state, and one-block structure fingerprint after durability succeeds and immediately before world mutation.
+
+### Course pipeline and lifecycle
+
+- Durable preparation for the next successor begins while the player traverses the current jump, and it is pre-placed when ready. Landing promotes only that exact successor—or rechecks after its completion if still pending—then captures the following candidate, restores/verifies the predecessor on the primary thread, and releases its lease only after off-thread journal deletion and directory sync complete successfully.
+- Start activation now waits for player recovery plus base/target durability, then revalidates the unchanged captured player state and exact run ownership before preparation, teleport, or world mutation.
+- Failed or cancelled start preparation retains the same-player admission gate plus exact arena/block leases until every published player/base/target record is durably discarded. Cleanup rejection or uncertainty is retried without allowing a stale callback to release newer ownership.
+- Controlled session end, failed start, player recovery, administrative recovery, reload, and shutdown now use completion-driven recovery handoffs. Reload uses a worker barrier and returns to the primary thread; shutdown drains the writer before its final main-thread lease/quarantine gate and never waits for a worker callback that needs the server scheduler.
+- Player-recovery deletion remains arena-quarantined until its exact durable completion returns. Successor and cleanup failures fail closed and preserve journal/lease evidence for retry or restart.
+
+### Operations and configuration I/O
+
+- Added an independent bounded `walktheplank-operations-writer` for audit, export, and configuration work, preventing log rotation or configuration commits from delaying recovery journals.
+- Audit callers now prepare immutable bounded records; JSONL append, fsync, rotation, pruning, and directory sync occur off-thread with no `CallerRunsPolicy` fallback.
+- Configuration reload and arena editing now use worker file capture, primary-thread Paper validation, worker compare-and-swap persistence, generation-CAS publication, and final disk verification.
+- Arena edits require an empty queue and no active, pending, quarantined, or recovery-owned work. Rollback tokens retain the exact original bytes rather than trusting a mutable shared backup file, and disable reconciles any durably committed edit that did not reach final verified activation.
+- `/walk admin doctor` now reports privacy-safe recovery/operations queue capacity, activity, acceptance, completion, failure, rejection, and lifecycle state plus pending player-recovery completions.
+
+### Verification
+
+- Added deterministic tests for FIFO execution, bounded saturation, caller-thread rejection, cancellation and directory-fsync races, retryable exact discard, defensive byte capture, lock-before-journal-open ordering, delayed-termination ownership release, exact lease generations, stale commit rejection, lock-free reads during journal mutation, worker independence, shutdown/close behavior, configuration generation races, and token-bound rollback.
+- Updated test-only failpoint instrumentation for the new start-activation, block-restoration, and configuration-CAS boundaries. Production scenario isolation and independent instrumented-JAR reproducibility remain enforced.
+
+### Operational notes and known limitations
+
+- Build 006 requires a fresh clean-candidate run of the two-start Paper 26.2 profile, runtime-commit hard-kill recovery, startup/shutdown log assertions, test-server sync, and the real-player matrix. Build-005 results are historical and do not approve this artifact.
+- Paper world, player, inventory, teleport, structure, and block access deliberately remains on the primary thread. Startup recovery still completes before normal arena admission; it is not part of the per-jump runtime pipeline.
+- A bounded queue or durability failure ends/refuses the affected run, preserves any record that was published or whose post-rename commit is uncertain, and never infers evidence where a pre-publication write cleanly failed. Operators must investigate the doctor/log result and use the documented recovery workflow; the plugin never trades crash safety for a caller-thread write.
+
 ## [2.1.2-005] — 2026-07-17
 
 Expected artifact: `1MB-WalkThePlank-v2.1.2-005-j25-26.2.jar`

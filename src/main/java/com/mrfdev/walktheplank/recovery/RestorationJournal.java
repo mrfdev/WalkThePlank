@@ -67,20 +67,25 @@ public final class RestorationJournal {
     private final String releaseIdentity;
     private final Supplier<UUID> idSupplier;
     private final LongSupplier clock;
+    private final DirectoryForcer directoryForcer;
     private final Map<UUID, RestorationRecord> pending = new LinkedHashMap<>();
+    private final Map<UUID, Long> pendingFileSizes = new LinkedHashMap<>();
     private long pendingFileBytes;
 
+    private volatile PublishedState publishedState = PublishedState.empty();
     private volatile RestorationFailure lastFailure;
 
     private RestorationJournal(
             Path directory,
             String releaseIdentity,
             Supplier<UUID> idSupplier,
-            LongSupplier clock) {
+            LongSupplier clock,
+            DirectoryForcer directoryForcer) {
         this.directory = directory;
         this.releaseIdentity = releaseIdentity;
         this.idSupplier = idSupplier;
         this.clock = clock;
+        this.directoryForcer = directoryForcer;
     }
 
     public static RestorationJournal open(Path pluginDataDirectory, String releaseIdentity) throws IOException {
@@ -92,10 +97,25 @@ public final class RestorationJournal {
             String releaseIdentity,
             Supplier<UUID> idSupplier,
             LongSupplier clock) throws IOException {
+        return open(
+                pluginDataDirectory,
+                releaseIdentity,
+                idSupplier,
+                clock,
+                RestorationJournal::forceDirectoryPath);
+    }
+
+    static RestorationJournal open(
+            Path pluginDataDirectory,
+            String releaseIdentity,
+            Supplier<UUID> idSupplier,
+            LongSupplier clock,
+            DirectoryForcer directoryForcer) throws IOException {
         Objects.requireNonNull(pluginDataDirectory, "pluginDataDirectory");
         Objects.requireNonNull(releaseIdentity, "releaseIdentity");
         Objects.requireNonNull(idSupplier, "idSupplier");
         Objects.requireNonNull(clock, "clock");
+        Objects.requireNonNull(directoryForcer, "directoryForcer");
         String normalizedRelease = releaseIdentity.strip();
         if (normalizedRelease.isEmpty()) {
             throw new IllegalArgumentException("releaseIdentity must not be blank");
@@ -115,9 +135,11 @@ public final class RestorationJournal {
                 journalDirectory,
                 normalizedRelease,
                 idSupplier,
-                clock);
+                clock,
+                directoryForcer);
         journal.cleanupStaleTemporaryFiles();
         journal.loadPendingRecords();
+        journal.publishState();
         return journal;
     }
 
@@ -183,8 +205,14 @@ public final class RestorationJournal {
             }
             moved = true;
             pending.put(journalId, record);
+            pendingFileSizes.put(journalId, recordBytes);
             pendingFileBytes += recordBytes;
-            forceDirectory();
+            publishState();
+            try {
+                forceDirectory();
+            } catch (IOException failure) {
+                throw new RestorationJournalCommitUncertainException(record, failure);
+            }
             return record;
         } finally {
             if (!moved) {
@@ -211,33 +239,39 @@ public final class RestorationJournal {
         Files.deleteIfExists(recordFile);
         forceDirectory();
         pending.remove(journalId);
-        pendingFileBytes = Math.max(0L, pendingFileBytes - removedBytes);
+        Long accountedBytes = pendingFileSizes.remove(journalId);
+        pendingFileBytes = Math.max(
+                0L,
+                pendingFileBytes - (accountedBytes == null ? removedBytes : accountedBytes));
+        publishState();
     }
 
-    public synchronized List<RestorationRecord> pendingRecords() {
-        return pending.values().stream()
-                .sorted(Comparator.comparingLong(RestorationRecord::createdAtEpochMillis)
-                        .thenComparing(record -> record.journalId().toString()))
-                .toList();
+    public List<RestorationRecord> pendingRecords() {
+        return publishedState.records();
     }
 
-    public synchronized int pendingCount() {
-        return pending.size();
+    public int pendingCount() {
+        return publishedState.recordsById().size();
     }
 
-    public synchronized boolean isPending(UUID journalId) {
+    synchronized long pendingFileBytes() {
+        return pendingFileBytes;
+    }
+
+    public boolean isPending(UUID journalId) {
         Objects.requireNonNull(journalId, "journalId");
-        return pending.containsKey(journalId);
+        return publishedState.recordsById().containsKey(journalId);
     }
 
-    public synchronized boolean hasPendingSession(UUID sessionId) {
+    public boolean hasPendingSession(UUID sessionId) {
         Objects.requireNonNull(sessionId, "sessionId");
-        return pending.values().stream().anyMatch(record -> record.sessionId().equals(sessionId));
+        return publishedState.records().stream()
+                .anyMatch(record -> record.sessionId().equals(sessionId));
     }
 
-    public synchronized Set<String> pendingArenaIds(Set<UUID> excludedSessionIds) {
+    public Set<String> pendingArenaIds(Set<UUID> excludedSessionIds) {
         Objects.requireNonNull(excludedSessionIds, "excludedSessionIds");
-        return pending.values().stream()
+        return publishedState.records().stream()
                 .filter(record -> !excludedSessionIds.contains(record.sessionId()))
                 .map(RestorationRecord::arenaId)
                 .collect(Collectors.toUnmodifiableSet());
@@ -259,6 +293,20 @@ public final class RestorationJournal {
 
     Path directory() {
         return directory;
+    }
+
+    /**
+     * Publishes a lock-free immutable view after the in-memory fail-closed state changes.
+     *
+     * <p>Mutation callers hold this journal's monitor. Runtime readers intentionally never acquire
+     * that monitor because it also serializes write, fsync, rename, and delete operations.</p>
+     */
+    private void publishState() {
+        List<RestorationRecord> records = pending.values().stream()
+                .sorted(Comparator.comparingLong(RestorationRecord::createdAtEpochMillis)
+                        .thenComparing(record -> record.journalId().toString()))
+                .toList();
+        publishedState = new PublishedState(Map.copyOf(pending), records);
     }
 
     private void loadPendingRecords() throws IOException {
@@ -295,6 +343,7 @@ public final class RestorationJournal {
             if (pending.putIfAbsent(record.journalId(), record) != null) {
                 throw new IOException("Duplicate restoration journal ID " + record.journalId());
             }
+            pendingFileSizes.put(record.journalId(), attributes.size());
             pendingFileBytes += attributes.size();
             for (RestorationRecord existing : pending.values()) {
                 if (existing != record && record.isSameBlock(existing)) {
@@ -465,10 +514,10 @@ public final class RestorationJournal {
     }
 
     private void forceDirectory() throws IOException {
-        forceDirectory(directory);
+        directoryForcer.force(directory);
     }
 
-    private static void forceDirectory(Path path) throws IOException {
+    private static void forceDirectoryPath(Path path) throws IOException {
         try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
             channel.force(true);
         }
@@ -488,7 +537,7 @@ public final class RestorationJournal {
         Files.createDirectory(directory);
         Path parent = directory.getParent();
         if (parent != null) {
-            forceDirectory(parent);
+            forceDirectoryPath(parent);
         }
         BasicFileAttributes attributes = Files.readAttributes(
                 directory,
@@ -511,5 +560,23 @@ public final class RestorationJournal {
                 throw new IOException("Refusing restoration journal path containing symbolic link: " + current);
             }
         }
+    }
+
+    private record PublishedState(
+            Map<UUID, RestorationRecord> recordsById,
+            List<RestorationRecord> records) {
+        private PublishedState {
+            recordsById = Map.copyOf(Objects.requireNonNull(recordsById, "recordsById"));
+            records = List.copyOf(Objects.requireNonNull(records, "records"));
+        }
+
+        private static PublishedState empty() {
+            return new PublishedState(Map.of(), List.of());
+        }
+    }
+
+    @FunctionalInterface
+    interface DirectoryForcer {
+        void force(Path directory) throws IOException;
     }
 }

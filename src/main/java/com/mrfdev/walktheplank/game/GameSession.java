@@ -1,17 +1,18 @@
 package com.mrfdev.walktheplank.game;
 
 import com.mrfdev.walktheplank.config.RuntimeSettings;
+import com.mrfdev.walktheplank.recovery.RecoveryDurabilityService;
 import com.mrfdev.walktheplank.recovery.RestorationCoordinator;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.SplittableRandom;
 import java.util.UUID;
-import java.util.function.Consumer;
-import java.util.function.Predicate;
+import java.util.concurrent.CompletableFuture;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -28,44 +29,53 @@ final class GameSession {
     private final JumpPlanner jumpPlanner;
     private final UUID runId;
     private final Instant startedAt;
+    private final ArenaLeaseRegistry.ArenaLease arenaLease;
     private final SplittableRandom random = new SplittableRandom();
-    private final Predicate<BlockKey> blockAvailable;
-    private final Consumer<BlockKey> protectBlock;
-    private final Consumer<BlockKey> unprotectBlock;
-    private final Deque<PlacedBlock> placedBlocks = new ArrayDeque<>(2);
+    private final BlockLeaseRegistry blockLeases;
+    private final Deque<PlacedBlock> placedBlocks = new ArrayDeque<>(3);
 
     private GridPoint currentPoint;
     private PlacedBlock targetBlock;
+    private PlacedBlock successorBlock;
+    private StartPreparation startPreparation;
+    private PreparedBlock incompleteStartPreparation;
+    private PreparedBlock preparedSuccessor;
     private int score;
     private boolean ended;
     private long startedAtNanos;
     private long lastProgressAtNanos;
+    private long nextPlatformGeneration = 1L;
 
     GameSession(
             Player player,
             Arena arena,
             UUID runId,
             Instant startedAt,
+            ArenaLeaseRegistry.ArenaLease arenaLease,
             RuntimeSettings settings,
-            Predicate<BlockKey> blockAvailable,
-            Consumer<BlockKey> protectBlock,
-            Consumer<BlockKey> unprotectBlock,
+            BlockLeaseRegistry blockLeases,
             RestorationCoordinator restoration) {
         this.player = Objects.requireNonNull(player, "player");
         this.arena = Objects.requireNonNull(arena, "arena");
         this.runId = Objects.requireNonNull(runId, "runId");
         this.startedAt = Objects.requireNonNull(startedAt, "startedAt");
+        this.arenaLease = Objects.requireNonNull(arenaLease, "arenaLease");
+        if (!arenaLease.runId().equals(runId)) {
+            throw new IllegalArgumentException("Arena lease run does not match session run");
+        }
         this.settings = Objects.requireNonNull(settings, "settings");
-        this.blockAvailable = Objects.requireNonNull(blockAvailable, "blockAvailable");
-        this.protectBlock = Objects.requireNonNull(protectBlock, "protectBlock");
-        this.unprotectBlock = Objects.requireNonNull(unprotectBlock, "unprotectBlock");
+        this.blockLeases = Objects.requireNonNull(blockLeases, "blockLeases");
         this.restoration = Objects.requireNonNull(restoration, "restoration");
         playerSnapshot = PlayerSnapshot.capture(player);
         bounds = ArenaBounds.around(arena, settings.horizontalRadius(), settings.fallDistance());
         jumpPlanner = new JumpPlanner(settings.horizontalRadius());
     }
 
-    void start() {
+    StartPreparation prepareStart() {
+        ensureActive();
+        if (startPreparation != null || !placedBlocks.isEmpty()) {
+            throw new IllegalStateException("Session start is already prepared");
+        }
         Location baseLocation = arena.baseBlock();
         if (!ArenaBounds.hasClearHeadroom(baseLocation.getBlock())) {
             throw new IllegalStateException("Arena start no longer has two clear air blocks of headroom");
@@ -73,20 +83,74 @@ final class GameSession {
         startedAtNanos = System.nanoTime();
         lastProgressAtNanos = startedAtNanos;
         currentPoint = point(baseLocation);
-        place(baseLocation, false);
-        GridPoint next = findNext(currentPoint);
-        PlacedBlock target = place(location(next), settings.onlyReplaceAir());
-        targetBlock = target;
-        playerSnapshot.prepare(player);
+        PreparedBlock base = prepare(baseLocation, false);
+        incompleteStartPreparation = base;
+        PreparedBlock target;
+        try {
+            GridPoint next = findNext(currentPoint, score);
+            target = prepare(location(next), settings.onlyReplaceAir());
+        } catch (RuntimeException | LinkageError failure) {
+            throw failure;
+        }
+        CompletableFuture<StartRecords> durable = base.durableRecord().thenCombine(
+                target.durableRecord(),
+                StartRecords::new);
+        startPreparation = new StartPreparation(base, target, durable);
+        incompleteStartPreparation = null;
+        return startPreparation;
     }
 
-    int advance() {
+    PreparedBlock commitStart(
+            StartPreparation prepared,
+            StartRecords records) {
+        ensureActive();
+        if (startPreparation != Objects.requireNonNull(prepared, "prepared")) {
+            throw new IllegalStateException("Session start preparation is stale");
+        }
+        Objects.requireNonNull(records, "records");
+        PlacedBlock base = prepared.base().claim(records.base());
+        placedBlocks.addLast(base);
+        base.place();
+        showParticles(base);
+
+        PlacedBlock target = prepared.target().claim(records.target());
+        placedBlocks.addLast(target);
+        target.place();
+        showParticles(target);
+        targetBlock = target;
+        startPreparation = null;
+        playerSnapshot.prepare(player);
+        return prepareSuccessor();
+    }
+
+    void commitSuccessor(PreparedBlock prepared, com.mrfdev.walktheplank.recovery.RestorationRecord record) {
+        ensureActive();
+        if (preparedSuccessor != Objects.requireNonNull(prepared, "prepared")) {
+            throw new IllegalStateException("Successor preparation is stale");
+        }
+        PlacedBlock placed = prepared.claim(Objects.requireNonNull(record, "record"));
+        placedBlocks.addLast(placed);
+        preparedSuccessor = null;
+        placed.place();
+        showParticles(placed);
+        successorBlock = placed;
+    }
+
+    AdvanceResult advance() {
         ensureActive();
         PlacedBlock expectedTarget = targetBlock;
         if (expectedTarget == null
                 || !expectedTarget.isIntact()
-                || blockAvailable.test(expectedTarget.key())) {
+                || !blockLeases.owns(expectedTarget.key(), expectedTarget.lease())) {
             throw new IllegalStateException("The current parkour target is no longer intact and protected");
+        }
+        PlacedBlock readySuccessor = successorBlock;
+        if (readySuccessor == null) {
+            return AdvanceResult.waiting(score);
+        }
+        if (!readySuccessor.isIntact()
+                || !blockLeases.owns(readySuccessor.key(), readySuccessor.lease())) {
+            throw new IllegalStateException("The pipelined successor is no longer intact and protected");
         }
         score++;
 
@@ -94,11 +158,13 @@ final class GameSession {
         if (previous == null) {
             throw new IllegalStateException("Session lost its previous block");
         }
-        previous.restore();
-        unprotectBlock.accept(previous.key());
-        placedBlocks.removeFirst();
-
         PlacedBlock landed = placedBlocks.peekFirst();
+        if (landed != previous) {
+            throw new IllegalStateException("Session platform deque changed unexpectedly");
+        }
+        landed = placedBlocks.size() < 2
+                ? null
+                : placedBlocks.stream().skip(1L).findFirst().orElse(null);
         if (landed == null) {
             throw new IllegalStateException("Session lost its current block");
         }
@@ -106,26 +172,68 @@ final class GameSession {
             throw new IllegalStateException("Session target does not match the landed block");
         }
         currentPoint = new GridPoint(landed.key().x(), landed.key().y(), landed.key().z());
-        GridPoint next = findNext(currentPoint);
-        PlacedBlock target = place(location(next), settings.onlyReplaceAir());
-        targetBlock = target;
+        targetBlock = readySuccessor;
+        successorBlock = null;
+        PreparedBlock next = prepareSuccessor();
+
+        RestorationCoordinator.DeferredRestoration cleanup = previous.restoreDeferred();
+        if (!cleanup.worldSettled()) {
+            throw new IllegalStateException(
+                    "Previous platform could not be restored: " + cleanup.worldOutcome());
+        }
+        placedBlocks.removeFirst();
         lastProgressAtNanos = System.nanoTime();
-        return score;
+        return new AdvanceResult(
+                true,
+                score,
+                next,
+                new BlockCleanup(
+                        previous.key(),
+                        previous.lease(),
+                        cleanup.completion(),
+                        blockLeases));
     }
 
-    int finish() {
+    FinishResult finishDeferred() {
         ended = true;
+        List<CompletableFuture<Void>> abandoned = new ArrayList<>();
+        PreparedBlock incompleteStart = incompleteStartPreparation;
+        incompleteStartPreparation = null;
+        if (incompleteStart != null) {
+            abandoned.add(incompleteStart.abandon());
+        }
+        StartPreparation pendingStart = startPreparation;
+        startPreparation = null;
+        if (pendingStart != null) {
+            abandoned.add(pendingStart.base().abandon());
+            abandoned.add(pendingStart.target().abandon());
+        }
+        PreparedBlock pendingSuccessor = preparedSuccessor;
+        preparedSuccessor = null;
+        if (pendingSuccessor != null) {
+            abandoned.add(pendingSuccessor.abandon());
+        }
         if (placedBlocks.isEmpty()) {
-            return score;
+            return new FinishResult(score, List.of(), List.copyOf(abandoned));
         }
         RuntimeException failure = null;
         Deque<PlacedBlock> failedRestores = new ArrayDeque<>();
+        List<BlockCleanup> cleanups = new ArrayList<>();
         int pendingBlocks = placedBlocks.size();
         for (int index = 0; index < pendingBlocks; index++) {
             PlacedBlock placed = placedBlocks.removeLast();
             try {
-                placed.restore();
-                unprotectBlock.accept(placed.key());
+                RestorationCoordinator.DeferredRestoration cleanup =
+                        placed.restoreDeferred();
+                if (!cleanup.worldSettled()) {
+                    throw new IllegalStateException(
+                            "Platform restoration remains unresolved: " + cleanup.worldOutcome());
+                }
+                cleanups.add(new BlockCleanup(
+                        placed.key(),
+                        placed.lease(),
+                        cleanup.completion(),
+                        blockLeases));
             } catch (RuntimeException exception) {
                 failedRestores.addFirst(placed);
                 failure = appendFailure(failure, exception);
@@ -135,7 +243,15 @@ final class GameSession {
         if (failure != null) {
             throw failure;
         }
-        return score;
+        return new FinishResult(score, List.copyOf(cleanups), List.copyOf(abandoned));
+    }
+
+    CompletableFuture<Void> abandonIncompleteStartPreparation() {
+        PreparedBlock incompleteStart = incompleteStartPreparation;
+        if (incompleteStart == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return incompleteStart.abandon();
     }
 
     boolean isTarget(BlockKey key) {
@@ -143,7 +259,7 @@ final class GameSession {
                 && targetBlock != null
                 && key.equals(targetBlock.key())
                 && targetBlock.isIntact()
-                && !blockAvailable.test(key);
+                && blockLeases.owns(key, targetBlock.lease());
     }
 
     boolean hasFallen(Location location) {
@@ -175,6 +291,14 @@ final class GameSession {
         return runId;
     }
 
+    long generation() {
+        return arenaLease.sessionGeneration();
+    }
+
+    ArenaLeaseRegistry.ArenaLease arenaLease() {
+        return arenaLease;
+    }
+
     Instant startedAt() {
         return Objects.requireNonNull(startedAt, "Session has not started");
     }
@@ -199,9 +323,9 @@ final class GameSession {
         return Duration.ofNanos(Math.max(0L, nowNanos - lastProgressAtNanos)).toSeconds();
     }
 
-    private GridPoint findNext(GridPoint current) {
+    private GridPoint findNext(GridPoint current, int plannerScore) {
         GridPoint center = point(arena.baseBlock());
-        return jumpPlanner.next(center, current, score, random, candidate -> {
+        return jumpPlanner.next(center, current, plannerScore, random, candidate -> {
             Location location = location(candidate);
             World world = location.getWorld();
             if (world == null
@@ -210,7 +334,7 @@ final class GameSession {
                 return false;
             }
             Block block = location.getBlock();
-            if (!blockAvailable.test(BlockKey.from(block))) {
+            if (blockLeases.isReserved(BlockKey.from(block))) {
                 return false;
             }
             if (!ArenaBounds.hasClearHeadroom(block)) {
@@ -220,10 +344,24 @@ final class GameSession {
         });
     }
 
-    private PlacedBlock place(Location location, boolean requireAir) {
+    private PreparedBlock prepareSuccessor() {
+        if (preparedSuccessor != null || successorBlock != null) {
+            throw new IllegalStateException("A successor is already prepared or placed");
+        }
+        PlacedBlock futureCurrent = Objects.requireNonNull(targetBlock, "targetBlock");
+        GridPoint from = new GridPoint(
+                futureCurrent.key().x(),
+                futureCurrent.key().y(),
+                futureCurrent.key().z());
+        GridPoint next = findNext(from, score + 1);
+        preparedSuccessor = prepare(location(next), settings.onlyReplaceAir());
+        return preparedSuccessor;
+    }
+
+    private PreparedBlock prepare(Location location, boolean requireAir) {
         Block block = location.getBlock();
         BlockKey key = BlockKey.from(block);
-        if (!blockAvailable.test(key)) {
+        if (blockLeases.isReserved(key)) {
             throw new IllegalStateException("Parkour block location is already in use: " + key);
         }
         if (requireAir && !block.getType().isAir()) {
@@ -231,28 +369,54 @@ final class GameSession {
         }
         List<Material> materials = settings.parkourBlocks();
         Material material = materials.get(random.nextInt(materials.size()));
-        PlacedBlock placed = PlacedBlock.prepare(
-                block,
-                material,
+        BlockLeaseRegistry.BlockLease lease = new BlockLeaseRegistry.BlockLease(
                 runId,
-                arena.id(),
-                restoration);
-        placedBlocks.addLast(placed);
-        protectBlock.accept(placed.key());
-        placed.place();
-
-        if (settings.particlesEnabled() && settings.particleCount() > 0) {
-            Location particleLocation = block.getLocation().add(0.5, 1.1, 0.5);
-            block.getWorld().spawnParticle(
-                    settings.particle(),
-                    particleLocation,
-                    settings.particleCount(),
-                    0.25,
-                    0.2,
-                    0.25,
-                    0.02);
+                generation(),
+                nextPlatformGeneration++);
+        if (!blockLeases.reserve(key, lease)) {
+            throw new IllegalStateException("Parkour block location lease was taken: " + key);
         }
-        return placed;
+        RecoveryDurabilityService.RestorationPreparation preparation;
+        try {
+            preparation = restoration.prepareAsync(
+                    runId,
+                    arena.id(),
+                    block,
+                    material);
+        } catch (RuntimeException | LinkageError failure) {
+            boolean durableEvidenceExists = restoration.pendingRecords().stream()
+                    .anyMatch(record -> record.sessionId().equals(runId)
+                            && record.worldId().equals(key.worldId())
+                            && record.x() == key.x()
+                            && record.y() == key.y()
+                            && record.z() == key.z());
+            if (!durableEvidenceExists) {
+                blockLeases.release(key, lease);
+            }
+            throw failure;
+        }
+        return new PreparedBlock(
+                block,
+                lease,
+                blockLeases,
+                restoration,
+                preparation);
+    }
+
+    private void showParticles(PlacedBlock placed) {
+        if (!settings.particlesEnabled() || settings.particleCount() <= 0) {
+            return;
+        }
+        Location particleLocation = placed.location().add(0.5, 1.1, 0.5);
+        World world = Objects.requireNonNull(particleLocation.getWorld(), "particle world");
+        world.spawnParticle(
+                settings.particle(),
+                particleLocation,
+                settings.particleCount(),
+                0.25,
+                0.2,
+                0.25,
+                0.02);
     }
 
     private Location location(GridPoint point) {
@@ -262,6 +426,67 @@ final class GameSession {
 
     private static GridPoint point(Location location) {
         return new GridPoint(location.getBlockX(), location.getBlockY(), location.getBlockZ());
+    }
+
+    record StartPreparation(
+            PreparedBlock base,
+            PreparedBlock target,
+            CompletableFuture<StartRecords> durable) {
+        StartPreparation {
+            Objects.requireNonNull(base, "base");
+            Objects.requireNonNull(target, "target");
+            Objects.requireNonNull(durable, "durable");
+        }
+
+        List<CompletableFuture<Void>> abandon() {
+            return List.of(base.abandon(), target.abandon());
+        }
+    }
+
+    record StartRecords(
+            com.mrfdev.walktheplank.recovery.RestorationRecord base,
+            com.mrfdev.walktheplank.recovery.RestorationRecord target) {
+        StartRecords {
+            Objects.requireNonNull(base, "base");
+            Objects.requireNonNull(target, "target");
+        }
+    }
+
+    record AdvanceResult(
+            boolean advanced,
+            int score,
+            PreparedBlock successorPreparation,
+            BlockCleanup cleanup) {
+        static AdvanceResult waiting(int score) {
+            return new AdvanceResult(false, score, null, null);
+        }
+    }
+
+    record FinishResult(
+            int score,
+            List<BlockCleanup> cleanups,
+            List<CompletableFuture<Void>> abandonedPreparations) {
+        FinishResult {
+            cleanups = List.copyOf(cleanups);
+            abandonedPreparations = List.copyOf(abandonedPreparations);
+        }
+    }
+
+    record BlockCleanup(
+            BlockKey key,
+            BlockLeaseRegistry.BlockLease lease,
+            CompletableFuture<com.mrfdev.walktheplank.recovery.RestorationOutcome> completion,
+            BlockLeaseRegistry leases) {
+        BlockCleanup {
+            Objects.requireNonNull(key, "key");
+            Objects.requireNonNull(lease, "lease");
+            Objects.requireNonNull(completion, "completion");
+            Objects.requireNonNull(leases, "leases");
+        }
+
+        boolean release() {
+            return leases.release(key, lease);
+        }
     }
 
     private void ensureActive() {

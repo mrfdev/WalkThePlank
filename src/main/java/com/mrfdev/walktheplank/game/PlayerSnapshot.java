@@ -63,6 +63,34 @@ public record PlayerSnapshot(
         player.setFallDistance(0.0F);
     }
 
+    /**
+     * Revalidates the exact captured state before an asynchronous recovery record is allowed to
+     * authorize temporary player mutation.
+     */
+    boolean matchesCurrent(Player player) {
+        Objects.requireNonNull(player, "player");
+        Location current = player.getLocation();
+        Location captured = returnLocation();
+        World currentWorld = current.getWorld();
+        World capturedWorld = captured.getWorld();
+        return currentWorld != null
+                && capturedWorld != null
+                && currentWorld.getUID().equals(capturedWorld.getUID())
+                && Double.compare(current.getX(), captured.getX()) == 0
+                && Double.compare(current.getY(), captured.getY()) == 0
+                && Double.compare(current.getZ(), captured.getZ()) == 0
+                && Float.compare(current.getYaw(), captured.getYaw()) == 0
+                && Float.compare(current.getPitch(), captured.getPitch()) == 0
+                && Double.compare(player.getHealth(), health) == 0
+                && player.getFoodLevel() == foodLevel
+                && Float.compare(player.getSaturation(), saturation) == 0
+                && Float.compare(player.getExhaustion(), exhaustion) == 0
+                && Float.compare(player.getWalkSpeed(), walkSpeed) == 0
+                && player.getAllowFlight() == allowFlight
+                && player.isFlying() == flying
+                && player.isCollidable() == collidable;
+    }
+
     public void restore(Player player) {
         restoreTemporaryState(player);
         if (!player.isDead()) {

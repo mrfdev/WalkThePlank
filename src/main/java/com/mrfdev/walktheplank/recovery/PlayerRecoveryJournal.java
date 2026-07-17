@@ -66,6 +66,7 @@ public final class PlayerRecoveryJournal {
             "recordIntegrity");
 
     private final Path directory;
+    private final DirectoryForcer directoryForcer;
     private final Map<UUID, PlayerRecoveryRecord> pending = new LinkedHashMap<>();
     private final Set<UUID> blockedPlayerIds = new HashSet<>();
     private int invalidRecordCount;
@@ -73,20 +74,31 @@ public final class PlayerRecoveryJournal {
     private boolean writeFailed;
     private String lastFailureCode;
 
-    private PlayerRecoveryJournal(Path directory) {
+    private volatile PublishedState publishedState = PublishedState.empty();
+
+    private PlayerRecoveryJournal(Path directory, DirectoryForcer directoryForcer) {
         this.directory = directory;
+        this.directoryForcer = directoryForcer;
     }
 
     public static PlayerRecoveryJournal open(Path pluginDataDirectory) throws IOException {
+        return open(pluginDataDirectory, PlayerRecoveryJournal::forceDirectoryPath);
+    }
+
+    static PlayerRecoveryJournal open(
+            Path pluginDataDirectory,
+            DirectoryForcer directoryForcer) throws IOException {
         Objects.requireNonNull(pluginDataDirectory, "pluginDataDirectory");
+        Objects.requireNonNull(directoryForcer, "directoryForcer");
         Path dataDirectory = pluginDataDirectory.toAbsolutePath().normalize();
         rejectSymbolicLinkSegments(dataDirectory);
         ensureRealDirectory(dataDirectory);
         Path journalDirectory = dataDirectory.resolve(DIRECTORY_NAME);
         ensureRealDirectory(journalDirectory);
-        PlayerRecoveryJournal journal = new PlayerRecoveryJournal(journalDirectory);
+        PlayerRecoveryJournal journal = new PlayerRecoveryJournal(journalDirectory, directoryForcer);
         journal.cleanupStaleTemporaryFiles();
         journal.loadPendingRecords();
+        journal.publishState();
         return journal;
     }
 
@@ -103,7 +115,7 @@ public final class PlayerRecoveryJournal {
             }
             throw new IOException("Player already has a different pending recovery record");
         }
-        if (!canSafelyRecord(record.playerId())) {
+        if (!canSafelyRecordMutableState(record.playerId())) {
             throw new IOException("Player recovery journal cannot safely accept this player");
         }
         if (pending.values().stream().anyMatch(candidate -> candidate.runId().equals(record.runId()))) {
@@ -132,10 +144,16 @@ public final class PlayerRecoveryJournal {
             }
             moved = true;
             pending.put(record.playerId(), record);
-            forceDirectory(directory);
+            publishState();
+            try {
+                forceDirectory();
+            } catch (IOException failure) {
+                throw new PlayerRecoveryJournalCommitUncertainException(record, failure);
+            }
             return record;
         } catch (IOException failure) {
             markWriteFailure("append_failed");
+            publishState();
             throw failure;
         } finally {
             if (!moved) {
@@ -170,56 +188,83 @@ public final class PlayerRecoveryJournal {
                 }
             }
             Files.deleteIfExists(target);
-            forceDirectory(directory);
+            forceDirectory();
             pending.remove(playerId, record);
+            publishState();
         } catch (IOException failure) {
             markWriteFailure("completion_failed");
+            publishState();
             throw failure;
         }
     }
 
-    public synchronized Optional<PlayerRecoveryRecord> pending(UUID playerId) {
+    public Optional<PlayerRecoveryRecord> pending(UUID playerId) {
         Objects.requireNonNull(playerId, "playerId");
-        return Optional.ofNullable(pending.get(playerId));
+        return Optional.ofNullable(publishedState.recordsByPlayer().get(playerId));
     }
 
     /** Whether this UUID has retained or malformed evidence that requires staff-safe recovery. */
-    public synchronized boolean requiresRecovery(UUID playerId) {
+    public boolean requiresRecovery(UUID playerId) {
         Objects.requireNonNull(playerId, "playerId");
-        return pending.containsKey(playerId) || blockedPlayerIds.contains(playerId);
+        PublishedState state = publishedState;
+        return state.recordsByPlayer().containsKey(playerId)
+                || state.blockedPlayerIds().contains(playerId);
     }
 
-    public synchronized List<PlayerRecoveryRecord> pendingRecords() {
-        return pending.values().stream()
-                .sorted(Comparator.comparing(record -> record.playerId().toString()))
-                .toList();
+    public List<PlayerRecoveryRecord> pendingRecords() {
+        return publishedState.records();
     }
 
     /** Total unresolved files, including malformed records retained for operator inspection. */
-    public synchronized int pendingCount() {
-        return pending.size() + invalidRecordCount;
+    public int pendingCount() {
+        return publishedState.health().pendingRecords();
     }
 
     /** Whether this player can safely begin a newly journaled run. */
-    public synchronized boolean canSafelyRecord(UUID playerId) {
+    public boolean canSafelyRecord(UUID playerId) {
         Objects.requireNonNull(playerId, "playerId");
-        return !writeFailed
-                && !globallyUnsafe
-                && !blockedPlayerIds.contains(playerId)
-                && !pending.containsKey(playerId);
+        PublishedState state = publishedState;
+        return state.health().writesAvailable()
+                && !state.blockedPlayerIds().contains(playerId)
+                && !state.recordsByPlayer().containsKey(playerId);
     }
 
-    public synchronized Health health() {
-        return new Health(
+    public Health health() {
+        return publishedState.health();
+    }
+
+    Path directory() {
+        return directory;
+    }
+
+    /**
+     * Publishes a lock-free immutable view after the in-memory fail-closed state changes.
+     *
+     * <p>Mutation callers hold this journal's monitor. Runtime readers intentionally never acquire
+     * that monitor because it also serializes write, fsync, rename, and delete operations.</p>
+     */
+    private void publishState() {
+        List<PlayerRecoveryRecord> records = pending.values().stream()
+                .sorted(Comparator.comparing(record -> record.playerId().toString()))
+                .toList();
+        Health health = new Health(
                 invalidRecordCount == 0 && !globallyUnsafe && !writeFailed,
                 pending.size() + invalidRecordCount,
                 invalidRecordCount,
                 !globallyUnsafe && !writeFailed,
                 Optional.ofNullable(lastFailureCode));
+        publishedState = new PublishedState(
+                Map.copyOf(pending),
+                Set.copyOf(blockedPlayerIds),
+                records,
+                health);
     }
 
-    Path directory() {
-        return directory;
+    private boolean canSafelyRecordMutableState(UUID playerId) {
+        return !writeFailed
+                && !globallyUnsafe
+                && !blockedPlayerIds.contains(playerId)
+                && !pending.containsKey(playerId);
     }
 
     private void loadPendingRecords() throws IOException {
@@ -291,7 +336,7 @@ public final class PlayerRecoveryJournal {
             }
         }
         if (removed) {
-            forceDirectory(directory);
+            forceDirectory();
         }
     }
 
@@ -494,7 +539,7 @@ public final class PlayerRecoveryJournal {
         Files.createDirectory(directory);
         Path parent = directory.getParent();
         if (parent != null) {
-            forceDirectory(parent);
+            forceDirectoryPath(parent);
         }
         BasicFileAttributes attributes = Files.readAttributes(
                 directory, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
@@ -516,7 +561,11 @@ public final class PlayerRecoveryJournal {
         }
     }
 
-    private static void forceDirectory(Path path) throws IOException {
+    private void forceDirectory() throws IOException {
+        directoryForcer.force(directory);
+    }
+
+    private static void forceDirectoryPath(Path path) throws IOException {
         try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
             channel.force(true);
         }
@@ -541,5 +590,33 @@ public final class PlayerRecoveryJournal {
             Objects.requireNonNull(file, "file");
             Objects.requireNonNull(record, "record");
         }
+    }
+
+    private record PublishedState(
+            Map<UUID, PlayerRecoveryRecord> recordsByPlayer,
+            Set<UUID> blockedPlayerIds,
+            List<PlayerRecoveryRecord> records,
+            Health health) {
+        private PublishedState {
+            recordsByPlayer = Map.copyOf(
+                    Objects.requireNonNull(recordsByPlayer, "recordsByPlayer"));
+            blockedPlayerIds = Set.copyOf(
+                    Objects.requireNonNull(blockedPlayerIds, "blockedPlayerIds"));
+            records = List.copyOf(Objects.requireNonNull(records, "records"));
+            Objects.requireNonNull(health, "health");
+        }
+
+        private static PublishedState empty() {
+            return new PublishedState(
+                    Map.of(),
+                    Set.of(),
+                    List.of(),
+                    new Health(true, 0, 0, true, Optional.empty()));
+        }
+    }
+
+    @FunctionalInterface
+    interface DirectoryForcer {
+        void force(Path directory) throws IOException;
     }
 }

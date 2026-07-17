@@ -122,8 +122,8 @@ boundaries. The remaining named points also support controlled `THROW` and `BLOC
 directly through the in-game harness, although this shell runner deliberately uses only the
 repeatable process-level `HALT` contract.
 
-`config.after_runtime_commit` occurrence 1 is reached while the target starts, so it is fully
-automated:
+`config.after_runtime_commit` occurrence 1 is fully automated. The target first reaches normal
+Paper readiness, then the runner sends `walk admin reload` to cross the runtime commit boundary:
 
 ```bash
 scripts/run-controlled-scenarios.sh \
@@ -132,16 +132,10 @@ scripts/run-controlled-scenarios.sh \
 ./gradlew controlledRuntimeCommitFailpoint
 ```
 
-To reach a later hit with a console command:
-
-```bash
-scripts/run-controlled-scenarios.sh \
-  --failpoint config.after_runtime_commit \
-  --occurrence 2 \
-  --trigger-command "walk admin reload"
-```
-
-`--trigger-command` is written literally to the Paper console; it is not evaluated by a shell.
+`--trigger-command` is written literally to the Paper console, sent once, and is not evaluated by
+a shell. Therefore an occurrence greater than one is valid only when the selected player-assisted
+or external action genuinely reaches that boundary enough times; one reload command cannot reach
+runtime-commit occurrence 2.
 Most world, teleport, score, reward, and player-journal boundaries require a real player.
 Make that explicit:
 
@@ -192,9 +186,9 @@ Use these recovery oracles; do not infer stronger atomicity:
 | Queued database work before commit | Uncommitted queued work is lost on a hard halt. |
 
 Immediately after exit 97, the runner performs the same read-only SQLite PRAGMA report when the
-database already exists. An early startup failpoint such as `config.after_runtime_commit`
-precedes database initialization, so its crash report explicitly records the database as
-not-yet-created; the recovery phase must then create it and pass `quick_check=ok`.
+database exists. The automated `config.after_runtime_commit` profile now halts during a post-start
+administrative reload, so its crash phase normally has an initialized schema-v2 database and must
+already pass `quick_check=ok`; the recovery restart repeats that proof.
 
 `Runtime.halt(97)` accurately removes Java shutdown hooks and plugin-disable cleanup from these
 process-level tests, but it is not proof against every host power-loss, storage-controller cache,

@@ -28,6 +28,7 @@ import com.mrfdev.walktheplank.recovery.RestorationCoordinator;
 import com.mrfdev.walktheplank.recovery.PlayerRecoveryJournal;
 import com.mrfdev.walktheplank.recovery.PlayerRecoveryOwnership;
 import com.mrfdev.walktheplank.recovery.PlayerRecoveryRecord;
+import com.mrfdev.walktheplank.recovery.RecoveryDurabilityService;
 import com.mrfdev.walktheplank.recovery.RestorationFailure;
 import com.mrfdev.walktheplank.recovery.RestorationJournal;
 import com.mrfdev.walktheplank.recovery.RestorationRecord;
@@ -37,7 +38,6 @@ import com.mrfdev.walktheplank.reward.RewardService.PreparedRewardPlan;
 import com.mrfdev.walktheplank.reward.RewardService.PreparedRewardStep;
 import com.mrfdev.walktheplank.reward.RewardService.RewardPlan;
 import com.mrfdev.walktheplank.text.MessageService;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -51,7 +51,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import org.bukkit.GameMode;
@@ -85,24 +88,33 @@ public final class GameManager {
     private final OperationalContext operations;
     private final RestorationCoordinator restoration;
     private final PlayerRecoveryJournal playerRecovery;
+    private final RecoveryDurabilityService recoveryDurability;
+    private final ArenaLeaseRegistry arenaLeases = new ArenaLeaseRegistry();
     private final ArenaSelector arenaSelector = new ArenaSelector(ThreadLocalRandom.current());
     private final Map<UUID, GameSession> sessions = new HashMap<>();
     private final Map<UUID, PendingStart> pendingStarts = new HashMap<>();
+    private final Map<UUID, PendingStart> pendingStartAbandonments = new HashMap<>();
     private final Map<UUID, Instant> nextQueueReminder = new HashMap<>();
-    private final Set<BlockKey> protectedBlocks = new HashSet<>();
+    private final BlockLeaseRegistry blockLeases = new BlockLeaseRegistry();
     private final Set<BlockKey> journalProtectedBlocks = new HashSet<>();
     private final Set<UUID> internalTeleports = new HashSet<>();
     private final Map<String, GameSession> quarantinedSessions = new HashMap<>();
     private final Map<String, PendingPlayerReturn> pendingPlayerReturns = new HashMap<>();
+    private final Set<PlayerRecoveryCompletion> pendingPlayerRecoveryCompletions =
+            new HashSet<>();
     private final Map<UUID, PendingExternalTeleport> pendingExternalTeleports = new HashMap<>();
     private final Set<UUID> playerRecoveryLookups = ConcurrentHashMap.newKeySet();
     private final List<Arena> freeArenas = new ArrayList<>();
     private final RewardCompletionBarrier rewardCompletionBarrier = new RewardCompletionBarrier();
+    private final ConcurrentLinkedQueue<Runnable> durabilityCompletions =
+            new ConcurrentLinkedQueue<>();
+    private final AtomicBoolean durabilityDrainScheduled = new AtomicBoolean();
 
     private PlayerQueue queue;
     private volatile PublishedGameState publishedGameState = PublishedGameState.empty();
     private volatile RestorationRetryResult lastRestorationRetry;
     private volatile boolean shuttingDown;
+    private long nextSessionGeneration = 1L;
 
     public GameManager(
             JavaPlugin plugin,
@@ -112,6 +124,7 @@ public final class GameManager {
             RewardService rewards,
             RestorationJournal restorationJournal,
             PlayerRecoveryJournal playerRecoveryJournal,
+            RecoveryDurabilityService recoveryDurability,
             String releaseIdentity,
             OperationalContext operations) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
@@ -122,11 +135,14 @@ public final class GameManager {
         this.releaseIdentity = Objects.requireNonNull(releaseIdentity, "releaseIdentity");
         this.operations = Objects.requireNonNull(operations, "operations");
         playerRecovery = Objects.requireNonNull(playerRecoveryJournal, "playerRecoveryJournal");
+        this.recoveryDurability =
+                Objects.requireNonNull(recoveryDurability, "recoveryDurability");
         queue = new PlayerQueue(
                 settings.get().queue().joinCooldown(),
                 settings.get().queue().readinessWindow());
         restoration = new RestorationCoordinator(
-                Objects.requireNonNull(restorationJournal, "restorationJournal"));
+                Objects.requireNonNull(restorationJournal, "restorationJournal"),
+                recoveryDurability);
         int pendingAtStartup = restoration.pendingCount();
         if (pendingAtStartup > 0) {
             plugin.getLogger().warning("Detected " + pendingAtStartup
@@ -186,8 +202,21 @@ public final class GameManager {
 
         Arena arena = removeSelectedArena();
         UUID runId = UUID.randomUUID();
+        long sessionGeneration = nextSessionGeneration++;
+        ArenaLeaseRegistry.ArenaLease arenaLease =
+                new ArenaLeaseRegistry.ArenaLease(runId, sessionGeneration);
+        if (!arenaLeases.reserve(arena.id(), arenaLease)) {
+            freeArenas.add(arena);
+            rebuildFreeArenas();
+            throw new IllegalStateException("Selected arena already has a different ownership lease");
+        }
         Instant startedAt = Instant.now();
-        PendingStart pending = new PendingStart(runId, player.getUniqueId(), arena, startedAt);
+        PendingStart pending = new PendingStart(
+                runId,
+                player.getUniqueId(),
+                arena,
+                startedAt,
+                arenaLease);
         pendingStarts.put(player.getUniqueId(), pending);
         publishGameState();
         player.closeInventory();
@@ -301,10 +330,9 @@ public final class GameManager {
                     pending.arena(),
                     persisted.id(),
                     persisted.startedAt(),
+                    pending.arenaLease(),
                     settings.get(),
-                    key -> !isProtected(key),
-                    protectedBlocks::add,
-                    protectedBlocks::remove,
+                    blockLeases,
                     restoration);
         } catch (RuntimeException | LinkageError constructionFailure) {
             abortPendingStart(pending, "SESSION_CONSTRUCTION_FAILED");
@@ -322,47 +350,137 @@ public final class GameManager {
             return;
         }
         try {
-            playerRecovery.append(session.playerSnapshot().recoveryRecord(
-                    player.getUniqueId(), persisted.id(), pending.arena().id()));
-        } catch (IOException | RuntimeException | LinkageError journalFailure) {
-            abortPendingStart(pending, "PLAYER_RECOVERY_JOURNAL_FAILED");
-            operations.metrics().recordRestorationFailure(journalFailure);
+            RecoveryDurabilityService.PlayerRecoveryPreparation playerPreparation =
+                    recoveryDurability.preparePlayerRecovery(
+                            session.playerSnapshot().recoveryRecord(
+                                    player.getUniqueId(),
+                                    persisted.id(),
+                                    pending.arena().id()));
+            pending.installDurabilityAbandoner(playerPreparation::discard);
+            GameSession.StartPreparation platformPreparation;
+            try {
+                platformPreparation = session.prepareStart();
+            } catch (RuntimeException | LinkageError platformFailure) {
+                pending.installDurabilityAbandoner(() -> CompletableFuture.allOf(
+                        playerPreparation.discard(),
+                        session.abandonIncompleteStartPreparation()));
+                throw platformFailure;
+            }
+            PendingActivation activation = new PendingActivation(
+                    session,
+                    playerPreparation,
+                    platformPreparation);
+            if (!pending.installActivation(activation)) {
+                activation.abandon();
+                throw new IllegalStateException("Pending start activation was already installed");
+            }
+            activation.durable().whenComplete((records, durabilityFailure) ->
+                    enqueueDurabilityCompletion(() ->
+                            completePreparedStart(
+                                    pending,
+                                    persisted,
+                                    activation,
+                                    records,
+                                    durabilityFailure)));
+        } catch (RuntimeException | LinkageError preparationFailure) {
+            abortPendingStart(pending, "RECOVERY_PREPARATION_FAILED");
+            operations.metrics().recordRestorationFailure(preparationFailure);
             operations.audit("player_recovery.capture_failed", player.getUniqueId(), pending.arena().id(), Map.of(
                     "run_id", persisted.id(),
-                    "failure", journalFailure.getClass().getSimpleName()));
+                    "failure", preparationFailure.getClass().getSimpleName()));
             plugin.getLogger().log(
                     Level.SEVERE,
-                    "Could not durably capture player state; refusing to activate the run",
-                    journalFailure);
+                    "Could not queue durable run preparation; refusing to activate the run",
+                    preparationFailure);
             messages.send(player, "chat.startFailed");
+            refreshQueue();
+        }
+    }
+
+    private void completePreparedStart(
+            PendingStart pending,
+            RunRecord persisted,
+            PendingActivation activation,
+            ActivationRecords records,
+            Throwable failure) {
+        Player player = plugin.getServer().getPlayer(pending.playerId());
+        if (pendingStarts.get(pending.playerId()) != pending
+                || pending.activation() != activation) {
+            if (!pending.arenaReleased()
+                    && pendingStartAbandonments.putIfAbsent(
+                            pending.runId(), pending) == null) {
+                CompletableFuture<Void> abandonment = pending.abandonDurability();
+                if (abandonment != null) {
+                    attachPendingStartAbandonment(pending, abandonment);
+                }
+            }
+            return;
+        }
+        GameSession session = activation.session();
+        if (failure != null
+                || player == null
+                || !canActivatePendingStart(pending, player)
+                || !session.playerSnapshot().matchesCurrent(player)) {
+            String reason = failure != null
+                    ? "DURABILITY_FAILED"
+                    : player == null || !player.isOnline()
+                            ? "PLAYER_OFFLINE"
+                            : !session.playerSnapshot().matchesCurrent(player)
+                                    ? "PLAYER_STATE_CHANGED"
+                                    : "POST_DURABILITY_INELIGIBLE";
+            abortPendingStart(pending, reason);
+            Throwable reported = failure != null
+                    ? failure
+                    : new IllegalStateException("Pending start revalidation failed: " + reason);
+            operations.metrics().recordRestorationFailure(reported);
+            operations.audit("run.start_failed", pending.playerId(), pending.arena().id(), Map.of(
+                    "run_id", pending.runId(),
+                    "stage", "durability_revalidation",
+                    "reason", reason));
+            if (player != null) {
+                messages.send(player, "chat.startFailed");
+            }
             refreshQueue();
             return;
         }
+
         try {
-            session.start();
+            ActivationRecords checkedRecords = Objects.requireNonNull(records, "records");
+            if (!activation.playerPreparation().claim(checkedRecords.playerRecovery())) {
+                throw new IllegalStateException("Player recovery preparation is stale");
+            }
+            PreparedBlock successor = session.commitStart(
+                    activation.platformPreparation(),
+                    checkedRecords.platforms());
             sessions.put(player.getUniqueId(), session);
-            pendingStarts.remove(player.getUniqueId());
+            pendingStarts.remove(player.getUniqueId(), pending);
+            pending.clearActivation(activation);
             publishSessionScores();
             if (!teleportInternally(player, pending.arena().playerSpawn())) {
                 throw new IllegalStateException("Paper rejected the arena teleport");
             }
+            attachSuccessorPreparation(session, successor);
             operations.metrics().recordSessionStarted();
             operations.audit("run.start", player.getUniqueId(), pending.arena().id(), Map.of(
                     "run_id", persisted.id(),
                     "season_id", persisted.seasonId().map(UUID::toString).orElse("")));
             messages.send(player, "chat.arenaStart");
-        } catch (RuntimeException | LinkageError exception) {
-            sessions.remove(player.getUniqueId());
-            pendingStarts.remove(player.getUniqueId());
+        } catch (RuntimeException | LinkageError activationFailure) {
+            sessions.remove(player.getUniqueId(), session);
+            pendingStarts.remove(player.getUniqueId(), pending);
+            pending.clearActivation(activation);
             publishSessionScores();
-            FailedStartCleanup cleanup = cleanupFailedStart(player, session, exception);
+            FailedStartCleanup cleanup = cleanupFailedStart(player, session, activationFailure);
             releaseArena(session, cleanup.blocksRestored() && cleanup.playerReturned());
             markRunInterrupted(persisted.id(), RunStatus.ABORTED, "START_FAILED");
-            operations.metrics().recordRestorationFailure(exception);
+            operations.metrics().recordRestorationFailure(activationFailure);
             operations.audit("run.start_failed", player.getUniqueId(), pending.arena().id(), Map.of(
                     "run_id", persisted.id(),
-                    "failure", exception.getClass().getSimpleName()));
-            plugin.getLogger().log(Level.SEVERE, "Could not start arena " + pending.arena().id(), exception);
+                    "failure", activationFailure.getClass().getSimpleName()));
+            plugin.getLogger().log(
+                    Level.SEVERE,
+                    "Could not activate arena " + pending.arena().id(),
+                    activationFailure);
             messages.send(player, "chat.startFailed");
             refreshQueue();
         }
@@ -374,7 +492,7 @@ public final class GameManager {
             Throwable originalFailure) {
         boolean blocksRestored = true;
         try {
-            session.finish();
+            finishSessionWorld(session);
         } catch (RuntimeException | LinkageError cleanupFailure) {
             blocksRestored = false;
             originalFailure.addSuppressed(cleanupFailure);
@@ -400,9 +518,9 @@ public final class GameManager {
         if (returnAttempt.failure() != null) {
             originalFailure.addSuppressed(returnAttempt.failure());
         }
-        boolean recoveryCleared = stateRestored
+        boolean recoveryQueued = stateRestored
                 && returnAttempt.success()
-                && completePlayerRecovery(session);
+                && queuePlayerRecoveryCompletion(session);
         if (!returnAttempt.success()) {
             pendingPlayerReturns.put(
                     session.arena().id(),
@@ -412,7 +530,7 @@ public final class GameManager {
                 blocksRestored,
                 stateRestored,
                 returnAttempt.success(),
-                recoveryCleared);
+                recoveryQueued);
     }
 
     private Arena removeSelectedArena() {
@@ -447,7 +565,9 @@ public final class GameManager {
             }
             return false;
         }
-        if (sessions.containsKey(player.getUniqueId()) || pendingStarts.containsKey(player.getUniqueId())) {
+        if (sessions.containsKey(player.getUniqueId())
+                || pendingStarts.containsKey(player.getUniqueId())
+                || hasPendingStartAbandonment(player.getUniqueId())) {
             if (sendMessages) {
                 messages.send(player, "chat.alreadyInGame");
                 player.closeInventory();
@@ -507,6 +627,7 @@ public final class GameManager {
                         || player.getGameMode() == GameMode.ADVENTURE);
         return !rewardCompletionBarrier.isBlocked(pending.playerId())
                 && playerRecovery.canSafelyRecord(pending.playerId())
+                && arenaLeases.owns(pending.arena().id(), pending.arenaLease())
                 && player != null
                 && !player.isDead()
                 && StartActivationPolicy.mayActivate(
@@ -564,7 +685,7 @@ public final class GameManager {
         RuntimeException cleanupFailure = null;
         boolean blocksRestored = true;
         try {
-            session.finish();
+            finishSessionWorld(session);
         } catch (RuntimeException | LinkageError exception) {
             blocksRestored = false;
             cleanupFailure = appendFailure(cleanupFailure, asRuntimeFailure(exception));
@@ -605,10 +726,10 @@ public final class GameManager {
             }
         }
 
-        boolean recoveryCleared = false;
+        boolean recoveryQueued = false;
         if (stateRestored && playerReturned) {
             try {
-                recoveryCleared = completePlayerRecovery(session);
+                recoveryQueued = queuePlayerRecoveryCompletion(session);
             } catch (RuntimeException | LinkageError recoveryFailure) {
                 cleanupFailure = appendFailure(
                         cleanupFailure,
@@ -620,8 +741,9 @@ public final class GameManager {
                         recoveryFailure);
             }
         }
-        if (!recoveryCleared && cleanupFailure == null) {
-            cleanupFailure = new IllegalStateException("Player recovery journal remains pending");
+        if (!recoveryQueued && cleanupFailure == null) {
+            cleanupFailure = new IllegalStateException(
+                    "Player recovery journal completion could not be queued");
         }
 
         try {
@@ -665,11 +787,18 @@ public final class GameManager {
                         interruptionFailure);
             }
         }
-        boolean cleanupComplete = cleanupFailure == null
+        boolean cleanupQueued = cleanupFailure == null
                 && blocksRestored
                 && stateRestored
                 && playerReturned
-                && recoveryCleared;
+                && recoveryQueued;
+        boolean cleanupComplete = cleanupQueued
+                && !restoration.hasPendingSession(session.runId())
+                && playerRecovery.pending(player.getUniqueId())
+                        .filter(record -> record.runId().equals(session.runId()))
+                        .isEmpty()
+                && quarantinedSessions.get(session.arena().id()) != session
+                && !arenaLeases.owns(session.arena().id(), session.arenaLease());
         try {
             operations.metrics().recordSessionEnded(reason);
         } catch (RuntimeException | LinkageError metricsFailure) {
@@ -684,6 +813,7 @@ public final class GameManager {
                     "run_id", session.runId(),
                     "score", score,
                     "reason", reason,
+                    "cleanup_queued", cleanupQueued,
                     "cleanup_complete", cleanupComplete));
         } catch (RuntimeException | LinkageError auditFailure) {
             recordLifecycleFailure(
@@ -846,14 +976,19 @@ public final class GameManager {
         }
     }
 
-    private boolean completePlayerRecovery(GameSession session) {
-        return completePlayerRecovery(
+    private boolean queuePlayerRecoveryCompletion(GameSession session) {
+        return queuePlayerRecoveryCompletion(
                 session.player().getUniqueId(),
                 session.runId(),
-                session.arena().id());
+                session.arena().id(),
+                null);
     }
 
-    private boolean completePlayerRecovery(UUID playerId, UUID runId, String arenaId) {
+    private boolean queuePlayerRecoveryCompletion(
+            UUID playerId,
+            UUID runId,
+            String arenaId,
+            String recoveredAction) {
         Optional<PlayerRecoveryRecord> existing = playerRecovery.pending(playerId);
         if (existing.isEmpty() || !existing.orElseThrow().owns(playerId, runId, arenaId)) {
             IllegalStateException ownershipFailure = new IllegalStateException(
@@ -864,21 +999,62 @@ public final class GameManager {
                     "reason", "ownership_mismatch"));
             return false;
         }
-        try {
-            playerRecovery.complete(playerId, runId, arenaId);
-            operations.audit("player_recovery.cleared", playerId, arenaId, Map.of(
-                    "run_id", runId));
+        PlayerRecoveryCompletion completion =
+                new PlayerRecoveryCompletion(playerId, runId, arenaId, recoveredAction);
+        if (!pendingPlayerRecoveryCompletions.add(completion)) {
             return true;
-        } catch (IOException completionFailure) {
-            operations.metrics().recordRestorationFailure(completionFailure);
-            operations.audit("player_recovery.completion_failed", playerId, arenaId, Map.of(
-                    "run_id", runId,
-                    "failure", completionFailure.getClass().getSimpleName()));
+        }
+        CompletableFuture<Void> durableCompletion =
+                recoveryDurability.completePlayerRecovery(playerId, runId, arenaId);
+        durableCompletion.whenComplete((ignored, failure) ->
+                enqueueDurabilityCompletion(() ->
+                        completePlayerRecoveryCompletion(completion, failure)));
+        return !durableCompletion.isCompletedExceptionally();
+    }
+
+    private void completePlayerRecoveryCompletion(
+            PlayerRecoveryCompletion completion,
+            Throwable failure) {
+        pendingPlayerRecoveryCompletions.remove(completion);
+        if (failure != null) {
+            operations.metrics().recordRestorationFailure(failure);
+            operations.audit(
+                    "player_recovery.completion_failed",
+                    completion.playerId(),
+                    completion.arenaId(),
+                    Map.of(
+                    "run_id", completion.runId(),
+                            "failure", failure.getClass().getSimpleName()));
             plugin.getLogger().log(
                     Level.SEVERE,
                     "Player state was restored, but its recovery record could not be cleared",
-                    completionFailure);
-            return false;
+                    failure);
+            return;
+        }
+
+        operations.audit(
+                "player_recovery.cleared",
+                completion.playerId(),
+                completion.arenaId(),
+                Map.of("run_id", completion.runId()));
+        pendingPlayerReturns.entrySet().removeIf(entry ->
+                entry.getValue().playerId().equals(completion.playerId())
+                        && entry.getValue().runId().equals(completion.runId()));
+        if (completion.recoveredAction() != null) {
+            operations.metrics().recordRestorationRecovered();
+            operations.audit(
+                    "player_recovery.completed",
+                    completion.playerId(),
+                    completion.arenaId(),
+                    Map.of(
+                            "run_id", completion.runId(),
+                            "action", completion.recoveredAction()));
+        }
+        GameSession quarantined = quarantinedSessions.get(completion.arenaId());
+        if (quarantined != null && quarantined.runId().equals(completion.runId())) {
+            settleQuarantinedSession(quarantined);
+        } else {
+            rebuildFreeArenas();
         }
     }
 
@@ -899,15 +1075,25 @@ public final class GameManager {
                 || !session.isTarget(BlockKey.from(underPlayer))) {
             return;
         }
-        int score;
+        advanceLandedSession(player, session);
+    }
+
+    private void advanceLandedSession(Player player, GameSession session) {
+        GameSession.AdvanceResult result;
         try {
-            score = session.advance();
+            result = session.advance();
+            if (!result.advanced()) {
+                return;
+            }
+            attachSuccessorPreparation(session, result.successorPreparation());
+            attachBlockCleanup(session, result.cleanup());
             publishSessionScores();
             operations.metrics().recordJump();
         } catch (RuntimeException | LinkageError exception) {
             failActiveSession(player, session, "advance", exception);
             return;
         }
+        int score = result.score();
         try {
             plugin.getServer().getPluginManager().callEvent(
                     new WalkJumpEvent(player, session.arena().id(), score));
@@ -931,6 +1117,125 @@ public final class GameManager {
         } catch (RuntimeException | LinkageError exception) {
             failActiveSession(player, session, "score_message", exception);
         }
+    }
+
+    private void attachSuccessorPreparation(
+            GameSession session,
+            PreparedBlock prepared) {
+        Objects.requireNonNull(session, "session");
+        Objects.requireNonNull(prepared, "prepared");
+        prepared.durableRecord().whenComplete((record, failure) ->
+                enqueueDurabilityCompletion(() ->
+                        completeSuccessorPreparation(session, prepared, record, failure)));
+    }
+
+    private void completeSuccessorPreparation(
+            GameSession session,
+            PreparedBlock prepared,
+            RestorationRecord record,
+            Throwable failure) {
+        Player player = session.player();
+        if (failure != null) {
+            prepared.abandon();
+            if (sessions.get(player.getUniqueId()) == session) {
+                failActiveSession(player, session, "successor_durability", failure);
+            }
+            return;
+        }
+
+        BlockLeaseRegistry.BlockLease blockLease = prepared.lease();
+        PlacementCommitPolicy.Decision decision = PlacementCommitPolicy.decide(
+                new PlacementCommitPolicy.CapturedOwner(
+                        player.getUniqueId(),
+                        session.runId(),
+                        session.arena().id(),
+                        session.generation(),
+                        blockLease.platformGeneration(),
+                        prepared.key()),
+                new PlacementCommitPolicy.LiveOwner(
+                        player.getUniqueId(),
+                        session.runId(),
+                        session.arena().id(),
+                        session.generation(),
+                        blockLease.platformGeneration(),
+                        prepared.key(),
+                        !shuttingDown,
+                        sessions.get(player.getUniqueId()) == session,
+                        player.isOnline(),
+                        arenaLeases.owns(session.arena().id(), session.arenaLease()),
+                        blockLeases.owns(prepared.key(), blockLease)));
+        if (decision != PlacementCommitPolicy.Decision.COMMIT
+                || player.isDead()
+                || !player.hasPermission(settings.get().permissions().playGame())) {
+            prepared.abandon();
+            if (sessions.get(player.getUniqueId()) == session
+                    && decision != PlacementCommitPolicy.Decision.PLAYER_OFFLINE
+                    && !shuttingDown) {
+                failActiveSession(
+                        player,
+                        session,
+                        "successor_revalidation",
+                        new IllegalStateException("Successor commit rejected: " + decision));
+            }
+            return;
+        }
+
+        try {
+            session.commitSuccessor(prepared, Objects.requireNonNull(record, "record"));
+        } catch (RuntimeException | LinkageError commitFailure) {
+            failActiveSession(player, session, "successor_commit", commitFailure);
+            return;
+        }
+        Location actual = player.getLocation();
+        Location underPlayer = actual.clone().subtract(0.0, 1.0, 0.0);
+        if (sessions.get(player.getUniqueId()) == session
+                && LandingPolicy.isGroundedAndNotAscending(
+                        hasGroundSupport(player),
+                        player.getVelocity().getY())
+                && session.isTarget(BlockKey.from(underPlayer))) {
+            advanceLandedSession(player, session);
+        }
+    }
+
+    private void attachBlockCleanup(
+            GameSession session,
+            GameSession.BlockCleanup cleanup) {
+        Objects.requireNonNull(session, "session");
+        Objects.requireNonNull(cleanup, "cleanup");
+        cleanup.completion().whenComplete((outcome, failure) ->
+                enqueueDurabilityCompletion(() ->
+                        completeBlockCleanup(session, cleanup, outcome, failure)));
+    }
+
+    private void completeBlockCleanup(
+            GameSession session,
+            GameSession.BlockCleanup cleanup,
+            com.mrfdev.walktheplank.recovery.RestorationOutcome outcome,
+            Throwable failure) {
+        if (failure != null || outcome == null || !outcome.completed()) {
+            Throwable reported = failure != null
+                    ? failure
+                    : new IllegalStateException("Restoration deletion did not complete: " + outcome);
+            operations.metrics().recordRestorationFailure(reported);
+            if (sessions.get(session.player().getUniqueId()) == session) {
+                failActiveSession(
+                        session.player(),
+                        session,
+                        "restoration_completion",
+                        reported);
+            }
+            return;
+        }
+        if (!cleanup.release()) {
+            recordLifecycleFailure(
+                    "restoration.lease_release_failed",
+                    session.player().getUniqueId(),
+                    session.arena().id(),
+                    new IllegalStateException("A newer owner replaced a completed block lease"));
+            return;
+        }
+        refreshJournalProtection();
+        settleQuarantinedSession(session);
     }
 
     private void failActiveSession(
@@ -971,7 +1276,7 @@ public final class GameManager {
     }
 
     /** Drains all state using the currently active settings before a new bundle is published. */
-    public void prepareReload() {
+    public CompletableFuture<Void> prepareReload() {
         boolean clean = stopAll(SessionEndReason.RELOAD);
         clean &= cancelPendingStarts("RELOAD");
         try {
@@ -986,13 +1291,46 @@ public final class GameManager {
             recordLifecycleFailure("reload.queue_drain_failed", null, null, failure);
         }
         nextQueueReminder.clear();
+        boolean mainCleanupClean = clean;
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        operations.submitRequired(() -> {
+            if (!recoveryDurability.flush(Duration.ofSeconds(10))) {
+                throw new IllegalStateException(
+                        "Recovery durability did not drain before configuration reload");
+            }
+            return null;
+        }).whenComplete((ignored, failure) ->
+                enqueueDurabilityCompletion(() ->
+                        finishReloadPreparation(mainCleanupClean, failure, result)));
+        return result;
+    }
+
+    private void finishReloadPreparation(
+            boolean mainCleanupClean,
+            Throwable durabilityFailure,
+            CompletableFuture<Void> result) {
+        boolean clean = mainCleanupClean && durabilityFailure == null;
+        if (durabilityFailure != null) {
+            recordLifecycleFailure(
+                    "reload.durability_drain_failed",
+                    null,
+                    null,
+                    durabilityFailure);
+        }
         try {
+            refreshJournalProtection();
+            for (GameSession session : List.copyOf(quarantinedSessions.values())) {
+                settleQuarantinedSession(session);
+            }
             PlayerRecoveryJournal.Health recoveryHealth = playerRecovery.health();
             boolean unresolved = !sessions.isEmpty()
                     || !pendingStarts.isEmpty()
+                    || !pendingStartAbandonments.isEmpty()
                     || !quarantinedSessions.isEmpty()
                     || restoration.pendingCount() > 0
                     || playerRecovery.pendingCount() > 0
+                    || !pendingPlayerRecoveryCompletions.isEmpty()
+                    || !durabilityCompletions.isEmpty()
                     || !recoveryHealth.healthy();
             if (unresolved) {
                 clean = false;
@@ -1000,9 +1338,13 @@ public final class GameManager {
                         "actor", "system",
                         "sessions", sessions.size(),
                         "pending_starts", pendingStarts.size(),
+                        "pending_start_abandonments",
+                                pendingStartAbandonments.size(),
                         "quarantined_arenas", quarantinedSessions.size(),
                         "pending_restorations", restoration.pendingCount(),
                         "pending_player_recoveries", playerRecovery.pendingCount(),
+                        "pending_player_recovery_completions",
+                                pendingPlayerRecoveryCompletions.size(),
                         "invalid_player_recoveries", recoveryHealth.invalidRecords()));
             }
         } catch (RuntimeException | LinkageError failure) {
@@ -1010,8 +1352,11 @@ public final class GameManager {
             recordLifecycleFailure("reload.cleanup_gate_failed", null, null, failure);
         }
         if (!clean) {
-            throw new IllegalStateException("WalkThePlank reload cleanup was incomplete");
+            result.completeExceptionally(
+                    new IllegalStateException("WalkThePlank reload cleanup was incomplete"));
+            return;
         }
+        result.complete(null);
     }
 
     /** Rebuilds idle runtime structures from the already atomically published settings bundle. */
@@ -1040,17 +1385,34 @@ public final class GameManager {
         }
         nextQueueReminder.clear();
         clean &= stopAll(SessionEndReason.SHUTDOWN);
-        try {
-            retryQuarantinedArenas();
-        } catch (RuntimeException | LinkageError failure) {
-            clean = false;
-            recordLifecycleFailure("shutdown.restoration_retry_failed", null, null, failure);
+        drainDurabilityCompletions();
+        return clean;
+    }
+
+    /**
+     * Final main-thread shutdown gate, called only after the recovery writer has stopped and every
+     * accepted completion has been published into the main-thread completion queue.
+     */
+    public boolean finishDurabilityShutdown() {
+        if (!shuttingDown) {
+            throw new IllegalStateException("Durability shutdown cannot finish before shutdown starts");
         }
         try {
-            return clean
+            drainDurabilityCompletions();
+            refreshJournalProtection();
+            for (GameSession session : List.copyOf(quarantinedSessions.values())) {
+                settleQuarantinedSession(session);
+            }
+            RecoveryDurabilityService.Status durability = recoveryDurability.status();
+            return durability.terminated()
                     && quarantinedArenas() == 0
+                    && pendingStartAbandonments.isEmpty()
                     && restoration.pendingCount() == 0
-                    && playerRecovery.pendingCount() == 0;
+                    && playerRecovery.pendingCount() == 0
+                    && pendingPlayerRecoveryCompletions.isEmpty()
+                    && durabilityCompletions.isEmpty()
+                    && arenaLeases.size() == 0
+                    && blockLeases.size() == 0;
         } catch (RuntimeException | LinkageError failure) {
             recordLifecycleFailure("shutdown.health_check_failed", null, null, failure);
             return false;
@@ -1069,7 +1431,9 @@ public final class GameManager {
     public boolean isRecovering(UUID playerId) {
         Objects.requireNonNull(playerId, "playerId");
         return RecoveryQuarantinePolicy.requiresQuarantine(
-                sessions.containsKey(playerId) || pendingStarts.containsKey(playerId),
+                sessions.containsKey(playerId)
+                        || pendingStarts.containsKey(playerId)
+                        || hasPendingStartAbandonment(playerId),
                 playerRecovery.requiresRecovery(playerId),
                 playerRecoveryLookups.contains(playerId));
     }
@@ -1179,7 +1543,7 @@ public final class GameManager {
     }
 
     public boolean isProtected(BlockKey key) {
-        return protectedBlocks.contains(key) || journalProtectedBlocks.contains(key);
+        return blockLeases.isReserved(key) || journalProtectedBlocks.contains(key);
     }
 
     public boolean isInsideActiveArena(Location location) {
@@ -1241,6 +1605,26 @@ public final class GameManager {
         return playerRecovery.pendingCount();
     }
 
+    /**
+     * Main-thread gate for arena-layout mutations. Queue reservations and every recovery owner are
+     * included so a validated edit cannot replace coordinates still referenced by live work.
+     */
+    public boolean isConfigurationMutationIdle() {
+        return sessions.isEmpty()
+                && pendingStarts.isEmpty()
+                && pendingStartAbandonments.isEmpty()
+                && quarantinedSessions.isEmpty()
+                && pendingPlayerReturns.isEmpty()
+                && pendingExternalTeleports.isEmpty()
+                && playerRecoveryLookups.isEmpty()
+                && pendingPlayerRecoveryCompletions.isEmpty()
+                && queue.size() == 0
+                && restoration.pendingCount() == 0
+                && playerRecovery.pendingCount() == 0
+                && arenaLeases.size() == 0
+                && blockLeases.size() == 0;
+    }
+
     public PlayerRecoveryJournal.Health playerRecoveryHealth() {
         return playerRecovery.health();
     }
@@ -1253,12 +1637,18 @@ public final class GameManager {
         return operations.metrics().snapshot();
     }
 
+    public RecoveryDurabilityService.Status recoveryDurabilityStatus() {
+        return recoveryDurability.status();
+    }
+
     /** Privacy-safe counts for pending gameplay work owned by the main server thread. */
     public TaskHealth taskHealth() {
         return new TaskHealth(
                 pendingStarts.size(),
+                pendingStartAbandonments.size(),
                 pendingExternalTeleports.size(),
-                playerRecoveryLookups.size());
+                playerRecoveryLookups.size(),
+                pendingPlayerRecoveryCompletions.size());
     }
 
     public void auditRewardResolution(
@@ -1466,6 +1856,8 @@ public final class GameManager {
     }
 
     public void expireSessions() {
+        drainDurabilityCompletions();
+        retryPendingStartAbandonments();
         for (PendingStart pending : List.copyOf(pendingStarts.values())) {
             try {
                 UnscheduledStart outcome = pending.takeUnscheduledOutcome();
@@ -1517,11 +1909,12 @@ public final class GameManager {
         }
     }
 
-    public int retryQuarantinedArenas() {
+    public CompletableFuture<Integer> retryQuarantinedArenas() {
         return retryQuarantinedArenas(null);
     }
 
-    public int retryQuarantinedArenas(UUID operatorId) {
+    public CompletableFuture<Integer> retryQuarantinedArenas(UUID operatorId) {
+        retryPendingStartAbandonments();
         Set<String> before = unresolvedArenaIds();
         int onlinePlayerRetries = 0;
         for (PlayerRecoveryRecord recoveryRecord : playerRecovery.pendingRecords()) {
@@ -1537,70 +1930,108 @@ public final class GameManager {
                     "actor", operatorKind(operatorId),
                     "online_lookups_started", onlinePlayerRetries));
         }
-        Set<UUID> activeRunIds = activeRunIds();
-        RestorationRetryResult journalResult = restoration.retryPending(activeRunIds);
-        refreshJournalProtection();
+        Set<UUID> protectedRunIds = recoveryProtectedRunIds();
+        CompletableFuture<RestorationRetryResult> retry =
+                restoration.retryPendingDeferred(protectedRunIds);
+        CompletableFuture<Integer> result = new CompletableFuture<>();
+        retry.whenComplete((journalResult, failure) ->
+                enqueueDurabilityCompletion(() ->
+                        completeRestorationRetry(
+                                operatorId,
+                                before,
+                                journalResult,
+                                failure,
+                                result)));
+        return result;
+    }
 
-        for (Map.Entry<String, GameSession> entry : List.copyOf(quarantinedSessions.entrySet())) {
-            PendingPlayerReturn pendingReturn = pendingPlayerReturns.get(entry.getKey());
-            if (pendingReturn != null) {
-                Player returningPlayer = plugin.getServer().getPlayer(pendingReturn.playerId());
-                if (returningPlayer == null || !returningPlayer.isOnline()) {
-                    continue;
-                }
-                Optional<PlayerRecoveryRecord> recovery = playerRecovery.pending(pendingReturn.playerId());
-                if (recovery.isPresent()) {
-                    if (recovery.orElseThrow().runId().equals(pendingReturn.runId())) {
-                        retryPendingReturn(returningPlayer);
+    private void completeRestorationRetry(
+            UUID operatorId,
+            Set<String> before,
+            RestorationRetryResult journalResult,
+            Throwable failure,
+            CompletableFuture<Integer> result) {
+        if (failure != null) {
+            recordLifecycleFailure(
+                    "restoration.retry_failed",
+                    operatorId,
+                    null,
+                    failure);
+            result.completeExceptionally(failure);
+            return;
+        }
+        try {
+            refreshJournalProtection();
+
+            for (Map.Entry<String, GameSession> entry : List.copyOf(quarantinedSessions.entrySet())) {
+                PendingPlayerReturn pendingReturn = pendingPlayerReturns.get(entry.getKey());
+                if (pendingReturn != null) {
+                    Player returningPlayer = plugin.getServer().getPlayer(pendingReturn.playerId());
+                    if (returningPlayer == null || !returningPlayer.isOnline()) {
+                        continue;
                     }
-                    continue;
-                } else if (!playerRecovery.canSafelyRecord(pendingReturn.playerId())) {
+                    Optional<PlayerRecoveryRecord> recovery =
+                            playerRecovery.pending(pendingReturn.playerId());
+                    if (recovery.isPresent()) {
+                        if (recovery.orElseThrow().runId().equals(pendingReturn.runId())) {
+                            retryPendingReturn(returningPlayer);
+                        }
+                        continue;
+                    } else if (!playerRecovery.canSafelyRecord(pendingReturn.playerId())) {
+                        continue;
+                    }
+                    pendingPlayerReturns.remove(entry.getKey(), pendingReturn);
+                }
+                try {
+                    finishSessionWorld(entry.getValue());
+                } catch (RuntimeException | LinkageError exception) {
+                    plugin.getLogger().log(
+                            Level.WARNING,
+                            "Arena " + entry.getKey()
+                                    + " is still quarantined after a restoration retry",
+                            exception);
                     continue;
                 }
-                pendingPlayerReturns.remove(entry.getKey(), pendingReturn);
+                settleQuarantinedSession(entry.getValue());
             }
-            try {
-                entry.getValue().finish();
-            } catch (RuntimeException | LinkageError exception) {
-                plugin.getLogger().log(
-                        Level.WARNING,
-                        "Arena " + entry.getKey() + " is still quarantined after a restoration retry",
-                        exception);
-                continue;
+            rebuildFreeArenas();
+            Set<String> after = unresolvedArenaIds();
+            int recovered = 0;
+            for (String arenaId : before) {
+                if (!after.contains(arenaId)) {
+                    recovered++;
+                }
             }
-            if (!quarantinedSessions.remove(entry.getKey(), entry.getValue())) {
-                continue;
-            }
-            plugin.getLogger().info("Recovered quarantined arena " + entry.getKey());
+            lastRestorationRetry = new RestorationRetryResult(
+                    journalResult.attemptedRecords(),
+                    journalResult.restoredRecords(),
+                    journalResult.alreadyRestoredRecords(),
+                    journalResult.conflictRecords(),
+                    journalResult.missingWorldRecords(),
+                    journalResult.failedRecords(),
+                    recovered,
+                    restoration.pendingCount(recoveryProtectedRunIds()),
+                    restoration.conflictedCount());
+            recordRestorationRetryMetrics(lastRestorationRetry);
+            auditRestorationRetry("restoration.retry", operatorId, lastRestorationRetry);
+            logRestorationRetry("Administrative", lastRestorationRetry);
+            refreshQueue();
+            result.complete(recovered);
+        } catch (RuntimeException | LinkageError completionFailure) {
+            recordLifecycleFailure(
+                    "restoration.retry_completion_failed",
+                    operatorId,
+                    null,
+                    completionFailure);
+            result.completeExceptionally(completionFailure);
         }
-        rebuildFreeArenas();
-        Set<String> after = unresolvedArenaIds();
-        int recovered = 0;
-        for (String arenaId : before) {
-            if (!after.contains(arenaId)) {
-                recovered++;
-            }
-        }
-        lastRestorationRetry = new RestorationRetryResult(
-                journalResult.attemptedRecords(),
-                journalResult.restoredRecords(),
-                journalResult.alreadyRestoredRecords(),
-                journalResult.conflictRecords(),
-                journalResult.missingWorldRecords(),
-                journalResult.failedRecords(),
-                recovered,
-                restoration.pendingCount(activeRunIds()),
-                restoration.conflictedCount());
-        recordRestorationRetryMetrics(lastRestorationRetry);
-        auditRestorationRetry("restoration.retry", operatorId, lastRestorationRetry);
-        logRestorationRetry("Administrative", lastRestorationRetry);
-        refreshQueue();
-        return recovered;
     }
 
     public boolean retryPendingReturn(Player player) {
         Objects.requireNonNull(player, "player");
-        if (sessions.containsKey(player.getUniqueId()) || pendingStarts.containsKey(player.getUniqueId())) {
+        if (sessions.containsKey(player.getUniqueId())
+                || pendingStarts.containsKey(player.getUniqueId())
+                || hasPendingStartAbandonment(player.getUniqueId())) {
             return false;
         }
         Optional<PlayerRecoveryRecord> recovery = playerRecovery.pending(player.getUniqueId());
@@ -1682,10 +2113,6 @@ public final class GameManager {
                 verifiedRun)) {
             return;
         }
-        pendingPlayerReturns.entrySet().removeIf(entry ->
-                entry.getValue().playerId().equals(requested.playerId())
-                        && entry.getValue().runId().equals(requested.runId()));
-        retryQuarantinedArenas();
     }
 
     private boolean recoverPendingPlayer(
@@ -1745,13 +2172,13 @@ public final class GameManager {
                 return false;
             }
         }
-        if (!completePlayerRecovery(record.playerId(), record.runId(), record.arenaId())) {
+        if (!queuePlayerRecoveryCompletion(
+                record.playerId(),
+                record.runId(),
+                record.arenaId(),
+                action.name().toLowerCase(java.util.Locale.ROOT))) {
             return false;
         }
-        operations.metrics().recordRestorationRecovered();
-        operations.audit("player_recovery.completed", player.getUniqueId(), record.arenaId(), Map.of(
-                "run_id", record.runId(),
-                "action", action.name().toLowerCase(java.util.Locale.ROOT)));
         return true;
     }
 
@@ -1809,6 +2236,28 @@ public final class GameManager {
         return clean;
     }
 
+    private GameSession.FinishResult finishSessionWorld(GameSession session) {
+        GameSession.FinishResult result = session.finishDeferred();
+        for (GameSession.BlockCleanup cleanup : result.cleanups()) {
+            attachBlockCleanup(session, cleanup);
+        }
+        for (CompletableFuture<Void> abandonment : result.abandonedPreparations()) {
+            abandonment.whenComplete((ignored, failure) ->
+                    enqueueDurabilityCompletion(() -> {
+                        if (failure != null) {
+                            recordLifecycleFailure(
+                                    "restoration.abandonment_failed",
+                                    session.player().getUniqueId(),
+                                    session.arena().id(),
+                                    failure);
+                        }
+                        refreshJournalProtection();
+                        settleQuarantinedSession(session);
+                    }));
+        }
+        return result;
+    }
+
     private boolean cancelPendingStarts(String reason) {
         boolean clean = true;
         for (PendingStart pending : List.copyOf(pendingStarts.values())) {
@@ -1862,7 +2311,26 @@ public final class GameManager {
         }
         pending.cancel(reason);
         pendingStarts.remove(pending.playerId(), pending);
-        releaseReservedArena(pending);
+        CompletableFuture<Void> durabilityAbandonment;
+        try {
+            durabilityAbandonment = pending.abandonDurability();
+        } catch (RuntimeException | LinkageError abandonmentFailure) {
+            pendingStartAbandonments.put(pending.runId(), pending);
+            recordLifecycleFailure(
+                    "run.pending_abandonment_submit_failed",
+                    pending.playerId(),
+                    pending.arena().id(),
+                    abandonmentFailure);
+            durabilityAbandonment = null;
+        }
+        if (durabilityAbandonment == null) {
+            if (!pendingStartAbandonments.containsKey(pending.runId())) {
+                releaseReservedArena(pending);
+            }
+        } else {
+            pendingStartAbandonments.put(pending.runId(), pending);
+            attachPendingStartAbandonment(pending, durabilityAbandonment);
+        }
         if (pending.queueInterruption()) {
             markRunInterrupted(
                     pending.runId(),
@@ -1872,10 +2340,109 @@ public final class GameManager {
         return true;
     }
 
+    private void attachPendingStartAbandonment(
+            PendingStart pending,
+            CompletableFuture<Void> abandonment) {
+        if (!pending.beginAbandonment(abandonment)) {
+            return;
+        }
+        abandonment.whenComplete((ignored, failure) ->
+                enqueueDurabilityCompletion(() ->
+                        completePendingStartAbandonment(pending, abandonment, failure)));
+    }
+
+    private void completePendingStartAbandonment(
+            PendingStart pending,
+            CompletableFuture<Void> abandonment,
+            Throwable failure) {
+        if (!pending.finishAbandonment(abandonment, failure == null)) {
+            return;
+        }
+        if (failure != null) {
+            recordLifecycleFailure(
+                    "run.pending_abandonment_failed",
+                    pending.playerId(),
+                    pending.arena().id(),
+                    failure);
+            return;
+        }
+        try {
+            releaseReservedArenaLease(pending);
+        } catch (RuntimeException | LinkageError releaseFailure) {
+            pending.deferAbandonmentRetry();
+            recordLifecycleFailure(
+                    "run.pending_abandonment_release_failed",
+                    pending.playerId(),
+                    pending.arena().id(),
+                    releaseFailure);
+            return;
+        }
+        publishAfterClearingPendingAbandonment(
+                () -> {
+                    PendingActivation activation = pending.activation();
+                    if (activation != null) {
+                        pending.clearActivation(activation);
+                    }
+                    pendingStartAbandonments.remove(pending.runId(), pending);
+                },
+                this::rebuildFreeArenas);
+        refreshQueue();
+    }
+
+    private void retryPendingStartAbandonments() {
+        long now = System.nanoTime();
+        for (PendingStart pending : List.copyOf(pendingStartAbandonments.values())) {
+            if (!pending.mayRetryAbandonment(now)) {
+                continue;
+            }
+            try {
+                CompletableFuture<Void> abandonment = pending.abandonDurability();
+                if (abandonment != null) {
+                    attachPendingStartAbandonment(pending, abandonment);
+                }
+            } catch (RuntimeException | LinkageError retryFailure) {
+                pending.deferAbandonmentRetry();
+                recordLifecycleFailure(
+                        "run.pending_abandonment_retry_failed",
+                        pending.playerId(),
+                        pending.arena().id(),
+                        retryFailure);
+            }
+        }
+    }
+
+    private boolean hasPendingStartAbandonment(UUID playerId) {
+        for (PendingStart pending : pendingStartAbandonments.values()) {
+            if (pending.playerId().equals(playerId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void releaseReservedArena(PendingStart pending) {
-        if (pending.releaseArena()) {
+        if (releaseReservedArenaLease(pending)) {
             rebuildFreeArenas();
         }
+    }
+
+    private boolean releaseReservedArenaLease(PendingStart pending) {
+        if (pending.arenaReleased()) {
+            return false;
+        }
+        if (!arenaLeases.release(pending.arena().id(), pending.arenaLease())) {
+            throw new IllegalStateException(
+                    "Pending start no longer owns its exact arena lease");
+        }
+        pending.markArenaReleased();
+        return true;
+    }
+
+    static void publishAfterClearingPendingAbandonment(
+            Runnable clearUnresolvedMarker,
+            Runnable rebuildAvailability) {
+        Objects.requireNonNull(clearUnresolvedMarker, "clearUnresolvedMarker").run();
+        Objects.requireNonNull(rebuildAvailability, "rebuildAvailability").run();
     }
 
     private void markRunInterrupted(UUID runId, RunStatus status, String reason) {
@@ -1965,6 +2532,49 @@ public final class GameManager {
                     "Could not schedule " + description,
                     schedulingFailure);
             return false;
+        }
+    }
+
+    private void enqueueDurabilityCompletion(Runnable completion) {
+        durabilityCompletions.add(Objects.requireNonNull(completion, "completion"));
+        if (shuttingDown || !plugin.isEnabled()) {
+            return;
+        }
+        if (!durabilityDrainScheduled.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            plugin.getServer().getScheduler().runTask(plugin, this::drainDurabilityCompletions);
+        } catch (RuntimeException schedulingFailure) {
+            durabilityDrainScheduled.set(false);
+            operations.metrics().recordRestorationFailure(schedulingFailure);
+            plugin.getLogger().log(
+                    Level.SEVERE,
+                    "Could not schedule recovery durability completions",
+                    schedulingFailure);
+        }
+    }
+
+    private void drainDurabilityCompletions() {
+        durabilityDrainScheduled.set(false);
+        Runnable completion;
+        while ((completion = durabilityCompletions.poll()) != null) {
+            try {
+                completion.run();
+            } catch (RuntimeException | LinkageError failure) {
+                recordLifecycleFailure(
+                        "durability.main_completion_failed",
+                        null,
+                        null,
+                        failure);
+            }
+        }
+        if (!durabilityCompletions.isEmpty()
+                && !shuttingDown
+                && plugin.isEnabled()) {
+            enqueueDurabilityCompletion(() -> {
+                // Wake-up marker; the next drain processes any completion that raced this drain.
+            });
         }
     }
 
@@ -2673,15 +3283,62 @@ public final class GameManager {
 
     private void releaseArena(GameSession session, boolean blocksRestored) {
         Arena arena = session.arena();
-        boolean completelyRestored = blocksRestored && !restoration.hasPendingSession(session.runId());
+        Optional<PlayerRecoveryRecord> recovery =
+                playerRecovery.pending(session.player().getUniqueId());
+        PendingPlayerReturn pendingReturn = pendingPlayerReturns.get(arena.id());
+        boolean playerRecoverySettled =
+                recovery.filter(record -> record.runId().equals(session.runId())).isEmpty()
+                        && (pendingReturn == null
+                                || !pendingReturn.runId().equals(session.runId()));
+        boolean completelyRestored = blocksRestored
+                && !restoration.hasPendingSession(session.runId())
+                && playerRecoverySettled;
         if (completelyRestored) {
             quarantinedSessions.remove(arena.id());
+            blockLeases.releaseRun(session.runId(), session.generation());
+            if (!arenaLeases.release(arena.id(), session.arenaLease())) {
+                throw new IllegalStateException(
+                        "Session no longer owns its exact arena lease: " + arena.id());
+            }
         } else {
             quarantinedSessions.put(arena.id(), session);
             plugin.getLogger().severe(
                     "Arena " + arena.id() + " was quarantined because session cleanup did not fully settle");
         }
         refreshJournalProtection();
+        rebuildFreeArenas();
+    }
+
+    private void settleQuarantinedSession(GameSession session) {
+        Objects.requireNonNull(session, "session");
+        if (sessions.get(session.player().getUniqueId()) == session
+                || quarantinedSessions.get(session.arena().id()) != session
+                || restoration.hasPendingSession(session.runId())) {
+            return;
+        }
+        Optional<PlayerRecoveryRecord> recovery =
+                playerRecovery.pending(session.player().getUniqueId());
+        if (recovery.isPresent() && recovery.orElseThrow().runId().equals(session.runId())) {
+            return;
+        }
+        PendingPlayerReturn pendingReturn = pendingPlayerReturns.get(session.arena().id());
+        if (pendingReturn != null && pendingReturn.runId().equals(session.runId())) {
+            return;
+        }
+        blockLeases.releaseRun(session.runId(), session.generation());
+        if (!arenaLeases.release(session.arena().id(), session.arenaLease())) {
+            recordLifecycleFailure(
+                    "arena.lease_release_failed",
+                    session.player().getUniqueId(),
+                    session.arena().id(),
+                    new IllegalStateException("Quarantined session lost its exact arena lease"));
+            return;
+        }
+        if (!quarantinedSessions.remove(session.arena().id(), session)) {
+            arenaLeases.reserve(session.arena().id(), session.arenaLease());
+            return;
+        }
+        plugin.getLogger().info("Recovered quarantined arena " + session.arena().id());
         rebuildFreeArenas();
     }
 
@@ -2696,17 +3353,16 @@ public final class GameManager {
         }
     }
 
-    private Set<UUID> activeRunIds() {
-        Set<UUID> result = new HashSet<>();
-        for (GameSession session : sessions.values()) {
-            result.add(session.runId());
-        }
-        return Set.copyOf(result);
+    private Set<UUID> recoveryProtectedRunIds() {
+        return arenaLeases.ownedRunIds();
     }
 
     private Set<String> unresolvedArenaIds() {
         Set<String> result = new HashSet<>(quarantinedSessions.keySet());
-        result.addAll(restoration.pendingArenaIds(activeRunIds()));
+        for (PendingStart pending : pendingStartAbandonments.values()) {
+            result.add(pending.arena().id());
+        }
+        result.addAll(restoration.pendingArenaIds(recoveryProtectedRunIds()));
         PlayerRecoveryJournal.Health recoveryHealth = playerRecovery.health();
         result.addAll(RecoveryArenaPolicy.unavailableArenaIds(
                 settings.get().arenas().stream().map(Arena::id).toList(),
@@ -2719,6 +3375,11 @@ public final class GameManager {
 
     private void rebuildFreeArenas() {
         Set<String> unavailable = new HashSet<>(unresolvedArenaIds());
+        for (Arena arena : settings.get().arenas()) {
+            if (arenaLeases.isReserved(arena.id())) {
+                unavailable.add(arena.id());
+            }
+        }
         for (GameSession session : sessions.values()) {
             unavailable.add(session.arena().id());
         }
@@ -2842,12 +3503,16 @@ public final class GameManager {
 
     public record TaskHealth(
             int pendingStarts,
+            int pendingStartAbandonments,
             int pendingExternalTeleportChecks,
-            int pendingPlayerRecoveryLookups) {
+            int pendingPlayerRecoveryLookups,
+            int pendingPlayerRecoveryCompletions) {
         public TaskHealth {
             if (pendingStarts < 0
+                    || pendingStartAbandonments < 0
                     || pendingExternalTeleportChecks < 0
-                    || pendingPlayerRecoveryLookups < 0) {
+                    || pendingPlayerRecoveryLookups < 0
+                    || pendingPlayerRecoveryCompletions < 0) {
                 throw new IllegalArgumentException("Task-health counts must not be negative");
             }
         }
@@ -2959,7 +3624,19 @@ public final class GameManager {
             boolean blocksRestored,
             boolean stateRestored,
             boolean playerReturned,
-            boolean recoveryCleared) {
+            boolean recoveryQueued) {
+    }
+
+    private record PlayerRecoveryCompletion(
+            UUID playerId,
+            UUID runId,
+            String arenaId,
+            String recoveredAction) {
+        private PlayerRecoveryCompletion {
+            Objects.requireNonNull(playerId, "playerId");
+            Objects.requireNonNull(runId, "runId");
+            Objects.requireNonNull(arenaId, "arenaId");
+        }
     }
 
     private record PendingPlayerReturn(UUID playerId, UUID runId) {
@@ -3078,21 +3755,89 @@ public final class GameManager {
         }
     }
 
+    private record ActivationRecords(
+            PlayerRecoveryRecord playerRecovery,
+            GameSession.StartRecords platforms) {
+        private ActivationRecords {
+            Objects.requireNonNull(playerRecovery, "playerRecovery");
+            Objects.requireNonNull(platforms, "platforms");
+        }
+    }
+
+    private static final class PendingActivation {
+        private final GameSession session;
+        private final RecoveryDurabilityService.PlayerRecoveryPreparation playerPreparation;
+        private final GameSession.StartPreparation platformPreparation;
+        private final CompletableFuture<ActivationRecords> durable;
+
+        private PendingActivation(
+                GameSession session,
+                RecoveryDurabilityService.PlayerRecoveryPreparation playerPreparation,
+                GameSession.StartPreparation platformPreparation) {
+            this.session = Objects.requireNonNull(session, "session");
+            this.playerPreparation = Objects.requireNonNull(
+                    playerPreparation, "playerPreparation");
+            this.platformPreparation = Objects.requireNonNull(
+                    platformPreparation, "platformPreparation");
+            durable = playerPreparation.durableRecord().thenCombine(
+                    platformPreparation.durable(),
+                    ActivationRecords::new);
+        }
+
+        private GameSession session() {
+            return session;
+        }
+
+        private RecoveryDurabilityService.PlayerRecoveryPreparation playerPreparation() {
+            return playerPreparation;
+        }
+
+        private GameSession.StartPreparation platformPreparation() {
+            return platformPreparation;
+        }
+
+        private CompletableFuture<ActivationRecords> durable() {
+            return durable;
+        }
+
+        private CompletableFuture<Void> abandon() {
+            List<CompletableFuture<Void>> blocks = platformPreparation.abandon();
+            CompletableFuture<?>[] operations =
+                    new CompletableFuture<?>[blocks.size() + 1];
+            operations[0] = playerPreparation.discard();
+            for (int index = 0; index < blocks.size(); index++) {
+                operations[index + 1] = blocks.get(index);
+            }
+            return CompletableFuture.allOf(operations);
+        }
+    }
+
     private static final class PendingStart {
         private final UUID runId;
         private final UUID playerId;
         private final Arena arena;
         private final Instant startedAt;
+        private final ArenaLeaseRegistry.ArenaLease arenaLease;
         private String cancellationReason;
         private volatile UnscheduledStart unscheduledOutcome;
+        private PendingActivation activation;
+        private Supplier<CompletableFuture<Void>> durabilityAbandoner;
+        private CompletableFuture<Void> abandonmentInFlight;
+        private long nextAbandonmentRetryNanos;
         private boolean arenaReleased;
         private boolean interruptionQueued;
 
-        private PendingStart(UUID runId, UUID playerId, Arena arena, Instant startedAt) {
+        private PendingStart(
+                UUID runId,
+                UUID playerId,
+                Arena arena,
+                Instant startedAt,
+                ArenaLeaseRegistry.ArenaLease arenaLease) {
             this.runId = Objects.requireNonNull(runId, "runId");
             this.playerId = Objects.requireNonNull(playerId, "playerId");
             this.arena = Objects.requireNonNull(arena, "arena");
             this.startedAt = Objects.requireNonNull(startedAt, "startedAt");
+            this.arenaLease = Objects.requireNonNull(arenaLease, "arenaLease");
         }
 
         private UUID runId() {
@@ -3107,6 +3852,10 @@ public final class GameManager {
             return arena;
         }
 
+        private ArenaLeaseRegistry.ArenaLease arenaLease() {
+            return arenaLease;
+        }
+
         @SuppressWarnings("unused")
         private Instant startedAt() {
             return startedAt;
@@ -3114,6 +3863,75 @@ public final class GameManager {
 
         private String cancellationReason() {
             return cancellationReason;
+        }
+
+        private boolean installActivation(PendingActivation candidate) {
+            if (activation != null) {
+                return false;
+            }
+            activation = Objects.requireNonNull(candidate, "candidate");
+            durabilityAbandoner = candidate::abandon;
+            return true;
+        }
+
+        private void installDurabilityAbandoner(
+                Supplier<CompletableFuture<Void>> abandoner) {
+            if (activation != null) {
+                throw new IllegalStateException(
+                        "An activated durability abandonment cannot be replaced");
+            }
+            durabilityAbandoner = Objects.requireNonNull(abandoner, "abandoner");
+        }
+
+        private PendingActivation activation() {
+            return activation;
+        }
+
+        private void clearActivation(PendingActivation expected) {
+            if (activation == expected) {
+                activation = null;
+            }
+        }
+
+        private CompletableFuture<Void> abandonDurability() {
+            Supplier<CompletableFuture<Void>> abandoner = durabilityAbandoner;
+            return abandoner == null
+                    ? null
+                    : Objects.requireNonNull(abandoner.get(), "abandonment future");
+        }
+
+        private boolean beginAbandonment(CompletableFuture<Void> abandonment) {
+            Objects.requireNonNull(abandonment, "abandonment");
+            if (abandonmentInFlight != null || arenaReleased) {
+                return false;
+            }
+            abandonmentInFlight = abandonment;
+            return true;
+        }
+
+        private boolean finishAbandonment(
+                CompletableFuture<Void> abandonment,
+                boolean succeeded) {
+            if (abandonmentInFlight != abandonment) {
+                return false;
+            }
+            abandonmentInFlight = null;
+            nextAbandonmentRetryNanos = succeeded
+                    ? 0L
+                    : System.nanoTime() + Duration.ofSeconds(5L).toNanos();
+            return true;
+        }
+
+        private boolean mayRetryAbandonment(long nowNanos) {
+            return !arenaReleased
+                    && abandonmentInFlight == null
+                    && durabilityAbandoner != null
+                    && nowNanos >= nextAbandonmentRetryNanos;
+        }
+
+        private void deferAbandonmentRetry() {
+            nextAbandonmentRetryNanos =
+                    System.nanoTime() + Duration.ofSeconds(5L).toNanos();
         }
 
         private void cancel(String reason) {
@@ -3140,12 +3958,11 @@ public final class GameManager {
             return true;
         }
 
-        private boolean releaseArena() {
+        private void markArenaReleased() {
             if (arenaReleased) {
-                return false;
+                throw new IllegalStateException("Pending arena lease was already released");
             }
             arenaReleased = true;
-            return true;
         }
 
         private boolean arenaReleased() {

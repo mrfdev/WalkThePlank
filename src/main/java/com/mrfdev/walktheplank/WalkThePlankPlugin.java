@@ -13,10 +13,9 @@ import com.mrfdev.walktheplank.gui.ItemFactory;
 import com.mrfdev.walktheplank.gui.MenuService;
 import com.mrfdev.walktheplank.listener.GameListener;
 import com.mrfdev.walktheplank.ops.OperationalContext;
-import com.mrfdev.walktheplank.ops.OperationalMetrics;
-import com.mrfdev.walktheplank.ops.StructuredAuditLog;
 import com.mrfdev.walktheplank.placeholder.InfinityParkourExpansion;
 import com.mrfdev.walktheplank.recovery.PlayerRecoveryJournal;
+import com.mrfdev.walktheplank.recovery.RecoveryDurabilityService;
 import com.mrfdev.walktheplank.recovery.RestorationJournal;
 import com.mrfdev.walktheplank.reward.RewardService;
 import com.mrfdev.walktheplank.text.MessageService;
@@ -27,6 +26,8 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.BooleanSupplier;
 import java.util.logging.Level;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
@@ -43,6 +44,8 @@ public final class WalkThePlankPlugin extends JavaPlugin {
     private InfinityParkourExpansion placeholderExpansion;
     private BuildInfo buildInfo;
     private OperationalContext operations;
+    private RecoveryDurabilityService recoveryDurability;
+    private WalkCommand commandHandler;
     private WalkThePlankApi api;
     private boolean enableCompleted;
 
@@ -52,12 +55,16 @@ public final class WalkThePlankPlugin extends JavaPlugin {
             Path dataFolder = requireSafeDataFolder();
             buildInfo = BuildInfo.load(this);
             String releaseIdentity = buildInfo.releaseLabel() + " / " + buildInfo.artifactFile();
-            StructuredAuditLog auditLog = StructuredAuditLog.open(
+            operations = OperationalContext.open(
+                    dataFolder,
+                    releaseIdentity,
+                    getLogger());
+            recoveryDurability = RecoveryDurabilityService.open(
                     dataFolder, releaseIdentity);
-            operations = new OperationalContext(new OperationalMetrics(), auditLog, getLogger());
-            RestorationJournal restorationJournal = RestorationJournal.open(
-                    dataFolder, releaseIdentity);
-            PlayerRecoveryJournal playerRecoveryJournal = PlayerRecoveryJournal.open(dataFolder);
+            RestorationJournal restorationJournal =
+                    recoveryDurability.restorationJournal();
+            PlayerRecoveryJournal playerRecoveryJournal =
+                    recoveryDurability.playerRecoveryJournal();
             configuration = new ConfigurationManager(this);
             configuration.load();
             activeDatabaseSettings = configuration.databaseSettings();
@@ -75,6 +82,7 @@ public final class WalkThePlankPlugin extends JavaPlugin {
                     rewards,
                     restorationJournal,
                     playerRecoveryJournal,
+                    recoveryDurability,
                     releaseIdentity,
                     operations);
             getServer().getScheduler().runTaskTimer(this, games::expireSessions, 20L, 20L);
@@ -100,7 +108,7 @@ public final class WalkThePlankPlugin extends JavaPlugin {
             PluginCommand command = Objects.requireNonNull(
                     getCommand("walktheplank"),
                     "walktheplank command is missing from plugin.yml");
-            WalkCommand commandHandler = new WalkCommand(
+            commandHandler = new WalkCommand(
                     this,
                     configuration::runtimeSettings,
                     games,
@@ -110,7 +118,9 @@ public final class WalkThePlankPlugin extends JavaPlugin {
                     this::reloadPlugin,
                     buildInfo,
                     () -> placeholderExpansion != null,
-                    operations);
+                    operations,
+                    configuration,
+                    this::activateConfiguration);
             command.setExecutor(commandHandler);
             command.setTabCompleter(commandHandler);
 
@@ -171,6 +181,7 @@ public final class WalkThePlankPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         boolean cleanDisable = enableCompleted;
+        CompletableFuture<Boolean> configurationReconciliation = null;
         long repositoryFailuresBeforeDrain = 0L;
         if (operations != null) {
             try {
@@ -178,6 +189,17 @@ public final class WalkThePlankPlugin extends JavaPlugin {
             } catch (RuntimeException | LinkageError exception) {
                 cleanDisable = false;
                 getLogger().log(Level.SEVERE, "Could not snapshot pre-shutdown metrics", exception);
+            }
+        }
+        if (commandHandler != null) {
+            try {
+                configurationReconciliation = commandHandler.prepareShutdown();
+            } catch (RuntimeException | LinkageError exception) {
+                cleanDisable = false;
+                getLogger().log(
+                        Level.SEVERE,
+                        "Could not queue command/configuration shutdown reconciliation",
+                        exception);
             }
         }
         try {
@@ -199,11 +221,38 @@ public final class WalkThePlankPlugin extends JavaPlugin {
             try {
                 if (!games.shutdown()) {
                     cleanDisable = false;
-                    getLogger().severe("One or more arenas remain quarantined after shutdown retry");
+                    getLogger().severe("One or more main-thread session cleanup steps failed");
                 }
             } catch (RuntimeException | LinkageError exception) {
                 cleanDisable = false;
                 getLogger().log(Level.SEVERE, "Could not finish WalkThePlank sessions", exception);
+            }
+        }
+        if (recoveryDurability != null) {
+            try {
+                if (!recoveryDurability.close(Duration.ofSeconds(15))) {
+                    cleanDisable = false;
+                    getLogger().warning(
+                            "Timed out while draining accepted recovery journal writes");
+                }
+            } catch (RuntimeException | LinkageError exception) {
+                cleanDisable = false;
+                getLogger().log(Level.SEVERE, "Could not close the recovery durability writer", exception);
+            }
+        }
+        if (games != null) {
+            try {
+                if (!games.finishDurabilityShutdown()) {
+                    cleanDisable = false;
+                    getLogger().severe(
+                            "Recovery durability did not fully settle every arena and player record");
+                }
+            } catch (RuntimeException | LinkageError exception) {
+                cleanDisable = false;
+                getLogger().log(
+                        Level.SEVERE,
+                        "Could not complete the recovery durability shutdown gate",
+                        exception);
             }
         }
         if (placeholderExpansion != null) {
@@ -249,7 +298,33 @@ public final class WalkThePlankPlugin extends JavaPlugin {
                 cleanDisable = false;
                 getLogger().log(Level.SEVERE, "Could not record final WalkThePlank shutdown audit", exception);
             }
+            try {
+                if (!operations.close(Duration.ofSeconds(10))) {
+                    cleanDisable = false;
+                    getLogger().warning(
+                            "Timed out while draining accepted audit, export, or configuration I/O");
+                }
+            } catch (RuntimeException | LinkageError exception) {
+                cleanDisable = false;
+                getLogger().log(Level.SEVERE, "Could not close the operations I/O worker", exception);
+            }
         }
+        if (configurationReconciliation != null) {
+            try {
+                if (!configurationReconciliation.getNow(false)) {
+                    cleanDisable = false;
+                    getLogger().severe(
+                            "A committed arena configuration edit could not be reconciled");
+                }
+            } catch (RuntimeException reconciliationFailure) {
+                cleanDisable = false;
+                getLogger().log(
+                        Level.SEVERE,
+                        "Arena configuration shutdown reconciliation failed",
+                        reconciliationFailure);
+            }
+        }
+        commandHandler = null;
         if (!enableCompleted) {
             getLogger().warning(
                     "WalkThePlank startup was aborted; no clean restoration claim is being made");
@@ -260,22 +335,140 @@ public final class WalkThePlankPlugin extends JavaPlugin {
         }
     }
 
-    private boolean reloadPlugin() {
-        ConfigurationManager.ConfigurationSnapshot previous = null;
+    private CompletableFuture<Boolean> reloadPlugin(BooleanSupplier revalidate) {
+        Objects.requireNonNull(revalidate, "revalidate");
+        long expectedGeneration = configuration.generation();
+        CompletableFuture<Boolean> result = new CompletableFuture<>();
+        operations.submitRequired(configuration::captureFiles)
+                .whenComplete((files, captureFailure) -> scheduleConfigurationMain(result, () -> {
+                    if (captureFailure != null) {
+                        reportReloadFailure(result, captureFailure);
+                        return;
+                    }
+                    if (!revalidate.getAsBoolean()
+                            || configuration.generation() != expectedGeneration) {
+                        result.complete(false);
+                        return;
+                    }
+                    ConfigurationManager.ConfigurationSnapshot candidate;
+                    try {
+                        candidate = configuration.prepare(files);
+                    } catch (IOException | RuntimeException | LinkageError validationFailure) {
+                        reportReloadFailure(result, validationFailure);
+                        return;
+                    }
+                    operations.submitRequired(() -> {
+                        configuration.requireFilesUnchanged(files);
+                        configuration.requireDatabaseStorageSafe(candidate.databaseSettings());
+                        return null;
+                    }).whenComplete((ignored, verificationFailure) ->
+                            scheduleConfigurationMain(result, () -> {
+                                if (verificationFailure != null) {
+                                    reportReloadFailure(result, verificationFailure);
+                                    return;
+                                }
+                                if (!revalidate.getAsBoolean()
+                                        || configuration.generation() != expectedGeneration) {
+                                    result.complete(false);
+                                    return;
+                                }
+                                activateConfigurationAsync(
+                                        candidate,
+                                        files,
+                                        expectedGeneration,
+                                        revalidate,
+                                        result);
+                            }));
+                }));
+        return result;
+    }
+
+    private void activateConfigurationAsync(
+            ConfigurationManager.ConfigurationSnapshot candidate,
+            ConfigurationManager.ConfigurationFiles files,
+            long expectedGeneration,
+            BooleanSupplier revalidate,
+            CompletableFuture<Boolean> result) {
+        if (!revalidate.getAsBoolean()
+                || configuration.generation() != expectedGeneration) {
+            result.complete(false);
+            return;
+        }
+        if (menus != null) {
+            menus.closeOpenMenus();
+        }
+        CompletableFuture<Void> cleanup;
+        try {
+            cleanup = games.prepareReload();
+        } catch (RuntimeException | LinkageError cleanupFailure) {
+            reportReloadFailure(result, cleanupFailure);
+            return;
+        }
+        cleanup.whenComplete((ignored, cleanupFailure) ->
+                scheduleConfigurationMain(result, () -> {
+                    if (cleanupFailure != null) {
+                        reportReloadFailure(result, cleanupFailure);
+                        return;
+                    }
+                    operations.submitRequired(() -> {
+                        configuration.requireFilesUnchanged(files);
+                        configuration.requireDatabaseStorageSafe(candidate.databaseSettings());
+                        return null;
+                    }).whenComplete((verification, finalVerificationFailure) ->
+                            scheduleConfigurationMain(result, () -> {
+                                if (finalVerificationFailure != null) {
+                                    reportReloadFailure(result, finalVerificationFailure);
+                                    return;
+                                }
+                                try {
+                                    result.complete(publishConfiguration(
+                                            candidate,
+                                            expectedGeneration,
+                                            revalidate));
+                                } catch (RuntimeException | LinkageError activationFailure) {
+                                    reportReloadFailure(result, activationFailure);
+                                }
+                            }));
+                }));
+    }
+
+    private boolean activateConfiguration(
+            ConfigurationManager.ConfigurationSnapshot candidate,
+            long expectedGeneration,
+            BooleanSupplier revalidate) {
+        Objects.requireNonNull(candidate, "candidate");
+        Objects.requireNonNull(revalidate, "revalidate");
+        if (!revalidate.getAsBoolean()
+                || configuration.generation() != expectedGeneration
+                || !games.isConfigurationMutationIdle()) {
+            return false;
+        }
+
+        if (menus != null) {
+            menus.closeOpenMenus();
+        }
+        return publishConfiguration(candidate, expectedGeneration, revalidate);
+    }
+
+    private boolean publishConfiguration(
+            ConfigurationManager.ConfigurationSnapshot candidate,
+            long expectedGeneration,
+            BooleanSupplier revalidate) {
+        ConfigurationManager.ConfigurationSnapshot previous = configuration.activeSnapshot();
         boolean candidatePublished = false;
         try {
-            ConfigurationManager.ConfigurationSnapshot candidate = configuration.prepare();
-            previous = configuration.activeSnapshot();
-            if (menus != null) {
-                menus.closeOpenMenus();
+            if (!revalidate.getAsBoolean()
+                    || !configuration.commitIfGeneration(candidate, expectedGeneration)) {
+                return false;
             }
-            games.prepareReload();
-            configuration.commit(candidate);
             candidatePublished = true;
             try {
                 games.applyReloadedSettings();
             } catch (RuntimeException | LinkageError applyFailure) {
-                configuration.commit(previous);
+                if (!configuration.commitIfGeneration(previous, expectedGeneration + 1L)) {
+                    applyFailure.addSuppressed(new IllegalStateException(
+                            "Runtime configuration generation changed during rollback"));
+                }
                 candidatePublished = false;
                 try {
                     games.applyReloadedSettings();
@@ -288,9 +481,9 @@ public final class WalkThePlankPlugin extends JavaPlugin {
                 getLogger().warning("Database settings changed; restart the server to apply them safely");
             }
             return true;
-        } catch (Exception | LinkageError failure) {
-            if (candidatePublished && previous != null) {
-                configuration.commit(previous);
+        } catch (RuntimeException | LinkageError failure) {
+            if (candidatePublished) {
+                configuration.commitIfGeneration(previous, expectedGeneration + 1L);
                 try {
                     games.applyReloadedSettings();
                 } catch (RuntimeException | LinkageError rollbackFailure) {
@@ -299,10 +492,34 @@ public final class WalkThePlankPlugin extends JavaPlugin {
             }
             getLogger().log(
                     Level.SEVERE,
-                    "Could not reload WalkThePlank; the previous validated configuration remains active",
+                    "Could not apply WalkThePlank configuration; the previous runtime remains active",
                     failure);
             return false;
         }
+    }
+
+    private void scheduleConfigurationMain(
+            CompletableFuture<Boolean> result,
+            Runnable action) {
+        if (!isEnabled()) {
+            result.complete(false);
+            return;
+        }
+        try {
+            getServer().getScheduler().runTask(this, action);
+        } catch (RuntimeException schedulingFailure) {
+            reportReloadFailure(result, schedulingFailure);
+        }
+    }
+
+    private void reportReloadFailure(
+            CompletableFuture<Boolean> result,
+            Throwable failure) {
+        getLogger().log(
+                Level.SEVERE,
+                "Could not reload WalkThePlank; the previous validated configuration remains active",
+                failure);
+        result.complete(false);
     }
 
     private void registerPlaceholderExpansion() {

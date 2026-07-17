@@ -3,6 +3,7 @@ package com.mrfdev.walktheplank.recovery;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -13,6 +14,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -52,6 +56,32 @@ class RestorationJournalTest {
 
         assertEquals(0, journal.pendingCount());
         assertEquals(0, RestorationJournal.open(dataDirectory(), "release").pendingCount());
+    }
+
+    @Test
+    void reportsPublishedRecordWhenPostRenameDirectoryFsyncFails() throws Exception {
+        IOException fsyncFailure = new IOException("simulated directory fsync failure");
+        RestorationJournal journal = RestorationJournal.open(
+                dataDirectory(),
+                "release",
+                () -> JOURNAL_ID,
+                () -> 1234L,
+                ignored -> {
+                    throw fsyncFailure;
+                });
+
+        RestorationJournalCommitUncertainException failure = assertThrows(
+                RestorationJournalCommitUncertainException.class,
+                () -> append(journal, 10, 70, -4));
+
+        assertSame(fsyncFailure, failure.getCause());
+        assertSame(failure.record(), journal.pendingRecords().getFirst());
+        assertTrue(journal.isPending(failure.record().journalId()));
+        assertTrue(Files.isRegularFile(
+                journal.directory().resolve(failure.record().journalId() + ".pending")));
+
+        RestorationJournal reopened = RestorationJournal.open(dataDirectory(), "release");
+        assertEquals(failure.record(), reopened.pendingRecords().getFirst());
     }
 
     @Test
@@ -156,6 +186,26 @@ class RestorationJournalTest {
         assertFalse(journal.pendingArenaIds(java.util.Set.of(SESSION_ID)).contains("main"));
     }
 
+    @Test
+    void runtimeQueriesDoNotWaitForTheDiskMutationMonitor() throws Exception {
+        RestorationJournal journal = deterministicJournal(JOURNAL_ID);
+        RestorationRecord record = append(journal, 10, 70, -4);
+
+        assertReadsDoNotWaitForMutationMonitor(journal, () -> {
+            assertEquals(java.util.List.of(record), journal.pendingRecords());
+            assertEquals(1, journal.pendingCount());
+            assertTrue(journal.isPending(JOURNAL_ID));
+            assertTrue(journal.hasPendingSession(SESSION_ID));
+            assertEquals(java.util.Set.of("main"), journal.pendingArenaIds(java.util.Set.of()));
+            assertTrue(journal.pendingArenaIds(java.util.Set.of(SESSION_ID)).isEmpty());
+        });
+
+        journal.complete(JOURNAL_ID);
+        assertEquals(java.util.List.of(), journal.pendingRecords());
+        assertEquals(0, journal.pendingCount());
+        assertFalse(journal.isPending(JOURNAL_ID));
+    }
+
     private RestorationJournal deterministicJournal(UUID journalId) throws IOException {
         return RestorationJournal.open(
                 dataDirectory(),
@@ -184,5 +234,54 @@ class RestorationJournalTest {
                 new SerializedBlockState("EMERALD_BLOCK", "minecraft:emerald_block"),
                 new SerializedBlockState("AIR", "minecraft:air"),
                 STRUCTURE);
+    }
+
+    private static void assertReadsDoNotWaitForMutationMonitor(
+            Object monitor,
+            CheckedRead reads) throws Exception {
+        CountDownLatch monitorHeld = new CountDownLatch(1);
+        CountDownLatch releaseMonitor = new CountDownLatch(1);
+        Thread holder = Thread.ofPlatform()
+                .name("restoration-journal-monitor-holder")
+                .daemon(true)
+                .start(() -> {
+                    synchronized (monitor) {
+                        monitorHeld.countDown();
+                        awaitUnchecked(releaseMonitor);
+                    }
+                });
+        assertTrue(monitorHeld.await(2, TimeUnit.SECONDS));
+
+        FutureTask<Void> query = new FutureTask<>(() -> {
+            reads.run();
+            return null;
+        });
+        Thread reader = Thread.ofPlatform()
+                .name("restoration-journal-snapshot-reader")
+                .daemon(true)
+                .start(query);
+        try {
+            query.get(2, TimeUnit.SECONDS);
+        } finally {
+            releaseMonitor.countDown();
+            holder.join(2_000L);
+            reader.join(2_000L);
+        }
+        assertFalse(holder.isAlive());
+        assertFalse(reader.isAlive());
+    }
+
+    private static void awaitUnchecked(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Interrupted while holding the mutation monitor", exception);
+        }
+    }
+
+    @FunctionalInterface
+    private interface CheckedRead {
+        void run() throws Exception;
     }
 }

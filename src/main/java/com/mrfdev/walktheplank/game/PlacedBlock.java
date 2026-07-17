@@ -4,40 +4,39 @@ import com.mrfdev.walktheplank.recovery.RestorationCoordinator;
 import com.mrfdev.walktheplank.recovery.RestorationOutcome;
 import com.mrfdev.walktheplank.recovery.RestorationRecord;
 import java.util.Objects;
-import java.util.UUID;
-import org.bukkit.Material;
+import org.bukkit.Location;
 import org.bukkit.block.Block;
 
 final class PlacedBlock {
     private final Block block;
     private final BlockKey key;
+    private final BlockLeaseRegistry.BlockLease lease;
     private final RestorationCoordinator restoration;
     private final RestorationRecord record;
     private boolean restored;
 
     private PlacedBlock(
             Block block,
+            BlockLeaseRegistry.BlockLease lease,
             RestorationCoordinator restoration,
             RestorationRecord record) {
         this.block = block;
+        this.lease = Objects.requireNonNull(lease, "lease");
         this.restoration = restoration;
         this.record = record;
         key = BlockKey.from(block);
     }
 
-    static PlacedBlock prepare(
+    static PlacedBlock claimed(
             Block block,
-            Material material,
-            UUID sessionId,
-            String arenaId,
-            RestorationCoordinator restoration) {
-        Objects.requireNonNull(block, "block");
-        Objects.requireNonNull(material, "material");
-        Objects.requireNonNull(sessionId, "sessionId");
-        Objects.requireNonNull(arenaId, "arenaId");
-        Objects.requireNonNull(restoration, "restoration");
-        RestorationRecord record = restoration.prepare(sessionId, arenaId, block, material);
-        return new PlacedBlock(block, restoration, record);
+            BlockLeaseRegistry.BlockLease lease,
+            RestorationCoordinator restoration,
+            RestorationRecord record) {
+        return new PlacedBlock(
+                Objects.requireNonNull(block, "block"),
+                Objects.requireNonNull(lease, "lease"),
+                Objects.requireNonNull(restoration, "restoration"),
+                Objects.requireNonNull(record, "record"));
     }
 
     void place() {
@@ -48,21 +47,32 @@ final class PlacedBlock {
         return key;
     }
 
+    BlockLeaseRegistry.BlockLease lease() {
+        return lease;
+    }
+
+    Location location() {
+        return block.getLocation();
+    }
+
     boolean isIntact() {
         return !restored
                 && block.getType().name().equals(record.expectedState().material())
                 && block.getBlockData().getAsString().equals(record.expectedState().blockData());
     }
 
-    void restore() {
+    RestorationCoordinator.DeferredRestoration restoreDeferred() {
         if (restored) {
-            return;
+            return new RestorationCoordinator.DeferredRestoration(
+                    RestorationOutcome.NO_LONGER_PENDING,
+                    java.util.concurrent.CompletableFuture.completedFuture(
+                            RestorationOutcome.NO_LONGER_PENDING));
         }
-        RestorationOutcome outcome = restoration.restore(record);
-        if (!outcome.completed()) {
-            throw new IllegalStateException(
-                    "Parkour block restoration remains pending for " + key + ": " + outcome);
+        RestorationCoordinator.DeferredRestoration deferred =
+                restoration.restoreDeferred(record);
+        if (deferred.worldSettled()) {
+            restored = true;
         }
-        restored = true;
+        return deferred;
     }
 }

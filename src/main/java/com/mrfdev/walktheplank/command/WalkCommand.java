@@ -21,6 +21,7 @@ import com.mrfdev.walktheplank.database.RunInvestigationQuery;
 import com.mrfdev.walktheplank.database.RunInvestigationRecord;
 import com.mrfdev.walktheplank.database.RunStatus;
 import com.mrfdev.walktheplank.export.LeaderboardExportService;
+import com.mrfdev.walktheplank.game.Arena;
 import com.mrfdev.walktheplank.game.GameManager;
 import com.mrfdev.walktheplank.game.GameManager.QueueStatus;
 import com.mrfdev.walktheplank.game.GameManager.SessionStatus;
@@ -40,7 +41,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -70,6 +73,7 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
     private final MenuService menus;
     private final MessageService messages;
     private final ReloadHandler reloadHandler;
+    private final ConfigurationActivator configurationActivator;
     private final BuildInfo buildInfo;
     private final BooleanSupplier placeholderRegistered;
     private final ConfigurationManager configurationTools;
@@ -77,6 +81,12 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
     private final LeaderboardExportService exports;
     private final OperationalContext operations;
     private final AtomicBoolean doctorProbePending = new AtomicBoolean();
+    private final AtomicBoolean configurationMutationPending = new AtomicBoolean();
+    private final AtomicBoolean closing = new AtomicBoolean();
+    private final AtomicReference<ArenaConfigurationEditor.CommittedEdit> committedArenaEdit =
+            new AtomicReference<>();
+    private final AtomicReference<CompletableFuture<Boolean>> shutdownReconciliation =
+            new AtomicReference<>();
 
     public WalkCommand(
             JavaPlugin plugin,
@@ -88,7 +98,9 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             ReloadHandler reloadHandler,
             BuildInfo buildInfo,
             BooleanSupplier placeholderRegistered,
-            OperationalContext operations) {
+            OperationalContext operations,
+            ConfigurationManager configurationTools,
+            ConfigurationActivator configurationActivator) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.settings = Objects.requireNonNull(settings, "settings");
         this.games = Objects.requireNonNull(games, "games");
@@ -99,13 +111,19 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
         this.buildInfo = Objects.requireNonNull(buildInfo, "buildInfo");
         this.placeholderRegistered = Objects.requireNonNull(placeholderRegistered, "placeholderRegistered");
         this.operations = Objects.requireNonNull(operations, "operations");
-        this.configurationTools = new ConfigurationManager(plugin);
+        this.configurationTools = Objects.requireNonNull(configurationTools, "configurationTools");
+        this.configurationActivator = Objects.requireNonNull(
+                configurationActivator, "configurationActivator");
         this.arenaEditor = new ArenaConfigurationEditor(plugin, configurationTools);
         this.exports = new LeaderboardExportService(plugin.getDataFolder().toPath());
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (closing.get()) {
+            sendLine(sender, "&cWalkThePlank is shutting down; no new command work is accepted.");
+            return true;
+        }
         if (args.length == 0) {
             if (sender instanceof Player player) {
                 openMenu(sender, player);
@@ -470,11 +488,39 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
         if (!requireAdministrativePermission(sender, permissions().reload())) {
             return;
         }
-        boolean reloaded = reloadHandler.reload();
-        operations.audit("admin.reload", operatorId(sender), null, Map.of(
-                "actor", operatorKind(sender),
-                "result", reloaded ? "reloaded" : "failed"));
-        messages.send(sender, reloaded ? "chat.reloadSuccess" : "chat.reloadFailed");
+        if (!configurationMutationPending.compareAndSet(false, true)) {
+            sendLine(sender, "&eA configuration mutation is already in progress.");
+            return;
+        }
+        UUID operatorId = operatorId(sender);
+        String actor = operatorKind(sender);
+        sendLine(sender, "&7Reading and validating configuration asynchronously...");
+        CompletableFuture<Boolean> reload;
+        try {
+            reload = reloadHandler.reload(() -> stillAuthorized(
+                    sender, permissions().reload()));
+        } catch (RuntimeException | LinkageError failure) {
+            configurationMutationPending.set(false);
+            plugin.getLogger().log(Level.SEVERE, "Could not start the configuration reload", failure);
+            operations.audit("admin.reload", operatorId, null, Map.of(
+                    "actor", actor,
+                    "result", "start_failed"));
+            messages.send(sender, "chat.reloadFailed");
+            return;
+        }
+        reload.whenComplete((reloaded, failure) -> {
+            configurationMutationPending.set(false);
+            scheduleCommandReply(sender, () -> {
+                boolean succeeded = failure == null && Boolean.TRUE.equals(reloaded);
+                if (failure != null) {
+                    plugin.getLogger().log(Level.SEVERE, "Could not complete the configuration reload", failure);
+                }
+                operations.audit("admin.reload", operatorId, null, Map.of(
+                        "actor", actor,
+                        "result", succeeded ? "reloaded" : "failed"));
+                messages.send(sender, succeeded ? "chat.reloadSuccess" : "chat.reloadFailed");
+            });
+        });
     }
 
     private void openOther(CommandSender sender, String[] args) {
@@ -530,7 +576,11 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
         addAdminHelp(sender, permissions().adminOpen(), "/walk admin open <player>", "Open a player's menu");
         addAdminHelp(sender, permissions().reload(), "/walk admin reload", "Reload and safely drain runs");
         addAdminHelp(sender, permissions().adminStop(), "/walk admin stop <player>", "Stop a run without rewards");
-        addAdminHelp(sender, permissions().adminRecover(), "/walk admin recover", "Retry quarantined block restoration");
+        addAdminHelp(
+                sender,
+                permissions().adminRecover(),
+                "/walk admin recover",
+                "Retry quarantined blocks and eligible player recovery");
         addAdminHelp(sender, permissions().adminValidate(), "/walk admin validate", "Validate config without applying it");
         addAdminHelp(sender, permissions().adminArena(), "/walk admin arena", "Safely manage configured arenas");
         addAdminHelp(sender, permissions().adminQueue(), "/walk admin queue", "Inspect, pause, or drain the queue");
@@ -581,12 +631,17 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
         if (!requireAdministrativePermission(sender, permissions().adminRecover())) {
             return;
         }
-        int recovered = games.retryQuarantinedArenas(operatorId(sender));
-        sendLine(
-                sender,
-                "&aRestoration retry complete: &f{{recovered}}&a arena(s) recovered, "
-                        + "&f{{quarantined}}&a still quarantined.",
-                Map.of("recovered", recovered, "quarantined", games.quarantinedArenas()));
+        completeOnMainThread(
+                games.retryQuarantinedArenas(operatorId(sender)),
+                recovered -> sendLine(
+                        sender,
+                        "&aRestoration retry complete: &f{{recovered}}&a arena(s) recovered, "
+                                + "&f{{quarantined}}&a still quarantined.",
+                        Map.of(
+                                "recovered", recovered,
+                                "quarantined", games.quarantinedArenas())),
+                "arena restoration retry",
+                sender);
     }
 
     private void adminQueue(CommandSender sender, String[] args) {
@@ -760,10 +815,16 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
     private void exportSnapshot(CommandSender sender, ScoreSnapshot snapshot, String category) {
         sendLine(sender, "&7Writing a UUID-only leaderboard snapshot...");
         UUID requestingOperator = operatorId(sender);
-        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            try {
-                LeaderboardExportService.ExportResult result = exports.export(
-                        snapshot.scores(), category, snapshot.capturedAt());
+        operations.submitRequired(() -> {
+                    if (!awaitMainApproval(() -> stillAuthorized(
+                            sender, permissions().adminExport()))) {
+                        throw new SecurityException(
+                                "Leaderboard export authorization changed before execution");
+                    }
+                    return exports.export(snapshot.scores(), category, snapshot.capturedAt());
+                })
+                .whenComplete((result, failure) -> {
+            if (failure == null) {
                 games.auditLeaderboardExport(requestingOperator, category, result.rows());
                 scheduleCommandReply(sender, () -> {
                     sendLine(sender, "&aExported &f{{rows}}&a row(s).", Map.of(
@@ -771,12 +832,12 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
                     sendField(sender, "CSV", result.csvFileName());
                     sendField(sender, "JSON", result.jsonFileName());
                 });
-            } catch (IOException | RuntimeException failure) {
-                plugin.getLogger().log(Level.SEVERE, "Could not export the leaderboard", failure);
-                scheduleCommandReply(sender, () -> sendLine(
-                        sender,
-                        "&cThe UUID-only export failed safely; see the console for its error category."));
+                return;
             }
+            plugin.getLogger().log(Level.SEVERE, "Could not export the leaderboard", failure);
+            scheduleCommandReply(sender, () -> sendLine(
+                    sender,
+                    "&cThe UUID-only export failed safely; see the console for its error category."));
         });
     }
 
@@ -1265,9 +1326,69 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             plugin.getServer().getScheduler().runTask(plugin, reply);
         } catch (RuntimeException schedulingFailure) {
             plugin.getLogger().log(Level.WARNING,
-                    "Could not schedule a WalkThePlank command reply for " + sender.getName(),
+                    "Could not schedule a WalkThePlank command reply",
                     schedulingFailure);
         }
+    }
+
+    /**
+     * Stops new command work and queues a FIFO reconciliation barrier. Any arena edit that reached
+     * durable commit but not final verified activation is restored from its exact in-memory token
+     * before the operations worker closes.
+     */
+    public CompletableFuture<Boolean> prepareShutdown() {
+        closing.set(true);
+        CompletableFuture<Boolean> existing = shutdownReconciliation.get();
+        if (existing != null) {
+            return existing;
+        }
+        CompletableFuture<Boolean> reconciliation = operations.submitRequired(() -> {
+            ArenaConfigurationEditor.CommittedEdit committed = committedArenaEdit.get();
+            if (committed == null) {
+                configurationMutationPending.set(false);
+                return true;
+            }
+            try {
+                arenaEditor.rollback(committed);
+                committedArenaEdit.compareAndSet(committed, null);
+                configurationMutationPending.set(false);
+                return true;
+            } catch (IOException rollbackFailure) {
+                plugin.getLogger().log(
+                        Level.SEVERE,
+                        "Could not reconcile a committed arena edit during shutdown",
+                        rollbackFailure);
+                return false;
+            }
+        });
+        if (shutdownReconciliation.compareAndSet(null, reconciliation)) {
+            return reconciliation;
+        }
+        return shutdownReconciliation.get();
+    }
+
+    /**
+     * Worker-side handshake that evaluates the live predicate on the primary thread immediately
+     * before the queued operation continues.
+     */
+    private boolean awaitMainApproval(BooleanSupplier approval) throws Exception {
+        Objects.requireNonNull(approval, "approval");
+        if (closing.get()) {
+            return false;
+        }
+        CompletableFuture<Boolean> result = new CompletableFuture<>();
+        try {
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                try {
+                    result.complete(approval.getAsBoolean());
+                } catch (RuntimeException | LinkageError failure) {
+                    result.completeExceptionally(failure);
+                }
+            });
+        } catch (RuntimeException schedulingFailure) {
+            result.completeExceptionally(schedulingFailure);
+        }
+        return result.get(2L, TimeUnit.SECONDS);
     }
 
     private void adminValidate(CommandSender sender, String[] args) {
@@ -1278,9 +1399,12 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             sendLine(sender, "&cUsage: /walk admin validate");
             return;
         }
-        ConfigurationValidationReport report = configurationTools.validateOnDisk();
-        auditValidation(sender, "configuration", null, report);
-        sendValidationReport(sender, "Configuration validation", report);
+        validateCapturedConfiguration(
+                sender,
+                "configuration",
+                null,
+                permissions().adminValidate(),
+                "Configuration validation");
     }
 
     private void adminArena(CommandSender sender, String[] args) {
@@ -1317,24 +1441,21 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             sendLine(sender, "&cUsage: /walk admin arena list");
             return;
         }
-        try {
-            List<ArenaConfigurationEditor.ArenaSummary> arenas = arenaEditor.arenas();
-            sendHeader(sender, "Configured arenas");
-            for (ArenaConfigurationEditor.ArenaSummary arena : arenas) {
-                sendLine(
-                        sender,
-                        "&3{{arenaId}} &7- &f{{world}} @ {{position}} &7({{exitMode}})",
-                        Map.of(
-                                "arenaId", arena.id(),
-                                "world", arena.world(),
-                                "position", arena.position(),
-                                "exitMode", arena.customExit() ? "custom exit" : "saved return"));
-            }
-            sendField(sender, "Total", Integer.toString(arenas.size()));
-        } catch (IOException | IllegalArgumentException exception) {
-            plugin.getLogger().log(Level.WARNING, "Could not read arenas for the arena editor", exception);
-            sendLine(sender, "&cThe arena list could not be read safely. Run /walk admin validate.");
+        List<Arena> arenas = settings.get().arenas();
+        sendHeader(sender, "Active configured arenas");
+        for (Arena arena : arenas) {
+            org.bukkit.Location start = arena.start();
+            sendLine(
+                    sender,
+                    "&3{{arenaId}} &7- &f{{world}} @ {{position}} &7({{exitMode}})",
+                    Map.of(
+                            "arenaId", arena.id(),
+                            "world", Objects.requireNonNull(start.getWorld(), "arena world").getName(),
+                            "position", start.getBlockX() + ","
+                                    + start.getBlockY() + "," + start.getBlockZ(),
+                            "exitMode", arena.exit() != null ? "custom exit" : "saved return"));
         }
+        sendField(sender, "Total", Integer.toString(arenas.size()));
     }
 
     private void adminArenaLocationEdit(
@@ -1351,11 +1472,18 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             return;
         }
         String id = args[3];
-        applyArenaEdit(sender, id, edit.command(), edit.successVerb() + " arena '" + id + "'", () -> switch (edit) {
-            case CREATE -> arenaEditor.create(id, player.getLocation());
-            case SET_START -> arenaEditor.setStart(id, player.getLocation());
-            case SET_EXIT -> arenaEditor.setExit(id, player.getLocation());
-        });
+        ArenaConfigurationEditor.LocationData location =
+                ArenaConfigurationEditor.LocationData.capture(player.getLocation());
+        applyArenaEdit(
+                sender,
+                id,
+                edit.command(),
+                edit.successVerb() + " arena '" + id + "'",
+                (files, generation) -> switch (edit) {
+                    case CREATE -> arenaEditor.prepareCreate(files, generation, id, location);
+                    case SET_START -> arenaEditor.prepareSetStart(files, generation, id, location);
+                    case SET_EXIT -> arenaEditor.prepareSetExit(files, generation, id, location);
+                });
     }
 
     private void adminArenaClearExit(CommandSender sender, String[] args) {
@@ -1368,7 +1496,7 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
         }
         String id = args[3];
         applyArenaEdit(sender, id, "clear-exit", "Cleared the custom exit for arena '" + id + "'",
-                () -> arenaEditor.clearExit(id));
+                (files, generation) -> arenaEditor.prepareClearExit(files, generation, id));
     }
 
     private void adminArenaValidate(CommandSender sender, String[] args) {
@@ -1376,31 +1504,22 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             sendLine(sender, "&cUsage: /walk admin arena validate [id]");
             return;
         }
+        String arenaId = null;
         if (args.length == 4) {
             try {
-                String id = ArenaId.requireValid(args[3]);
-                if (!arenaEditor.contains(id)) {
-                    sendLine(sender, "&cArena '{{arenaId}}' does not exist.", Map.of(
-                            "arenaId", id));
-                    return;
-                }
-                sendLine(
-                        sender,
-                        "&7Checking arena &f{{arenaId}}&7 within the complete arena layout.",
-                        Map.of("arenaId", id));
-            } catch (IOException exception) {
-                plugin.getLogger().log(Level.WARNING, "Could not read an arena for validation", exception);
-                sendLine(sender, "&cThe arena list could not be read safely.");
-                return;
+                arenaId = ArenaId.requireValid(args[3]);
             } catch (IllegalArgumentException exception) {
                 sendLine(sender, "&c{{error}}", Map.of(
                         "error", String.valueOf(exception.getMessage())));
                 return;
             }
         }
-        ConfigurationValidationReport report = configurationTools.validateOnDisk();
-        auditValidation(sender, "arena", args.length == 4 ? args[3] : null, report);
-        sendValidationReport(sender, "Arena configuration validation", report);
+        validateCapturedConfiguration(
+                sender,
+                "arena",
+                arenaId,
+                permissions().adminArena(),
+                "Arena configuration validation");
     }
 
     private void adminArenaRemove(CommandSender sender, String[] args) {
@@ -1413,19 +1532,116 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             return;
         }
         String id = args[3];
-        applyArenaEdit(sender, id, "remove", "Removed arena '" + id + "'", () -> arenaEditor.remove(id));
+        applyArenaEdit(
+                sender,
+                id,
+                "remove",
+                "Removed arena '" + id + "'",
+                (files, generation) -> arenaEditor.prepareRemove(files, generation, id));
     }
 
     private boolean requireArenaEditingIdle(CommandSender sender) {
-        if (games.activeSessions() > 0) {
-            sendLine(sender, "&cArena configuration cannot change while a run is active.");
-            return false;
-        }
-        if (games.quarantinedArenas() > 0) {
-            sendLine(sender, "&cRecover all quarantined arenas before changing arena configuration.");
+        if (!games.isConfigurationMutationIdle()) {
+            sendLine(
+                    sender,
+                    "&cArena configuration requires an empty queue and no active, pending, "
+                            + "quarantined, or recovery-owned arena work.");
             return false;
         }
         return true;
+    }
+
+    private boolean isArenaEditingIdle() {
+        return games.isConfigurationMutationIdle();
+    }
+
+    private void validateCapturedConfiguration(
+            CommandSender sender,
+            String scope,
+            String arenaId,
+            String permission,
+            String title) {
+        sendLine(sender, "&7Reading configuration asynchronously for validation...");
+        operations.submitRequired(configurationTools::captureFiles)
+                .whenComplete((files, failure) -> scheduleCommandReply(sender, () -> {
+                    if (failure != null) {
+                        plugin.getLogger().log(
+                                Level.WARNING,
+                                "Could not capture configuration for validation",
+                                failure);
+                        sendLine(sender, "&cThe configuration files could not be read safely.");
+                        return;
+                    }
+                    if (!stillAuthorized(sender, permission)) {
+                        sendLine(sender, "&cAuthorization changed before validation completed.");
+                        return;
+                    }
+                    if (arenaId != null) {
+                        try {
+                            if (!arenaEditor.contains(files, arenaId)) {
+                                sendLine(sender, "&cArena '{{arenaId}}' does not exist.", Map.of(
+                                        "arenaId", arenaId));
+                                return;
+                            }
+                            sendLine(
+                                    sender,
+                                    "&7Checking arena &f{{arenaId}}&7 within the complete arena layout.",
+                                    Map.of("arenaId", arenaId));
+                        } catch (IOException | IllegalArgumentException exception) {
+                            plugin.getLogger().log(
+                                    Level.WARNING,
+                                    "Could not parse an arena for validation",
+                                    exception);
+                            sendLine(sender, "&cThe captured arena list could not be parsed safely.");
+                            return;
+                        }
+                    }
+                    try {
+                        ConfigurationValidationReport report = configurationTools.validate(files);
+                        if (!report.valid()) {
+                            auditValidation(sender, scope, arenaId, report);
+                            sendValidationReport(sender, title, report);
+                            return;
+                        }
+                        ConfigurationManager.ConfigurationSnapshot candidate =
+                                configurationTools.prepare(files);
+                        operations.submitRequired(() -> {
+                            configurationTools.requireFilesUnchanged(files);
+                            configurationTools.requireDatabaseStorageSafe(
+                                    candidate.databaseSettings());
+                            return null;
+                        }).whenComplete((ignored, storageFailure) ->
+                                scheduleCommandReply(sender, () -> {
+                                    if (!stillAuthorized(sender, permission)) {
+                                        sendLine(
+                                                sender,
+                                                "&cAuthorization changed before validation completed.");
+                                        return;
+                                    }
+                                    ConfigurationValidationReport completed = report;
+                                    if (storageFailure != null) {
+                                        plugin.getLogger().log(
+                                                Level.WARNING,
+                                                "Configuration snapshot or SQLite storage failed final validation",
+                                                storageFailure);
+                                        List<String> errors = new ArrayList<>(report.errors());
+                                        errors.add(
+                                                "Configuration changed during validation or SQLite storage "
+                                                        + "is not a safe usable target");
+                                        completed = new ConfigurationValidationReport(
+                                                errors, report.warnings(), report.fingerprint());
+                                    }
+                                    auditValidation(sender, scope, arenaId, completed);
+                                    sendValidationReport(sender, title, completed);
+                                }));
+                    } catch (IOException | RuntimeException | LinkageError validationFailure) {
+                        plugin.getLogger().log(
+                                Level.WARNING,
+                                "Could not validate captured configuration",
+                                validationFailure);
+                        sendLine(sender, "&cThe captured configuration could not be validated safely.");
+                    }
+                }));
     }
 
     private void applyArenaEdit(
@@ -1434,52 +1650,305 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             String editAction,
             String successMessage,
             ArenaEdit action) {
+        if (!configurationMutationPending.compareAndSet(false, true)) {
+            sendLine(sender, "&eA configuration mutation is already in progress.");
+            return;
+        }
+        long expectedGeneration = configurationTools.generation();
+        sendLine(sender, "&7Capturing and validating the arena edit asynchronously...");
+        operations.submitRequired(configurationTools::captureFiles)
+                .whenComplete((files, captureFailure) -> scheduleCommandReply(sender, () -> {
+                    if (captureFailure != null) {
+                        finishArenaEditFailure(
+                                sender, arenaId, editAction, "io_failed", "unavailable",
+                                "The configuration files could not be read safely.", captureFailure);
+                        return;
+                    }
+                    if (!revalidateArenaEdit(sender, expectedGeneration)) {
+                        finishArenaEditFailure(
+                                sender, arenaId, editAction, "stale", "unavailable",
+                                "The arena edit became stale before validation completed.", null);
+                        return;
+                    }
+                    ArenaConfigurationEditor.EditPreparation preparation;
+                    try {
+                        preparation = action.prepare(files, expectedGeneration);
+                    } catch (IllegalArgumentException exception) {
+                        finishArenaEditFailure(
+                                sender, arenaId, editAction, "invalid", "unavailable",
+                                String.valueOf(exception.getMessage()), null);
+                        return;
+                    } catch (IOException | RuntimeException exception) {
+                        finishArenaEditFailure(
+                                sender, arenaId, editAction, "validation_failed", "unavailable",
+                                "The captured configuration could not be validated safely.", exception);
+                        return;
+                    }
+                    if (preparation.prepared().isEmpty()) {
+                        configurationMutationPending.set(false);
+                        games.auditArenaEdit(
+                                operatorId(sender),
+                                arenaId,
+                                editAction,
+                                "rejected",
+                                preparation.validation().fingerprint());
+                        sendValidationReport(
+                                sender,
+                                "Candidate rejected; config.yml was not changed",
+                                preparation.validation());
+                        return;
+                    }
+                    ArenaConfigurationEditor.PreparedEdit prepared =
+                            preparation.prepared().orElseThrow();
+                    if (!revalidateArenaEdit(sender, expectedGeneration)) {
+                        finishArenaEditFailure(
+                                sender,
+                                arenaId,
+                                editAction,
+                                "stale",
+                                prepared.validation().fingerprint(),
+                                "The arena edit became stale before persistence.",
+                                null);
+                        return;
+                    }
+                    operations.submitRequired(() -> {
+                                if (!awaitMainApproval(() -> revalidateArenaEdit(
+                                        sender, expectedGeneration))) {
+                                    throw new IllegalStateException(
+                                            "Arena edit became stale before durable commit");
+                                }
+                                ArenaConfigurationEditor.CommittedEdit committed =
+                                        arenaEditor.commit(prepared);
+                                if (!committedArenaEdit.compareAndSet(null, committed)) {
+                                    arenaEditor.rollback(committed);
+                                    throw new IllegalStateException(
+                                            "Another committed arena edit is awaiting reconciliation");
+                                }
+                                try {
+                                    arenaEditor.requireCommittedUnchanged(committed);
+                                    return committed;
+                                } catch (IOException verificationFailure) {
+                                    try {
+                                        arenaEditor.rollback(committed);
+                                        committedArenaEdit.compareAndSet(committed, null);
+                                    } catch (IOException rollbackFailure) {
+                                        verificationFailure.addSuppressed(rollbackFailure);
+                                    }
+                                    throw verificationFailure;
+                                }
+                            })
+                            .whenComplete((committed, commitFailure) ->
+                                    scheduleCommandReply(sender, () -> finishCommittedArenaEdit(
+                                            sender,
+                                            arenaId,
+                                            editAction,
+                                            successMessage,
+                                            expectedGeneration,
+                                            committed,
+                                            commitFailure)));
+                }));
+    }
+
+    private void finishCommittedArenaEdit(
+            CommandSender sender,
+            String arenaId,
+            String editAction,
+            String successMessage,
+            long expectedGeneration,
+            ArenaConfigurationEditor.CommittedEdit committed,
+            Throwable commitFailure) {
+        if (commitFailure != null) {
+            finishArenaEditFailure(
+                    sender,
+                    arenaId,
+                    editAction,
+                    "io_failed",
+                    "unavailable",
+                    "The edit was not persisted; the files changed or the I/O queue rejected it.",
+                    commitFailure);
+            return;
+        }
+        if (committed == null || committedArenaEdit.get() != committed) {
+            finishArenaEditFailure(
+                    sender,
+                    arenaId,
+                    editAction,
+                    "ownership_lost",
+                    "unavailable",
+                    "The committed edit lost its exact reconciliation ownership.",
+                    new IllegalStateException("Committed arena edit ownership was lost"));
+            return;
+        }
+        ArenaConfigurationEditor.PreparedEdit prepared = committed.prepared();
+        ConfigurationManager.ConfigurationSnapshot previous =
+                configurationTools.activeSnapshot();
+        boolean activated = false;
         try {
-            ArenaConfigurationEditor.EditResult result = action.apply();
-            if (!result.persisted()) {
+            activated = revalidateArenaEdit(sender, expectedGeneration)
+                    && configurationActivator.activate(
+                            prepared.snapshot(),
+                            expectedGeneration,
+                            () -> revalidateArenaEdit(sender, expectedGeneration));
+        } catch (RuntimeException | LinkageError activationFailure) {
+            plugin.getLogger().log(
+                    Level.SEVERE,
+                    "Could not activate a durably committed arena edit",
+                    activationFailure);
+        }
+        if (activated) {
+            operations.submitRequired(() -> {
+                arenaEditor.requireCommittedUnchanged(committed);
+                return null;
+            }).whenComplete((ignored, verificationFailure) ->
+                    scheduleCommandReply(sender, () -> finishVerifiedArenaEdit(
+                            sender,
+                            arenaId,
+                            editAction,
+                            successMessage,
+                            expectedGeneration,
+                            previous,
+                            committed,
+                            verificationFailure)));
+            return;
+        }
+        queueArenaRollback(
+                sender,
+                arenaId,
+                editAction,
+                prepared,
+                committed,
+                "The edit became stale or could not activate; config.yml was restored.");
+    }
+
+    private void finishVerifiedArenaEdit(
+            CommandSender sender,
+            String arenaId,
+            String editAction,
+            String successMessage,
+            long expectedGeneration,
+            ConfigurationManager.ConfigurationSnapshot previous,
+            ArenaConfigurationEditor.CommittedEdit committed,
+            Throwable verificationFailure) {
+        ArenaConfigurationEditor.PreparedEdit prepared = committed.prepared();
+        if (verificationFailure == null
+                && configurationTools.activeSnapshot() == prepared.snapshot()
+                && committedArenaEdit.compareAndSet(committed, null)) {
+            configurationMutationPending.set(false);
+            games.auditArenaEdit(
+                    operatorId(sender),
+                    arenaId,
+                    editAction,
+                    "activated",
+                    prepared.validation().fingerprint());
+            sendLine(
+                    sender,
+                    "&a{{successMessage}} and activated the validated configuration.",
+                    Map.of("successMessage", successMessage));
+            sendField(sender, "Config hash", "sha256:" + prepared.validation().fingerprint());
+            sendValidationWarnings(sender, prepared.validation());
+            return;
+        }
+
+        if (verificationFailure != null) {
+            plugin.getLogger().log(
+                    Level.SEVERE,
+                    "A committed arena edit changed during provisional runtime activation",
+                    verificationFailure);
+        }
+        try {
+            configurationActivator.activate(
+                    previous,
+                    expectedGeneration + 1L,
+                    () -> configurationTools.generation() == expectedGeneration + 1L
+                            && games.isConfigurationMutationIdle());
+        } catch (RuntimeException | LinkageError rollbackFailure) {
+            plugin.getLogger().log(
+                    Level.SEVERE,
+                    "Could not restore the previous runtime after arena edit verification failed",
+                    rollbackFailure);
+        }
+        queueArenaRollback(
+                sender,
+                arenaId,
+                editAction,
+                prepared,
+                committed,
+                "The committed file changed during activation; the previous runtime and config.yml "
+                        + "were restored where ownership still matched.");
+    }
+
+    private void queueArenaRollback(
+            CommandSender sender,
+            String arenaId,
+            String editAction,
+            ArenaConfigurationEditor.PreparedEdit prepared,
+            ArenaConfigurationEditor.CommittedEdit committed,
+            String successMessage) {
+        operations.submitRequired(() -> {
+            arenaEditor.rollback(committed);
+            committedArenaEdit.compareAndSet(committed, null);
+            return null;
+        }).whenComplete((ignored, rollbackFailure) -> scheduleCommandReply(sender, () -> {
+            configurationMutationPending.set(false);
+            if (rollbackFailure == null) {
                 games.auditArenaEdit(
-                        operatorId(sender), arenaId, editAction, "rejected", result.validation().fingerprint());
-                sendValidationReport(sender, "Candidate rejected; config.yml was not changed", result.validation());
-                return;
-            }
-            if (reloadHandler.reload()) {
-                games.auditArenaEdit(
-                        operatorId(sender), arenaId, editAction, "activated", result.validation().fingerprint());
+                        operatorId(sender),
+                        arenaId,
+                        editAction,
+                        "rolled_back",
+                        prepared.validation().fingerprint());
                 sendLine(
                         sender,
-                        "&a{{successMessage}} and activated the validated configuration.",
-                        Map.of("successMessage", successMessage));
-                sendField(sender, "Config hash", "sha256:" + result.validation().fingerprint());
-                sendValidationWarnings(sender, result.validation());
+                        "&c{{message}}",
+                        Map.of("message", successMessage));
                 return;
             }
+            games.auditArenaEdit(
+                    operatorId(sender),
+                    arenaId,
+                    editAction,
+                    "rollback_failed",
+                    prepared.validation().fingerprint());
+            plugin.getLogger().log(
+                    Level.SEVERE,
+                    "Could not restore config.yml after an arena edit failed to activate",
+                    rollbackFailure);
+            sendLine(
+                    sender,
+                    "&cThe edit and automatic rollback both failed; stop edits and inspect the console.");
+        }));
+    }
 
-            boolean rollbackReloaded = false;
-            try {
-                arenaEditor.restoreBackup();
-                rollbackReloaded = reloadHandler.reload();
-            } catch (IOException rollbackFailure) {
-                plugin.getLogger().log(Level.SEVERE, "Could not restore config.yml after a rejected arena edit",
-                        rollbackFailure);
-            }
-            if (rollbackReloaded) {
-                games.auditArenaEdit(
-                        operatorId(sender), arenaId, editAction, "rolled_back", result.validation().fingerprint());
-                sendLine(sender, "&cThe edit could not be activated. config.yml was restored from its backup.");
-            } else {
-                games.auditArenaEdit(
-                        operatorId(sender), arenaId, editAction, "rollback_failed", result.validation().fingerprint());
-                sendLine(sender, "&cThe edit and automatic rollback both failed; stop edits and inspect the console.");
-            }
-        } catch (IllegalArgumentException exception) {
-            games.auditArenaEdit(operatorId(sender), arenaId, editAction, "invalid", "unavailable");
-            sendLine(sender, "&c{{error}}", Map.of(
-                    "error", String.valueOf(exception.getMessage())));
-        } catch (IOException exception) {
-            games.auditArenaEdit(operatorId(sender), arenaId, editAction, "io_failed", "unavailable");
-            plugin.getLogger().log(Level.SEVERE, "Could not persist an arena configuration edit", exception);
-            sendLine(sender, "&cThe arena edit could not be persisted safely; config.yml was not replaced.");
+    private boolean revalidateArenaEdit(CommandSender sender, long expectedGeneration) {
+        return arenaEditStateCurrent(
+                expectedGeneration,
+                configurationTools.generation(),
+                stillAuthorized(sender, permissions().adminArena()),
+                isArenaEditingIdle());
+    }
+
+    static boolean arenaEditStateCurrent(
+            long expectedGeneration,
+            long currentGeneration,
+            boolean authorized,
+            boolean idle) {
+        return authorized && idle && expectedGeneration == currentGeneration;
+    }
+
+    private void finishArenaEditFailure(
+            CommandSender sender,
+            String arenaId,
+            String editAction,
+            String result,
+            String fingerprint,
+            String playerMessage,
+            Throwable failure) {
+        configurationMutationPending.set(false);
+        games.auditArenaEdit(operatorId(sender), arenaId, editAction, result, fingerprint);
+        if (failure != null) {
+            plugin.getLogger().log(Level.SEVERE, "Could not complete an arena configuration edit", failure);
         }
+        sendLine(sender, "&c{{error}}", Map.of("error", playerMessage));
     }
 
     private void sendValidationReport(
@@ -1641,6 +2110,8 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
         ScoreSnapshot scoreSnapshot = scores.snapshot();
         DurabilityMetrics durability = scores.durabilityMetrics();
         var runtimeMetrics = games.operationalMetrics();
+        var operationsIo = operations.ioStatus();
+        var recoveryDurability = games.recoveryDurabilityStatus();
         QueueStatus queue = games.queueStatus();
         GameManager.TaskHealth gameTasks = games.taskHealth();
         MenuService.Health menuHealth = menus.health();
@@ -1710,6 +2181,14 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
             warnings++;
         }
         if (runtimeMetrics.degraded()) {
+            warnings++;
+        }
+        if (operationsIo.failed() > 0L || operationsIo.rejected() > 0L || operationsIo.closing()) {
+            warnings++;
+        }
+        if (recoveryDurability.failed() > 0L
+                || recoveryDurability.rejected() > 0L
+                || recoveryDurability.closing()) {
             warnings++;
         }
 
@@ -1809,8 +2288,10 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
                 "Gameplay",
                 games.activeSessions() + " active / "
                         + gameTasks.pendingStarts() + " pending starts / "
+                        + gameTasks.pendingStartAbandonments() + " start cleanups / "
                         + gameTasks.pendingExternalTeleportChecks() + " teleport checks / "
-                        + gameTasks.pendingPlayerRecoveryLookups() + " recovery lookups");
+                        + gameTasks.pendingPlayerRecoveryLookups() + " recovery lookups / "
+                        + gameTasks.pendingPlayerRecoveryCompletions() + " recovery completions");
         sendField(
                 sender,
                 "GUI",
@@ -1822,6 +2303,32 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
                 pluginTasks.size() + " owned / "
                         + synchronousTasks + " sync / "
                         + asynchronousTasks + " async");
+        sendField(
+                sender,
+                "Operations I/O",
+                operationsIo.queued() + "/" + operationsIo.queueCapacity() + " queued / "
+                        + operationsIo.active() + " active / "
+                        + operationsIo.requiredAccepted() + " required accepted / "
+                        + operationsIo.bestEffortAccepted() + " best-effort accepted / "
+                        + operationsIo.completed() + " completed / "
+                        + operationsIo.failed() + " failed / "
+                        + operationsIo.rejected() + " rejected / "
+                        + (operationsIo.terminated()
+                                ? "terminated"
+                                : operationsIo.closing() ? "closing" : "open"));
+        sendField(
+                sender,
+                "Recovery durability",
+                recoveryDurability.queued() + "/" + recoveryDurability.queueCapacity()
+                        + " queued / "
+                        + recoveryDurability.active() + " active / "
+                        + recoveryDurability.accepted() + " accepted / "
+                        + recoveryDurability.completed() + " completed / "
+                        + recoveryDurability.failed() + " failed / "
+                        + recoveryDurability.rejected() + " rejected / "
+                        + (recoveryDurability.terminated()
+                                ? "terminated"
+                                : recoveryDurability.closing() ? "closing" : "open"));
         sendField(
                 sender,
                 "Runtime failures",
@@ -2111,6 +2618,17 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
         return sender.hasPermission(permissions().admin()) || sender.hasPermission(permission);
     }
 
+    private boolean stillAuthorized(CommandSender sender, String permission) {
+        if (!hasAdministrativePermission(sender, permission)) {
+            return false;
+        }
+        if (!(sender instanceof Player player)) {
+            return true;
+        }
+        return player.isOnline()
+                && plugin.getServer().getPlayer(player.getUniqueId()) == player;
+    }
+
     private boolean hasAnyAdminPermission(CommandSender sender) {
         PermissionSettings permissionSettings = permissions();
         return sender.hasPermission(permissionSettings.admin())
@@ -2190,15 +2708,11 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
     }
 
     private List<String> configuredArenaIds() {
-        try {
-            return arenaEditor.arenas().stream()
-                    .map(ArenaConfigurationEditor.ArenaSummary::id)
-                    .filter(ArenaId::isValid)
-                    .sorted()
-                    .toList();
-        } catch (IOException | IllegalArgumentException exception) {
-            return settings.get().arenas().stream().map(arena -> arena.id()).sorted().toList();
-        }
+        return settings.get().arenas().stream()
+                .map(Arena::id)
+                .filter(ArenaId::isValid)
+                .sorted()
+                .toList();
     }
 
     private static List<String> complete(String input, List<String> choices) {
@@ -2228,12 +2742,22 @@ public final class WalkCommand implements CommandExecutor, TabCompleter {
 
     @FunctionalInterface
     public interface ReloadHandler {
-        boolean reload();
+        CompletableFuture<Boolean> reload(BooleanSupplier revalidate);
+    }
+
+    @FunctionalInterface
+    public interface ConfigurationActivator {
+        boolean activate(
+                ConfigurationManager.ConfigurationSnapshot candidate,
+                long expectedGeneration,
+                BooleanSupplier revalidate);
     }
 
     @FunctionalInterface
     private interface ArenaEdit {
-        ArenaConfigurationEditor.EditResult apply() throws IOException;
+        ArenaConfigurationEditor.EditPreparation prepare(
+                ConfigurationManager.ConfigurationFiles files,
+                long expectedGeneration) throws IOException;
     }
 
     @FunctionalInterface

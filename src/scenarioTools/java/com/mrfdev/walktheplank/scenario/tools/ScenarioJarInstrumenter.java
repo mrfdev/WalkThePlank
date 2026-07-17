@@ -114,16 +114,17 @@ public final class ScenarioJarInstrumenter {
             Map.entry(
                     memberKey(
                             "com/mrfdev/walktheplank/recovery/RestorationCoordinator",
-                            "restoreExpected"),
+                            "restoreExpectedWorld"),
                     "(Lcom/mrfdev/walktheplank/recovery/RestorationRecord;"
-                            + "Lorg/bukkit/block/Block;)"
-                            + "Lcom/mrfdev/walktheplank/recovery/RestorationOutcome;"),
+                            + "Lorg/bukkit/block/Block;)V"),
             Map.entry(
                     memberKey(
                             "com/mrfdev/walktheplank/game/GameManager",
-                            "completePendingStart"),
+                            "completePreparedStart"),
                     "(Lcom/mrfdev/walktheplank/game/GameManager$PendingStart;"
                             + "Lcom/mrfdev/walktheplank/database/RunRecord;"
+                            + "Lcom/mrfdev/walktheplank/game/GameManager$PendingActivation;"
+                            + "Lcom/mrfdev/walktheplank/game/GameManager$ActivationRecords;"
                             + "Ljava/lang/Throwable;)V"),
             Map.entry(
                     memberKey(
@@ -161,9 +162,9 @@ public final class ScenarioJarInstrumenter {
             Map.entry(
                     memberKey(
                             "com/mrfdev/walktheplank/config/ConfigurationManager",
-                            "commit"),
+                            "commitIfGeneration"),
                     "(Lcom/mrfdev/walktheplank/config/"
-                            + "ConfigurationManager$ConfigurationSnapshot;)V"));
+                            + "ConfigurationManager$ConfigurationSnapshot;J)Z"));
 
     private static final Map<String, String> INVOKED_METHOD_DESCRIPTORS = Map.ofEntries(
             Map.entry(memberKey("java/io/OutputStream", "flush"), "()V"),
@@ -176,7 +177,7 @@ public final class ScenarioJarInstrumenter {
                     memberKey(
                             "com/mrfdev/walktheplank/recovery/PlayerRecoveryJournal",
                             "forceDirectory"),
-                    "(Ljava/nio/file/Path;)V"),
+                    "()V"),
             Map.entry(
                     memberKey("java/nio/file/Files", "deleteIfExists"),
                     "(Ljava/nio/file/Path;)Z"),
@@ -319,7 +320,7 @@ public final class ScenarioJarInstrumenter {
                     Injection.hit("block.after_place")),
             afterCall(
                     "com/mrfdev/walktheplank/recovery/RestorationCoordinator",
-                    "restoreExpected",
+                    "restoreExpectedWorld",
                     "org/bukkit/structure/Structure",
                     "place",
                     1,
@@ -327,7 +328,7 @@ public final class ScenarioJarInstrumenter {
                     Injection.hit("block.after_restore")),
             afterCall(
                     "com/mrfdev/walktheplank/game/GameManager",
-                    "completePendingStart",
+                    "completePreparedStart",
                     "com/mrfdev/walktheplank/game/GameManager",
                     "teleportInternally",
                     1,
@@ -388,8 +389,8 @@ public final class ScenarioJarInstrumenter {
                     Injection.hit("config.after_disk_commit")),
             beforeReturn(
                     "com/mrfdev/walktheplank/config/ConfigurationManager",
-                    "commit",
-                    1,
+                    "commitIfGeneration",
+                    2,
                     Injection.hit("config.after_runtime_commit")));
 
     private ScenarioJarInstrumenter() {

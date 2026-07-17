@@ -8,14 +8,14 @@ import com.mrfdev.walktheplank.game.ArenaSelectionPolicy;
 import com.mrfdev.walktheplank.game.SafePlayerExit;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.HashSet;
 import java.util.List;
@@ -182,23 +182,98 @@ public final class ConfigurationManager {
             "database.sqlite.busyTimeoutMillis");
 
     private final JavaPlugin plugin;
+    private final Path dataFolder;
+    private final String bundledConfigDefaults;
+    private final String bundledTranslationDefaults;
 
     private volatile ConfigurationSnapshot active;
+    private long generation;
 
     public ConfigurationManager(JavaPlugin plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
+        this.dataFolder = plugin.getDataFolder().toPath().toAbsolutePath().normalize();
+        this.bundledConfigDefaults = readBundledResource("config.yml");
+        this.bundledTranslationDefaults = readBundledResource("translations.yml");
     }
 
     public void load() throws IOException {
         commit(prepare());
     }
 
-    /** Parses and validates disk files without publishing any candidate values. */
+    /** Startup-only disk preparation. Runtime callers must capture files on the operations worker. */
     public ConfigurationSnapshot prepare() throws IOException {
         YamlConfiguration newConfig = loadWithDefaults("config.yml");
         YamlConfiguration newTranslations = loadWithDefaults("translations.yml");
+        return prepareParsed(newConfig, newTranslations, true);
+    }
+
+    /** Reads immutable configuration bytes. This method performs filesystem I/O. */
+    public ConfigurationFiles captureFiles() throws IOException {
+        Path dataFolder = requireSafeDataFolder();
+        Path configFile = requireSafeRegularFile(dataFolder, "config.yml");
+        Path translationsFile = requireSafeRegularFile(dataFolder, "translations.yml");
+        return new ConfigurationFiles(
+                Files.readAllBytes(configFile),
+                Files.readAllBytes(translationsFile));
+    }
+
+    /** Fails when either file changed after a worker capture. This method performs filesystem I/O. */
+    public void requireFilesUnchanged(ConfigurationFiles expected) throws IOException {
+        ConfigurationFiles checked = Objects.requireNonNull(expected, "expected");
+        ConfigurationFiles current = captureFiles();
+        if (!Arrays.equals(checked.configBytes(), current.configBytes())
+                || !Arrays.equals(checked.translationBytes(), current.translationBytes())) {
+            throw new IOException(
+                    "Configuration files changed while the operation was being validated; retry the command");
+        }
+    }
+
+    /** Worker-only storage target verification for a main-thread-validated candidate. */
+    public void requireDatabaseStorageSafe(DatabaseSettings settings) throws IOException {
+        DatabaseSettings checked = Objects.requireNonNull(settings, "settings");
+        try {
+            Path databasePath = checked.databasePath();
+            if (!databasePath.startsWith(dataFolder)) {
+                throw new IllegalArgumentException(
+                        "SQLite database path must stay inside the plugin data folder");
+            }
+            SqlitePathGuard.resolve(
+                    dataFolder,
+                    dataFolder.relativize(databasePath).toString());
+        } catch (IllegalArgumentException exception) {
+            throw new IOException(
+                    "Configured SQLite storage is not a safe usable target", exception);
+        }
+    }
+
+    /** Worker-only post-commit check for the companion translations file. */
+    public void requireTranslationsUnchanged(ConfigurationFiles expected) throws IOException {
+        ConfigurationFiles checked = Objects.requireNonNull(expected, "expected");
+        Path dataFolder = requireSafeDataFolder();
+        Path translationsFile = requireSafeRegularFile(dataFolder, "translations.yml");
+        if (!Arrays.equals(
+                checked.translationBytes(),
+                Files.readAllBytes(translationsFile))) {
+            throw new IOException(
+                    "translations.yml changed while config.yml was being committed");
+        }
+    }
+
+    /** Parses captured bytes and performs live Paper/Bukkit validation without disk access. */
+    public ConfigurationSnapshot prepare(ConfigurationFiles files) throws IOException {
+        ConfigurationFiles checked = Objects.requireNonNull(files, "files");
+        return prepareParsed(
+                parseCaptured(checked.configBytes(), "config.yml"),
+                parseCaptured(checked.translationBytes(), "translations.yml"),
+                false);
+    }
+
+    private ConfigurationSnapshot prepareParsed(
+            YamlConfiguration newConfig,
+            YamlConfiguration newTranslations,
+            boolean verifyDatabaseStorage) throws IOException {
         ValidationAccumulator problems = new ValidationAccumulator();
-        validateEffectiveConfiguration(newConfig, problems);
+        validateEffectiveConfiguration(newConfig, problems, verifyDatabaseStorage);
         validateTranslationEntries(newTranslations, problems);
         ConfigurationValidationReport report = problems.report(
                 SafeConfigFingerprint.fingerprint(newConfig));
@@ -207,7 +282,8 @@ public final class ConfigurationManager {
                     + report.fingerprint() + "): " + String.join("; ", report.errors()));
         }
         RuntimeSettings newSettings = parseRuntimeSettings(newConfig);
-        DatabaseSettings newDatabaseSettings = parseDatabaseSettings(newConfig);
+        DatabaseSettings newDatabaseSettings =
+                parseDatabaseSettings(newConfig, verifyDatabaseStorage);
 
         return new ConfigurationSnapshot(
                 newConfig,
@@ -217,8 +293,25 @@ public final class ConfigurationManager {
     }
 
     /** Atomically publishes one fully validated configuration bundle. */
-    public void commit(ConfigurationSnapshot candidate) {
+    public synchronized void commit(ConfigurationSnapshot candidate) {
         active = Objects.requireNonNull(candidate, "candidate");
+        generation = Math.incrementExact(generation);
+    }
+
+    /** Publishes only if no newer runtime configuration won the race. */
+    public synchronized boolean commitIfGeneration(
+            ConfigurationSnapshot candidate,
+            long expectedGeneration) {
+        if (generation != expectedGeneration) {
+            return false;
+        }
+        active = Objects.requireNonNull(candidate, "candidate");
+        generation = Math.incrementExact(generation);
+        return true;
+    }
+
+    public synchronized long generation() {
+        return generation;
     }
 
     public ConfigurationSnapshot activeSnapshot() {
@@ -254,13 +347,34 @@ public final class ConfigurationManager {
         }
     }
 
-    /** Validates the effective files on disk without changing active settings or writing any file. */
-    public ConfigurationValidationReport validateOnDisk() {
+    /** Immutable byte-for-byte capture made by the operations I/O worker. */
+    public record ConfigurationFiles(byte[] configBytes, byte[] translationBytes) {
+        public ConfigurationFiles {
+            configBytes = Objects.requireNonNull(configBytes, "configBytes").clone();
+            translationBytes = Objects.requireNonNull(translationBytes, "translationBytes").clone();
+        }
+
+        @Override
+        public byte[] configBytes() {
+            return configBytes.clone();
+        }
+
+        @Override
+        public byte[] translationBytes() {
+            return translationBytes.clone();
+        }
+    }
+
+    /** Validates worker-captured files without changing active settings or reading a file. */
+    public ConfigurationValidationReport validate(ConfigurationFiles files) {
+        ConfigurationFiles checked = Objects.requireNonNull(files, "files");
         ValidationAccumulator problems = new ValidationAccumulator();
-        YamlConfiguration candidate = loadReadOnlyWithDefaults("config.yml", problems);
-        YamlConfiguration candidateTranslations = loadReadOnlyWithDefaults("translations.yml", problems);
+        YamlConfiguration candidate = parseCaptured(
+                checked.configBytes(), "config.yml", problems);
+        YamlConfiguration candidateTranslations = parseCaptured(
+                checked.translationBytes(), "translations.yml", problems);
         if (candidate != null) {
-            validateEffectiveConfiguration(candidate, problems);
+            validateEffectiveConfiguration(candidate, problems, false);
         }
         if (candidateTranslations != null) {
             validateTranslationEntries(candidateTranslations, problems);
@@ -272,13 +386,17 @@ public final class ConfigurationManager {
     }
 
     /** Validates an edited candidate against the same effective defaults and translation file. */
-    public ConfigurationValidationReport validateCandidate(YamlConfiguration candidate) {
+    public ConfigurationValidationReport validateCandidate(
+            YamlConfiguration candidate,
+            ConfigurationFiles files) {
         Objects.requireNonNull(candidate, "candidate");
+        ConfigurationFiles checked = Objects.requireNonNull(files, "files");
         ValidationAccumulator problems = new ValidationAccumulator();
         YamlConfiguration effective = copyWithDefaults(candidate, "config.yml", problems);
-        YamlConfiguration candidateTranslations = loadReadOnlyWithDefaults("translations.yml", problems);
+        YamlConfiguration candidateTranslations = parseCaptured(
+                checked.translationBytes(), "translations.yml", problems);
         if (effective != null) {
-            validateEffectiveConfiguration(effective, problems);
+            validateEffectiveConfiguration(effective, problems, false);
         }
         if (candidateTranslations != null) {
             validateTranslationEntries(candidateTranslations, problems);
@@ -289,26 +407,48 @@ public final class ConfigurationManager {
         return problems.report(fingerprint);
     }
 
-    private YamlConfiguration loadReadOnlyWithDefaults(
-            String resourceName,
-            ValidationAccumulator problems) {
-        Path dataFolder = plugin.getDataFolder().toPath().toAbsolutePath().normalize();
-        if (Files.isSymbolicLink(dataFolder)
-                || !Files.isDirectory(dataFolder, LinkOption.NOFOLLOW_LINKS)) {
-            problems.error("Plugin data folder is not a safe regular directory");
-            return null;
-        }
-        Path file = dataFolder.resolve(resourceName);
-        if (Files.isSymbolicLink(file)
-                || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
-            problems.error(resourceName + " is missing");
-            return null;
-        }
+    YamlConfiguration editableConfig(ConfigurationFiles files) throws IOException {
+        return parseCaptured(
+                Objects.requireNonNull(files, "files").configBytes(),
+                "config.yml");
+    }
+
+    ConfigurationSnapshot prepareCandidate(
+            YamlConfiguration candidate,
+            ConfigurationFiles files) throws IOException {
+        Objects.requireNonNull(candidate, "candidate");
+        ConfigurationFiles checked = Objects.requireNonNull(files, "files");
+        YamlConfiguration translations = parseCaptured(
+                checked.translationBytes(), "translations.yml");
+        return prepareParsed(candidate, translations, false);
+    }
+
+    private YamlConfiguration parseCaptured(byte[] bytes, String resourceName)
+            throws IOException {
         YamlConfiguration loaded = new YamlConfiguration();
         loaded.options().parseComments(true);
         try {
-            loaded.load(file.toFile());
-        } catch (IOException | InvalidConfigurationException exception) {
+            loaded.loadFromString(new String(bytes, StandardCharsets.UTF_8));
+        } catch (InvalidConfigurationException exception) {
+            throw new IOException(resourceName + " contains invalid YAML");
+        }
+        ValidationAccumulator problems = new ValidationAccumulator();
+        YamlConfiguration effective = applyDefaults(loaded, resourceName, problems);
+        if (effective == null) {
+            throw new IOException(resourceName + " bundled defaults could not be applied");
+        }
+        return effective;
+    }
+
+    private YamlConfiguration parseCaptured(
+            byte[] bytes,
+            String resourceName,
+            ValidationAccumulator problems) {
+        YamlConfiguration loaded = new YamlConfiguration();
+        loaded.options().parseComments(true);
+        try {
+            loaded.loadFromString(new String(bytes, StandardCharsets.UTF_8));
+        } catch (InvalidConfigurationException exception) {
             problems.error(resourceName + " could not be parsed");
             return null;
         }
@@ -334,31 +474,28 @@ public final class ConfigurationManager {
             YamlConfiguration loaded,
             String resourceName,
             ValidationAccumulator problems) {
-        try (InputStream stream = plugin.getResource(resourceName)) {
-            if (stream == null) {
-                problems.error("Bundled " + resourceName + " is missing");
-                return null;
-            }
-            try (Reader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
-                loaded.setDefaults(YamlConfiguration.loadConfiguration(reader));
-            }
-        } catch (IOException exception) {
-            problems.error("Bundled " + resourceName + " could not be read");
+        YamlConfiguration defaults = new YamlConfiguration();
+        try {
+            defaults.loadFromString(bundledDefaults(resourceName));
+        } catch (InvalidConfigurationException | IllegalArgumentException exception) {
+            problems.error("Bundled " + resourceName + " could not be parsed");
             return null;
         }
+        loaded.setDefaults(defaults);
         return loaded;
     }
 
     private void validateEffectiveConfiguration(
             YamlConfiguration source,
-            ValidationAccumulator problems) {
+            ValidationAccumulator problems,
+            boolean verifyDatabaseStorage) {
         validateKnownKeys(source, problems);
         validatePrimitiveSettings(source, problems);
         validateArenaEntries(source, problems);
         validateParkourBlockEntries(source, problems);
         validateRewardEntries(source, problems);
         validatePermissionEntries(source, problems);
-        validateDatabaseEntries(source, problems);
+        validateDatabaseEntries(source, problems, verifyDatabaseStorage);
 
         // These are the authoritative startup/reload parsers. Keeping them as a final gate prevents
         // the diagnostic schema from drifting away from the configuration that actually becomes active.
@@ -368,14 +505,13 @@ public final class ConfigurationManager {
             problems.error("The runtime parser rejected one or more effective settings");
         }
         try {
-            parseDatabaseSettings(source);
+            parseDatabaseSettings(source, verifyDatabaseStorage);
         } catch (RuntimeException exception) {
             problems.error("Database settings are not accepted by the runtime parser");
         }
     }
 
     private YamlConfiguration loadWithDefaults(String resourceName) throws IOException {
-        Path dataFolder = plugin.getDataFolder().toPath().toAbsolutePath().normalize();
         if (Files.isSymbolicLink(dataFolder)
                 || Files.exists(dataFolder, LinkOption.NOFOLLOW_LINKS)
                         && !Files.isDirectory(dataFolder, LinkOption.NOFOLLOW_LINKS)) {
@@ -406,15 +542,50 @@ public final class ConfigurationManager {
             // legacy credential. Keep detailed content out of startup/reload logs.
             throw new IOException(resourceName + " contains invalid YAML");
         }
-        try (InputStream stream = plugin.getResource(resourceName)) {
-            if (stream == null) {
-                throw new IOException("Missing bundled resource " + resourceName);
-            }
-            try (Reader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
-                loaded.setDefaults(YamlConfiguration.loadConfiguration(reader));
-            }
+        ValidationAccumulator problems = new ValidationAccumulator();
+        if (applyDefaults(loaded, resourceName, problems) == null) {
+            throw new IOException("Bundled defaults for " + resourceName + " are invalid");
         }
         return loaded;
+    }
+
+    private Path requireSafeDataFolder() throws IOException {
+        if (Files.isSymbolicLink(dataFolder)
+                || !Files.isDirectory(dataFolder, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Plugin data folder is not a safe regular directory");
+        }
+        return dataFolder;
+    }
+
+    private static Path requireSafeRegularFile(Path dataFolder, String resourceName)
+            throws IOException {
+        Path file = dataFolder.resolve(resourceName);
+        if (Files.isSymbolicLink(file)
+                || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException(resourceName + " is not a safe regular file");
+        }
+        return file;
+    }
+
+    private String bundledDefaults(String resourceName) {
+        return switch (resourceName) {
+            case "config.yml" -> bundledConfigDefaults;
+            case "translations.yml" -> bundledTranslationDefaults;
+            default -> throw new IllegalArgumentException(
+                    "Unsupported bundled configuration resource " + resourceName);
+        };
+    }
+
+    private String readBundledResource(String resourceName) {
+        try (InputStream stream = plugin.getResource(resourceName)) {
+            if (stream == null) {
+                throw new IllegalStateException("Missing bundled resource " + resourceName);
+            }
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException exception) {
+            throw new IllegalStateException(
+                    "Could not cache bundled resource " + resourceName, exception);
+        }
     }
 
     private RuntimeSettings parseRuntimeSettings(YamlConfiguration source) {
@@ -480,11 +651,21 @@ public final class ConfigurationManager {
                         "infinityparkour.admin.investigate"));
     }
 
-    private DatabaseSettings parseDatabaseSettings(YamlConfiguration source) {
-        return parseDatabaseSettings(source, plugin.getDataFolder().toPath());
+    private DatabaseSettings parseDatabaseSettings(
+            YamlConfiguration source,
+            boolean verifyStorage) {
+        return parseDatabaseSettings(
+                source, dataFolder, verifyStorage);
     }
 
     static DatabaseSettings parseDatabaseSettings(YamlConfiguration source, Path pluginDataFolder) {
+        return parseDatabaseSettings(source, pluginDataFolder, true);
+    }
+
+    private static DatabaseSettings parseDatabaseSettings(
+            YamlConfiguration source,
+            Path pluginDataFolder,
+            boolean verifyStorage) {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(pluginDataFolder, "pluginDataFolder");
 
@@ -497,9 +678,38 @@ public final class ConfigurationManager {
         }
 
         String configuredFile = source.getString("database.sqlite.file", "database.db");
-        Path databaseFile = SqlitePathGuard.resolve(pluginDataFolder, configuredFile);
+        Path databaseFile = verifyStorage
+                ? SqlitePathGuard.resolve(pluginDataFolder, configuredFile)
+                : resolveConfinedDatabasePath(pluginDataFolder, configuredFile);
         long timeoutMillis = source.getLong("database.sqlite.busyTimeoutMillis", 5_000L);
         return DatabaseSettings.sqlite(databaseFile, Duration.ofMillis(timeoutMillis));
+    }
+
+    private static Path resolveConfinedDatabasePath(
+            Path pluginDataFolder,
+            String configuredFile) {
+        if (configuredFile == null || configuredFile.isBlank()) {
+            throw new IllegalArgumentException(
+                    "database.sqlite.file must be a nonblank relative file name");
+        }
+        Path relative;
+        try {
+            relative = Path.of(configuredFile);
+        } catch (InvalidPathException exception) {
+            throw new IllegalArgumentException(
+                    "database.sqlite.file is not a valid confined path", exception);
+        }
+        if (relative.isAbsolute()) {
+            throw new IllegalArgumentException(
+                    "database.sqlite.file must be relative to the plugin data folder");
+        }
+        Path dataFolder = pluginDataFolder.toAbsolutePath().normalize();
+        Path databaseFile = dataFolder.resolve(relative).normalize();
+        if (!databaseFile.startsWith(dataFolder)) {
+            throw new IllegalArgumentException(
+                    "database.sqlite.file must stay inside the plugin data folder");
+        }
+        return databaseFile;
     }
 
     private List<Arena> parseArenas(YamlConfiguration source) {
@@ -1214,7 +1424,8 @@ public final class ConfigurationManager {
 
     private void validateDatabaseEntries(
             YamlConfiguration source,
-            ValidationAccumulator problems) {
+            ValidationAccumulator problems,
+            boolean verifyStorage) {
         Object configuredType = source.get("database.type");
         if (!(configuredType instanceof String type) || !"SQLITE".equalsIgnoreCase(type)) {
             problems.error("database.type must be the string SQLITE");
@@ -1229,7 +1440,11 @@ public final class ConfigurationManager {
             problems.error("database.sqlite.file must be a nonblank relative file name");
         } else {
             try {
-                SqlitePathGuard.resolve(plugin.getDataFolder().toPath(), fileName);
+                if (verifyStorage) {
+                    SqlitePathGuard.resolve(dataFolder, fileName);
+                } else {
+                    resolveConfinedDatabasePath(dataFolder, fileName);
+                }
             } catch (IllegalArgumentException exception) {
                 problems.error(exception.getMessage());
             }

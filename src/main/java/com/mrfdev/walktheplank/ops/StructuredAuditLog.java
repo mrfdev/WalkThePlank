@@ -122,11 +122,19 @@ public final class StructuredAuditLog {
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
-    public synchronized void record(
+    public void record(
             String event,
             UUID playerId,
             String arenaId,
             Map<String, ?> fields) throws IOException {
+        append(prepare(event, playerId, arenaId, fields));
+    }
+
+    PreparedRecord prepare(
+            String event,
+            UUID playerId,
+            String arenaId,
+            Map<String, ?> fields) {
         validateEvent(event);
         Objects.requireNonNull(fields, "fields");
         if (fields.size() > MAXIMUM_FIELDS) {
@@ -135,7 +143,13 @@ public final class StructuredAuditLog {
 
         Instant occurredAt = clock.instant();
         byte[] line = encode(occurredAt, event, playerId, arenaId, fields).getBytes(StandardCharsets.UTF_8);
-        rotateBefore(line.length, occurredAt);
+        return new PreparedRecord(occurredAt, line);
+    }
+
+    synchronized void append(PreparedRecord prepared) throws IOException {
+        PreparedRecord checked = Objects.requireNonNull(prepared, "prepared");
+        byte[] line = checked.bytes();
+        rotateBefore(line.length, checked.occurredAt());
         try (FileChannel channel = FileChannel.open(
                 currentFile,
                 StandardOpenOption.CREATE,
@@ -196,7 +210,10 @@ public final class StructuredAuditLog {
         } catch (AtomicMoveNotSupportedException ignored) {
             Files.move(currentFile, destination);
         }
-        pruneArchives();
+        forceDirectory(directory);
+        if (pruneArchives()) {
+            forceDirectory(directory);
+        }
     }
 
     private long safeCurrentFileSize() throws IOException {
@@ -223,7 +240,7 @@ public final class StructuredAuditLog {
         return candidate;
     }
 
-    private void pruneArchives() throws IOException {
+    private boolean pruneArchives() throws IOException {
         List<Path> archives = new ArrayList<>();
         try (var paths = Files.list(directory)) {
             paths.filter(Files::isRegularFile)
@@ -232,8 +249,17 @@ public final class StructuredAuditLog {
                     .forEach(archives::add);
         }
         archives.sort(Comparator.comparing(path -> path.getFileName().toString()));
+        boolean pruned = false;
         while (archives.size() > retainedFiles) {
             Files.deleteIfExists(archives.removeFirst());
+            pruned = true;
+        }
+        return pruned;
+    }
+
+    private static void forceDirectory(Path directory) throws IOException {
+        try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) {
+            channel.force(true);
         }
     }
 
@@ -332,6 +358,18 @@ public final class StructuredAuditLog {
                     }
                 }
             }
+        }
+    }
+
+    record PreparedRecord(Instant occurredAt, byte[] bytes) {
+        PreparedRecord {
+            Objects.requireNonNull(occurredAt, "occurredAt");
+            bytes = Objects.requireNonNull(bytes, "bytes").clone();
+        }
+
+        @Override
+        public byte[] bytes() {
+            return bytes.clone();
         }
     }
 }

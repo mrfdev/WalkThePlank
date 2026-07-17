@@ -1,6 +1,6 @@
-# WalkThePlank v2.1.2-005 beta and event checklist
+# WalkThePlank v2.2.0-006 beta and event checklist
 
-This is the mandatory human/server acceptance plan for `1MB-WalkThePlank-v2.1.2-005-j25-26.2.jar`.
+This is the mandatory human/server acceptance plan for `1MB-WalkThePlank-v2.2.0-006-j25-26.2.jar`.
 
 Do not treat implemented code, a successful Gradle build, or a previous release's smoke test as production approval. The candidate is approved only after this checklist is completed against the exact frozen JAR, a production-like Paper 26.2 server, a disposable copy of the live data, and the intended external reward providers.
 
@@ -12,9 +12,9 @@ Fill this table from the final clean build. Do not copy values from any prior ca
 
 | Property | Candidate value |
 | --- | --- |
-| Semantic version/build | `2.1.2-005` |
-| Expected filename | `1MB-WalkThePlank-v2.1.2-005-j25-26.2.jar` |
-| Git commit | Full clean commit embedded in the final JAR; record in a new annotated build-005 RC tag and operator release archive |
+| Semantic version/build | `2.2.0-006` |
+| Expected filename | `1MB-WalkThePlank-v2.2.0-006-j25-26.2.jar` |
+| Git commit | Full clean commit embedded in the final JAR; record in a new annotated build-006 RC tag and operator release archive |
 | Build timestamp | Not embedded; record externally with the candidate evidence |
 | File size | Record in annotated candidate tag and operator release archive |
 | SHA-256 | Record in annotated candidate tag and operator release archive |
@@ -22,17 +22,17 @@ Fill this table from the final clean build. Do not copy values from any prior ca
 | Paper version/build | `26.2-60-main@1cb58fb`; API `26.2.build.60-beta` |
 | Automated test result/count | Record from the final clean-commit build |
 | `verifyReleaseJar` result | Require PASS on two clean builds with byte-identical outputs |
-| Test-server sync result | Require staged SHA-256 to match and only build 005 to be active |
+| Test-server sync result | Require staged SHA-256 to match and only build 006 to be active |
 
-Build-005 development artifacts passed the automated two-start and `config.after_runtime_commit` hard-kill/recovery profiles. Build 004 retains its recorded automated suite and full-stack/standalone Paper smoke, and build 003 retains its earlier migration/profile evidence. All are historical unless they used the exact clean candidate recorded above. Repeat the controlled scenario, startup/reload/shutdown, and log checks against the final clean build-005 artifact; human in-game/destructive acceptance remains unchecked below.
+Build-005 development artifacts passed the automated two-start and `config.after_runtime_commit` hard-kill/recovery profiles. Build 004 retains its recorded automated suite and full-stack/standalone Paper smoke, and build 003 retains its earlier migration/profile evidence. All are historical for this release. Repeat the controlled scenario, startup/reload/shutdown, worker saturation/recovery, and log checks against the final clean build-006 artifact; human in-game/destructive acceptance remains unchecked below.
 
 ## Known build-003 migration evidence
 
-A build-003 disposable-copy schema-v2 rehearsal preserved 100 rows, 100 UUIDs, score sum 4256, maximum score 149, and `PRAGMA quick_check = ok`; it created a verified `pre-migration-v2` backup and did not alter the `_resources` source hash. Repeat every check below against the frozen build-005 candidate. This historical evidence is not a sign-off.
+A build-003 disposable-copy schema-v2 rehearsal preserved 100 rows, 100 UUIDs, score sum 4256, maximum score 149, and `PRAGMA quick_check = ok`; it created a verified `pre-migration-v2` backup and did not alter the `_resources` source hash. Repeat every check below against the frozen build-006 candidate. This historical evidence is not a sign-off.
 
 ## 1. Source and release integrity
 
-- [x] Confirm `gradle.properties` says version `2.1.2`, build `005`, Java `25`, Paper `26.2`, and Paper API `26.2.build.60-beta` or the intentionally approved newer 26.2 API.
+- [x] Confirm `gradle.properties` says version `2.2.0`, build `006`, Java `25`, Paper `26.2`, and Paper API `26.2.build.60-beta` or the intentionally approved newer 26.2 API.
 - [x] Confirm the wrapper/build dependencies remain Gradle 9.6.1, Shadow 9.5.1, PlaceholderAPI 2.12.3, SQLite JDBC 3.53.2.0, and JUnit 6.1.2 unless a newer version has been deliberately reviewed and recorded.
 - [x] Confirm `plugin.yml` retains Bukkit name `InfinityParkour`, `api-version: 26.2`, and main class `com.mrfdev.walktheplank.WalkThePlankPlugin`.
 - [x] Confirm `plugin.yml` soft-depends on PlaceholderAPI plus the configured live reward-root providers `CMI`, `UltimateFireworks`, and `PyroWelcomesPro`. Confirm `CMILib`, `Vault`, and `PyroLib` are not WalkThePlank dependencies or soft dependencies.
@@ -46,7 +46,7 @@ A build-003 disposable-copy schema-v2 rehearsal preserved 100 rows, 100 UUIDs, s
 - [ ] Confirm the shaded JAR includes `org/sqlite/JDBC.class` and `META-INF/services/java.sql.Driver`.
 - [ ] Confirm the shaded JAR contains no `com/mysql/`, `org/mariadb/`, `org/bukkit/`, `io/papermc/paper/`, or `me/clip/placeholderapi/` classes.
 - [ ] Confirm the JAR contains no `.db` or `.sqlite` file and no `_resources` or server directory.
-- [ ] Confirm embedded `plugin.yml`, `build-info.properties`, and manifest all identify v2.1.2 build 005, Java 25, Paper 26.2, and the exact artifact name.
+- [ ] Confirm embedded `plugin.yml`, `build-info.properties`, and manifest all identify v2.2.0 build 006, Java 25, Paper 26.2, and the exact artifact name.
 - [ ] Record final size, SHA-256, source commit, runtime, test result, and smoke evidence in the annotated RC tag and operator archive.
 - [ ] Copy the JAR by checksum and prove the staged copy is byte-identical.
 - [ ] Confirm only one InfinityParkour/WalkThePlank JAR is active. Move every prior build to `plugins-disabled/walktheplank/`.
@@ -61,11 +61,11 @@ The scenario system is release tooling, not a production feature. Never copy eit
 - [ ] Require these two test-only files beneath `build/scenario-artifacts/`:
 
   ```text
-  TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.1.2-005.jar
-  TEST-ONLY-1MB-WalkThePlank-v2.1.2-005-Failpoints.jar
+  TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.2.0-006.jar
+  TEST-ONLY-1MB-WalkThePlank-v2.2.0-006-Failpoints.jar
   ```
 
-- [ ] Require the production file to remain `build/libs/1MB-WalkThePlank-v2.1.2-005-j25-26.2.jar`; prove the instrumented file has a different path and checksum and did not replace it.
+- [ ] Require the production file to remain `build/libs/1MB-WalkThePlank-v2.2.0-006-j25-26.2.jar`; prove the instrumented file has a different path and checksum and did not replace it.
 - [ ] Run `./gradlew verifyReleaseJar` separately and require the production JAR to contain no `com/mrfdev/walktheplank/scenario/` class, `WalkThePlank-Test-Artifact`/`WalkThePlank-Test-Canary` manifest attribute, scenario command, failpoint system-property prefix, scenario canary, Java agent entry point, or any of the 24 failpoint identifiers.
 - [ ] Require positive controls: the harness must be detected as test-only, the instrumented copy must contain the injected bridge/canary and all 24 identifiers, and the isolation task must reject a deliberately scanned test artifact as production-safe.
 - [ ] Inspect the scenario harness archive. Require an independent `plugin.yml` named `WalkThePlank-ScenarioHarness`, hard dependency on `InfinityParkour`, classes only under `com/mrfdev/walktheplank/scenario/harness/`, and no shaded WalkThePlank, SQLite, Paper/Bukkit, or PlaceholderAPI classes.
@@ -157,6 +157,7 @@ LIMIT 10;
 - [ ] Start the frozen candidate once against the disposable legacy database.
 - [ ] While that repository is open, start a second disposable WalkThePlank repository/server against the same database. Require immediate safe startup failure naming existing ownership, no migration/write from the competitor, and uninterrupted operation of the first instance.
 - [ ] Confirm the sibling `<database-filename>.walktheplank.lock` is a regular non-symlink file. Replace it with a symlink and a directory in separate stopped-server fixtures and require fail-closed startup without touching either target.
+- [ ] Confirm `.recovery-durability.lock` and `.operations-io.lock` are regular non-symlink files in `plugins/InfinityParkour/`. Replace each with a symlink and a directory in stopped disposable fixtures and require fail-closed startup before journal/audit inspection. Never delete any of the three lock files to clear ownership; an unlocked file may remain normally, and deleting a still-locked Unix pathname can defeat exclusivity.
 - [ ] Stop the first instance with a successful repository drain, then start a replacement against the same database. Require successful lock acquisition even if the unlocked lock file remains on disk; never make deletion of that file part of normal startup.
 - [ ] Require a startup log naming a verified sibling backup like `database.db.pre-migration-v2-<epoch>.sqlite`.
 - [ ] Confirm the backup exists, is non-empty, and independently returns `PRAGMA quick_check = ok`.
@@ -203,7 +204,7 @@ LIMIT 10;
 ## 5. Paper startup and dependency matrix
 
 - [ ] Start with Java 25 and Paper 26.2 build 60 beta or the approved newer 26.2 build.
-- [ ] Require `InfinityParkour v2.1.2-005` to enable once with 100 preserved scores.
+- [ ] Require `InfinityParkour v2.2.0-006` to enable once with 100 preserved scores.
 - [ ] Require no WalkThePlank exception, deprecated-method warning, task rejection, linkage error, or unexpected startup/shutdown warning. The JVM's JOML `sun.misc.Unsafe` warning is emitted by Paper's `joml-1.10.8.jar`, not this plugin.
 - [ ] Break configuration or journal initialization in a disposable profile and require startup to abort. The disable audit says `startup_completed:false` and `clean:false`; the log explicitly refuses a clean-restoration claim.
 - [ ] Run `/plugins` or equivalent and confirm no duplicate plugin-name conflict.
@@ -296,7 +297,7 @@ LIMIT 10;
 - [ ] Run validate with and without an ID; confirm the optional ID does not skip complete-layout overlap/safety validation.
 - [ ] Confirm duplicate IDs, duplicate start blocks, overlapping safety volumes, missing worlds, world-border/build-height violations, insufficient start headroom, invalid IDs, and unsafe materials are rejected before write.
 - [ ] For custom exits, reject placement inside any protected arena volume; outside build height/border; without collidable support; without two passable blocks; or touching liquid, waterlogging, portals, fire, campfires, cactus, magma, powder snow, berry bushes, cobweb, dripstone, or wither rose. Rehearse the exact live exit and require acceptance.
-- [ ] Confirm editor mutations are refused while any run is active or any arena is quarantined.
+- [ ] Confirm editor mutations are refused while the queue is non-empty or any active/pending run, teleport check, recovery lookup/completion, quarantined arena, restoration/player-recovery record, or arena/block lease remains.
 - [ ] Confirm removal requires literal `confirm` and the last required arena cannot leave an invalid empty layout.
 - [ ] Confirm successful edit writes atomically, creates `config.yml.backup`, reloads, and reports the validated config fingerprint.
 - [ ] Force activation failure after an edit and confirm automatic rollback restores the exact prior bytes. If rollback is intentionally made impossible, require a loud failure and stop further edits.
@@ -401,6 +402,15 @@ Run economic/reward tests only on disposable accounts and a staging economy/inve
 
 Use a disposable world and keep exact before/after structure or NBT/PDC evidence.
 
+- [ ] Confirm runtime thread names include exactly one `walktheplank-recovery-writer` and one independent `walktheplank-operations-writer`; neither may be an unbounded pool or Paper's shared async scheduler.
+- [ ] Hold the first recovery writer alive past both close waits, then attempt a second full plugin/journal open. Require refusal before either journal scans, loads, or deletes a recognizable `.tmp` file. Let the old writer terminate and require the lifetime lock to release automatically before a replacement opens the unchanged evidence. Repeat the delayed-termination ownership check for the operations writer.
+- [ ] Block the recovery writer at a reversible test-only boundary while the player traverses a jump. Require responsive server ticks, no Bukkit/Paper async-access warning, no caller-thread file write, and continued operations-worker audit/config progress.
+- [ ] Fill the bounded recovery queue in a disposable instrumented profile. Require explicit rejection, a refused/ended affected run, retained exact evidence/quarantine where applicable, no `CallerRunsPolicy` behavior, no world mutation without a durable record, and healthy unrelated arenas.
+- [ ] For both restoration and player recovery, force parent-directory fsync to fail immediately after an atomic record rename. Require the durability future to fail uncertain, no player/world mutation, the exact record to remain published and ownership-blocking, and restart to load it when the renamed file remains. Then fail the first exact discard after deletion and require the ticket/lease to remain retained; retry discard, require directory fsync success, record removal, and no leaked restoration byte accounting.
+- [ ] Observe a normal multi-jump run with instrumentation: base and target must be durable before start mutation; the successor must become durable and pre-placed during traversal; landing must promote only that exact run/session/platform generation; predecessor deletion and directory fsync must complete before its block lease is released.
+- [ ] Delay an old successor completion until after leave/restart/new arena ownership. Require its nonce/generation/arena/block lease revalidation to reject the stale commit without placing a block, releasing a newer lease, or changing the newer run.
+- [ ] Land before the pipelined successor is ready. Require no duplicate point and no unsafe async mutation; once durability returns, the same grounded exact-target landing may advance once.
+- [ ] During repeated jumps, inspect tick timings and require no journal hash/write/fsync/rename/delete or audit rotation on the primary thread. Paper structure capture, block fingerprint verification, placement, and restoration must remain on the primary thread.
 - [ ] Normal run: every retired/generated/start block returns to its exact original state and every `.pending` record is removed only after verification.
 - [ ] Use a non-air ordinary start block and confirm exact material/block-data restoration.
 - [ ] Use a directional/waterlogged block and confirm complete block data survives.
@@ -418,6 +428,8 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 - [ ] Change an expected plugin block to a third state while stopped. Restart/recover must report conflict, preserve the third-party block, retain the record, and quarantine the arena.
 - [ ] Unload/remove the world while a record is pending. Require `WORLD_MISSING`, retained record, and quarantine; reload the correct world and recover explicitly.
 - [ ] Run `/walk admin recover` repeatedly after successful recovery; subsequent runs must make no additional world change.
+- [ ] Race `/walk admin recover` against a pending start whose player/base/target records are durable but not yet activated. Require the authoritative arena lease to exclude every pending-start record from orphan recovery: no record is restored or deleted, no prepared block is mutated, and activation or exact abandonment remains the sole owner.
+- [ ] Cancel a start while player/base/target preparations are still queued, then force the first discard submission or post-delete directory fsync to fail. Require the same UUID and arena to remain admission-blocked, exact block leases to remain held, stale durability callbacks to be harmless, periodic/admin recovery to retry, and every lease to release only after all exact discards succeed.
 - [ ] Tamper with integrity, filename/ID, fields, structure bytes, format version, size, duplicate block target, or symlink. Require startup to fail safely without silently deleting evidence.
 - [ ] Leave a recognizable regular journal pre-commit `.tmp` file and verify startup deletes it durably without treating it as a `.pending` record or changing the world.
 - [ ] Leave an unknown-name `.tmp`, symlink, directory, or other non-regular temporary entry and require startup to fail for investigation rather than deleting it.
@@ -446,6 +458,12 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 
 ## 16. Audit, health, shutdown, and crash behavior
 
+- [ ] Run `/walk admin doctor` during active jumps and confirm separate bounded recovery/operations capacity, queued/active, accepted/completed, failed/rejected, and closing/terminated counters without paths, coordinates, names, or record contents.
+- [ ] Block audit rotation or an export/config operation and prove recovery journal append/delete latency is unaffected. Reverse the test by blocking recovery durability and prove prepared audit records still drain on the operations writer.
+- [ ] Reload with active and just-ended sessions. Require main-thread world/player cleanup, an off-thread recovery barrier, a return to the primary thread for quarantine/lease checks, final disk revalidation, generation-CAS publication, and no tick-thread fsync.
+- [ ] Race an external `config.yml` edit before commit, during cleanup, and during provisional arena-edit activation. Require stale publication rejection or restoration of the prior runtime without overwriting the newer external file.
+- [ ] Tamper with `config.yml.backup` after a disposable arena edit commits but before rollback. Require rollback to use the exact token-bound original bytes, not the tampered shared backup.
+- [ ] Disable while an arena edit is captured, queued, durably committed, and provisionally activated in separate runs. Require the FIFO shutdown reconciliation barrier to leave either a fully verified activation or the exact prior file; no committed-but-unactivated edit may escape.
 - [ ] Confirm `audit/audit.jsonl` is valid one-object-per-line JSON with timestamp, release, event, and only bounded safe fields.
 - [ ] Exercise plugin, run, queue, reward/staff reward, season-transition, leaderboard-export, arena-edit success/failure/rollback, startup restoration, and operator-triggered recovery events; compare audit order/IDs to database records.
 - [ ] Confirm player-run arena edits, `/walk admin recover`, queue pause/resume/drain, admin stop/open, reload, and validate carry the correct operator UUID and `player` actor category. Repeat applicable commands from console and require an explicit `system` actor category with no fabricated player UUID; verify safe target/result/fingerprint fields.
@@ -461,7 +479,7 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 - [ ] Invoke doctor immediately before reload/disable and force a probe failure on a disposable database. Require a bounded privacy-safe result or contained cancellation, with no raw exception, rejected-task leak, shutdown hang, repair attempt, or database replacement.
 - [ ] Start and stop with no players, active runs, pending starts, queued/ready players, and quarantined records.
 - [ ] Clean shutdown must close menus, cancel starts, drain queue, restore sessions, retry quarantine, unregister API/PlaceholderAPI, and drain accepted database work for up to 15 seconds.
-- [ ] Require `WalkThePlank disabled; arena blocks and player state were restored` and no pending-write timeout in both build-005 controlled/console-smoke profiles.
+- [ ] Require `WalkThePlank disabled; arena blocks and player state were restored` and no pending recovery/operations/database-write timeout in both build-006 controlled/console-smoke profiles.
 - [ ] Treat `disabled with cleanup errors`, any remaining quarantine/pending restoration, or an unclassified database failure as no-go.
 - [ ] Force repository drain timeout/interruption in a synthetic test and confirm every accepted future reaches success or exceptional completion; no command caller may hang forever.
 - [ ] Confirm queued operations are rejected and settled deterministically on close timeout. Separately document that a SQLite JDBC call already running may outlive an unsuccessful close if interruption is ignored; treat that log/return path as no-go and never start a second process on the database until the first process is gone.
@@ -471,11 +489,11 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 ## 17. Test-server synchronization and regression pass
 
 - [ ] Run `./gradlew syncTestServer` only after source/build/migration gates pass.
-- [ ] Confirm build 005 is active and all older WalkThePlank/InfinityParkour JARs—including both `TEST-ONLY-` artifacts—are disabled/absent.
+- [ ] Confirm build 006 is active and all older WalkThePlank/InfinityParkour JARs—including both `TEST-ONLY-` artifacts—are disabled/absent.
 - [ ] Confirm copied live data belongs to the test server, not `_resources`.
 - [ ] Restart the synchronized server from a clean stop and repeat startup/info/validate/health/doctor/top/GUI/gameplay/queue/season/export/reward/recovery/disable smoke.
 - [ ] Search the full `latest.log` for `InfinityParkour`, `WalkThePlank`, `WARN`, `ERROR`, `SEVERE`, `Exception`, `deprecated`, and task rejection; classify every match.
-- [ ] Re-run `PRAGMA quick_check` and the 100-row/top-ten comparison after build-005 console smoke: 100 UUID rows, score sum 4256, maximum 149, unchanged top ten, `quick_check=ok`.
+- [ ] Re-run `PRAGMA quick_check` and the 100-row/top-ten comparison after build-006 console smoke: 100 UUID rows, score sum 4256, maximum 149, unchanged top ten, `quick_check=ok`.
 - [ ] Re-hash the staged JAR and compare it with the candidate record.
 
 ## 18. Rollback rehearsal
@@ -484,7 +502,7 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 - [ ] Restore the exact previous JAR and matched pre-deployment data folder together.
 - [ ] Start the previous supported environment and verify the all-time leaderboard/top ten.
 - [ ] Confirm the production runbook warns that database rollback discards later event scores and never reconciles by username.
-- [ ] Confirm pending build-005 restoration records are resolved/preserved before starting an older plugin that cannot read them.
+- [ ] Confirm pending build-006 restoration/player-recovery records are resolved or preserved before starting an older plugin that cannot read them.
 - [ ] Record rollback duration, responsible operator, file locations, and communication plan.
 
 ## 19. Go/no-go sign-off

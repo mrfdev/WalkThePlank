@@ -56,7 +56,7 @@ final class AtomicConfigFile {
             requireUnchanged(expected);
             move(candidateTemp, target);
             forceDirectory(parent);
-            return new CommitToken(committed);
+            return new CommitToken(committed, expected);
         } finally {
             Files.deleteIfExists(candidateTemp);
             Files.deleteIfExists(backupTemp);
@@ -66,22 +66,31 @@ final class AtomicConfigFile {
     void restoreBackup(CommitToken commitToken) throws IOException {
         CommitToken committed = Objects.requireNonNull(commitToken, "commitToken");
         requireSafePaths();
-        if (!Files.isRegularFile(backup, LinkOption.NOFOLLOW_LINKS)) {
-            throw new IOException("No configuration backup is available");
-        }
         requireUnchanged(
                 committed.committedContents(),
                 "config.yml changed after the arena edit was committed; refusing to overwrite the newer file");
         Path parent = Objects.requireNonNull(target.getParent(), "target parent");
         Path restoreTemp = Files.createTempFile(parent, ".walktheplank-restore-", ".tmp");
         try {
-            Files.copy(backup, restoreTemp, StandardCopyOption.REPLACE_EXISTING);
+            Files.write(
+                    restoreTemp,
+                    committed.backupContents(),
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE);
             force(restoreTemp);
             move(restoreTemp, target);
             forceDirectory(parent);
         } finally {
             Files.deleteIfExists(restoreTemp);
         }
+    }
+
+    void requireCommittedUnchanged(CommitToken commitToken) throws IOException {
+        CommitToken committed = Objects.requireNonNull(commitToken, "commitToken");
+        requireSafePaths();
+        requireUnchanged(
+                committed.committedContents(),
+                "config.yml changed after the arena edit was committed");
     }
 
     private static void force(Path file) throws IOException {
@@ -130,14 +139,20 @@ final class AtomicConfigFile {
         }
     }
 
-    record CommitToken(byte[] committedContents) {
+    record CommitToken(byte[] committedContents, byte[] backupContents) {
         CommitToken {
             committedContents = Objects.requireNonNull(committedContents, "committedContents").clone();
+            backupContents = Objects.requireNonNull(backupContents, "backupContents").clone();
         }
 
         @Override
         public byte[] committedContents() {
             return committedContents.clone();
+        }
+
+        @Override
+        public byte[] backupContents() {
+            return backupContents.clone();
         }
     }
 }
