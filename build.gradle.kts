@@ -244,6 +244,50 @@ val instrumentScenarioJar = tasks.register<JavaExec>("instrumentScenarioJar") {
     }
 }
 
+val scenarioReproducibilityJar = layout.buildDirectory.file(
+    "tmp/scenario-reproducibility/" +
+        "TEST-ONLY-Reproducibility-$scenarioInstrumentedJarName")
+val instrumentScenarioJarReproducibilityCopy =
+    tasks.register<JavaExec>("instrumentScenarioJarReproducibilityCopy") {
+        group = "verification"
+        description = "Builds an independent instrumented copy for reproducibility verification."
+        dependsOn(tasks.shadowJar, compileScenarioInstrumentation, compileScenarioTools)
+        val productionJar = tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile }
+        classpath = files(
+            scenarioToolsClasses,
+            scenarioInstrumentationClasses,
+            productionJar,
+        ) + sourceSets.main.get().compileClasspath
+        mainClass.set(
+            "com.mrfdev.walktheplank.scenario.tools.ScenarioJarInstrumenter")
+        inputs.file(productionJar)
+        inputs.dir(scenarioInstrumentationClasses)
+        outputs.file(scenarioReproducibilityJar)
+        doFirst {
+            args(
+                productionJar.get().asFile.absolutePath,
+                scenarioInstrumentationClasses.get().asFile.absolutePath,
+                scenarioReproducibilityJar.get().asFile.absolutePath,
+            )
+        }
+    }
+
+val verifyScenarioInstrumenterReproducibility =
+    tasks.register("verifyScenarioInstrumenterReproducibility") {
+        group = "verification"
+        description =
+            "Requires two independent instrumented scenario JARs to be byte-for-byte identical."
+        dependsOn(instrumentScenarioJar, instrumentScenarioJarReproducibilityCopy)
+        inputs.files(scenarioInstrumentedJar, scenarioReproducibilityJar)
+        doLast {
+            val primary = scenarioInstrumentedJar.get().asFile.toPath()
+            val independent = scenarioReproducibilityJar.get().asFile.toPath()
+            check(Files.mismatch(primary, independent) == -1L) {
+                "Independent instrumented scenario JARs are not byte-for-byte identical"
+            }
+        }
+    }
+
 val scenarioArtifacts = tasks.register("scenarioArtifacts") {
     group = "verification"
     description = "Builds every isolated test-only scenario artifact."
@@ -435,7 +479,7 @@ val verifyProductionScenarioIsolation =
         group = "verification"
         description =
             "Proves scenario plugins, instrumentation, controls, and canaries are absent from production."
-        dependsOn(scenarioArtifacts)
+        dependsOn(scenarioArtifacts, verifyScenarioInstrumenterReproducibility)
         val productionJar = tasks.named<ShadowJar>("shadowJar").flatMap { it.archiveFile }
         val harnessJar = scenarioHarnessJar.flatMap { it.archiveFile }
         inputs.files(productionJar, harnessJar, scenarioInstrumentedJar)

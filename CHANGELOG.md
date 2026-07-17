@@ -22,6 +22,7 @@ Expected artifact: `1MB-WalkThePlank-v2.1.2-005-j25-26.2.jar`
 - Test-only artifacts are written beneath `build/scenario-artifacts/`, never `build/libs/`, and are visibly prefixed `TEST-ONLY-`; the harness fails closed unless its explicit disposable-profile flag and injected bridge are present.
 - The destructive runner rejects symlinked build/runtime/profile paths. Both the early startup failpoint bridge and later harness require the same safe nonce, bounded marker, real Paper working directory, generated `build/controlled-scenarios/` layout, and exact plugin data paths.
 - Instrumentation verifies that all three exact database operation labels exist in both the production repository bytecode and injected router before it can emit a test artifact.
+- A positive reproducibility control now builds the instrumented target twice and requires byte-for-byte identity; generated manifest timestamps are fixed instead of inheriting the wall clock.
 - `controlledReleaseScenarios` orders the two-start profile before the automated runtime-commit exit-97/recovery profile, and test-server synchronization now depends on that clean-candidate scenario gate.
 
 ### Operational notes and known limitations

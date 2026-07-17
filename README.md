@@ -585,7 +585,7 @@ build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.1.2-005.j
 build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.1.2-005-Failpoints.jar
 ```
 
-`verifyReleaseJar` byte-scans the production JAR for scenario packages, commands, manifest/agent markers, canaries, every scenario-property prefix, and all 24 failpoint names. `verifyProductionScenarioIsolation` repeats that negative proof and requires the harness and instrumented copy to trigger positive controls, preventing a broken scan from reporting a false pass. The runner refuses symlinked destructive roots and writes a bounded per-run nonce marker. Both the early startup failpoint controller and the scenario plugin require that marker, the exact generated root/working directory/layout/data paths, and the bridge loaded by the instrumented target's own classloader.
+`verifyReleaseJar` byte-scans the production JAR for scenario packages, commands, manifest/agent markers, canaries, every scenario-property prefix, and all 24 failpoint names. `verifyProductionScenarioIsolation` repeats that negative proof and requires the harness and instrumented copy to trigger positive controls, preventing a broken scan from reporting a false pass. It also builds a second instrumented copy and requires byte-for-byte identity. The runner refuses symlinked destructive roots and writes a bounded per-run nonce marker. Both the early startup failpoint controller and the scenario plugin require that marker, the exact generated root/working directory/layout/data paths, and the bridge loaded by the instrumented target's own classloader.
 
 Run the disposable Paper 26.2 profile with:
 

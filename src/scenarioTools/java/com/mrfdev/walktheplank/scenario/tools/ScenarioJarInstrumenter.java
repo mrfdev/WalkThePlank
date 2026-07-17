@@ -1,5 +1,6 @@
 package com.mrfdev.walktheplank.scenario.tools;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.classfile.ClassFile;
@@ -477,10 +478,15 @@ public final class ScenarioJarInstrumenter {
             attributes.putValue(TEST_CANARY_ATTRIBUTE, TEST_CANARY);
 
             try (JarOutputStream target = new JarOutputStream(
-                    Files.newOutputStream(output), manifest)) {
+                    Files.newOutputStream(output))) {
                 List<JarEntry> entries = entries(source);
                 Set<String> written = new HashSet<>();
                 written.add(JarFile.MANIFEST_NAME);
+                putEntry(
+                        target,
+                        JarFile.MANIFEST_NAME,
+                        manifestBytes(manifest),
+                        false);
                 for (JarEntry entry : entries) {
                     String name = entry.getName();
                     if (JarFile.MANIFEST_NAME.equalsIgnoreCase(name)) {
@@ -737,6 +743,12 @@ public final class ScenarioJarInstrumenter {
             output.write(bytes);
         }
         output.closeEntry();
+    }
+
+    private static byte[] manifestBytes(Manifest manifest) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        manifest.write(output);
+        return output.toByteArray();
     }
 
     private static void requireAsciiTokens(
