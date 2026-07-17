@@ -1,11 +1,101 @@
 name: InfinityParkour
-version: 1.0.10
-main: com.meldiron.infinityparkour.Main
-prefix: infinity-parkour
-authors: [Meldiron]
-description: Infinity parkour training plugin
-website: https://www.spigotmc.org/members/meldiron.92826/
+version: '${version}'
+main: com.mrfdev.walktheplank.WalkThePlankPlugin
+api-version: '26.2'
+prefix: 1MB-WalkThePlank
+authors: [Meldiron, The456gamer, mrfdev, 1MB]
+description: Standalone endless parkour modernized by 1MB for Paper 26.2.
+website: https://github.com/mrfdev/WalkThePlank
+# PlaceholderAPI is the only Java-level integration. The remaining entries are optional
+# command providers ordered before startup validation when they are installed.
+softdepend: [PlaceholderAPI, CMI, UltimateFireworks, PyroWelcomesPro]
 commands:
-  infinityparkour:
-    aliases: [infp]
-    description: Command to open Infinity Parkour GUI
+  walktheplank:
+    aliases: [walk, infinityparkour, infp]
+    description: Open and control WalkThePlank.
+    usage: /walk [play|queue|leave|stats|top|info|help|admin|debug]
+permissions:
+  infinityparkour.player:
+    description: Grants the standard WalkThePlank player command set.
+    default: true
+    children:
+      infinityparkour.opengui: true
+      infinityparkour.play: true
+      infinityparkour.leavearena: true
+      infinityparkour.statscmd: true
+      infinityparkour.topcmd: true
+      infinityparkour.info: true
+      infinityparkour.help: true
+  infinityparkour.admin:
+    description: Grants all WalkThePlank administrative commands.
+    default: op
+    children:
+      infinityparkour.reload: true
+      infinityparkour.admin.open: true
+      infinityparkour.admin.debug: true
+      infinityparkour.admin.stop: true
+      infinityparkour.admin.recover: true
+      infinityparkour.admin.validate: true
+      infinityparkour.admin.arena: true
+      infinityparkour.admin.queue: true
+      infinityparkour.admin.season: true
+      infinityparkour.admin.export: true
+      infinityparkour.admin.reward: true
+      infinityparkour.admin.investigate: true
+  infinityparkour.opengui:
+    description: Open the WalkThePlank menu.
+    default: false
+  infinityparkour.play:
+    description: Start a WalkThePlank run.
+    default: false
+  infinityparkour.leavearena:
+    description: Leave a WalkThePlank run.
+    default: false
+  infinityparkour.statscmd:
+    description: View personal WalkThePlank statistics.
+    default: false
+  infinityparkour.topcmd:
+    description: View the WalkThePlank top ten.
+    default: false
+  infinityparkour.info:
+    description: View WalkThePlank build and runtime information.
+    default: false
+  infinityparkour.help:
+    description: View permission-filtered WalkThePlank command help.
+    default: false
+  infinityparkour.reload:
+    description: Reload WalkThePlank configuration.
+    default: false
+  infinityparkour.admin.open:
+    description: Open the WalkThePlank menu for another online player.
+    default: false
+  infinityparkour.admin.debug:
+    description: View safe WalkThePlank runtime diagnostics and status.
+    default: false
+  infinityparkour.admin.stop:
+    description: Stop another player's run without rewards.
+    default: false
+  infinityparkour.admin.recover:
+    description: Retry restoration for quarantined arenas.
+    default: false
+  infinityparkour.admin.validate:
+    description: Validate WalkThePlank configuration without applying it.
+    default: false
+  infinityparkour.admin.arena:
+    description: Create, update, validate, and remove WalkThePlank arenas.
+    default: false
+  infinityparkour.admin.queue:
+    description: Inspect, pause, resume, and drain the WalkThePlank arena queue.
+    default: false
+  infinityparkour.admin.season:
+    description: Create and transition explicit WalkThePlank event seasons.
+    default: false
+  infinityparkour.admin.export:
+    description: Export UUID-owned all-time and season leaderboards.
+    default: false
+  infinityparkour.admin.reward:
+    description: Inspect and explicitly resolve uncertain durable reward outcomes.
+    default: false
+  infinityparkour.admin.investigate:
+    description: Query redacted UUID-owned retained-run evidence.
+    default: false

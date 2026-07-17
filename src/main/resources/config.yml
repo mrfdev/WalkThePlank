@@ -1,46 +1,109 @@
+# Explicit schema for validate-only tooling. Missing values in older files inherit this default.
+configVersion: 2
+
+# Each entry is an independent arena. The start is the center of the generated course.
 startPositions:
-- x: 1500
-  y: 150
-  z: 0
-  pitch: 0
-  yaw: 0
-  world: 'world'
-  useCustomEndPosition: false
-  endPos:
-    x: 1450
+  - id: main
+    x: 1500
     y: 150
-    z: 50
+    z: 0
     pitch: 0
     yaw: 0
-    world: 'world'
+    world: world
+    useCustomEndPosition: false
+    endPos:
+      x: 1450
+      y: 150
+      z: 50
+      pitch: 0
+      yaw: 0
+      world: world
+
 parkourBlocks:
-- 'EMERALD_BLOCK'
-runFinishCommands: false
-finishCommands:
-- commands:
-  - '/say {{playerName}} is NOOB with score {{score}}'
-  maxScore: 5
-- commands:
-  - '/say {{playerName}} is JUMPER with score {{score}}'
-  minScore: 6
-  maxScore: 10
-- commands:
-  - '/say {{playerName}} is MONSTER with score {{score}}'
-  minScore: 11
+  - EMERALD_BLOCK
+
+gameplay:
+  # Falling this many blocks below the arena center ends the run.
+  fallDistance: 6.0
+  # Generated jumps remain within this horizontal radius of the center.
+  horizontalRadius: 6
+  # Hard cap and no-progress timeout prevent abandoned runs from exhausting arenas.
+  maximumRunSeconds: 1800
+  idleTimeoutSeconds: 300
+  # Random course blocks will not overwrite existing world blocks.
+  # The configured starting block is always snapshotted and restored.
+  onlyReplaceAir: true
+
+# When all arenas are occupied, players can explicitly join a FIFO queue and must accept
+# an expiring readiness prompt before a run starts. No arena is reserved for an offline player.
+queue:
+  enabled: true
+  joinCooldownSeconds: 5
+  readinessWindowSeconds: 20
+  reminderIntervalSeconds: 5
+
+# RANDOM preserves legacy behavior. Other options: ROUND_ROBIN, LEAST_RECENTLY_USED, PINNED.
+arenaSelection:
+  policy: RANDOM
+  # Required only for PINNED; if that arena is busy, selection safely falls back to LRU.
+  pinnedArena: ''
+
 particle:
   show: true
-  type: ANVIL_USE
+  type: TOTEM_OF_UNDYING
+  count: 12
+
+# These are trusted console commands. They run only after normal /walk leave or a fall,
+# never during quit, reload, administrative cleanup, or server shutdown.
+runFinishCommands: false
+rewards:
+  onlyOnPersonalBest: false
+  # Defense-in-depth: every finish command must use one of these exact roots.
+  # Keep only providers intentionally used by this server.
+  allowedCommandRoots:
+    - say
+    - cmi
+    - uf
+    - welcomes
+finishCommands:
+  - commands:
+      - '/say {{playerName}} finished WalkThePlank with {{score}} points'
+    maxScore: 5
+  - commands:
+      - '/say {{playerName}} reached {{score}} points in WalkThePlank'
+    minScore: 6
+    maxScore: 10
+  - commands:
+      - '/say {{playerName}} mastered WalkThePlank with {{score}} points'
+    minScore: 11
+
 permissions:
-  openGui: 'infinityparkour.opengui'
-  leaveArena: 'infinityparkour.leavearena'
-  playGame: 'infinityparkour.play'
-  reload: 'infinityparkour.reload'
-  statsCmd: 'infinityparkour.statscmd'
-  topCmd: 'infinityparkour.topcmd'
-mysql:
-  enabled: false
-  host: 'localhost'
-  username: 'root'
-  password: 'test'
-  port: 3306
-  database: 'mc'
+  openGui: infinityparkour.opengui
+  leaveArena: infinityparkour.leavearena
+  playGame: infinityparkour.play
+  reload: infinityparkour.reload
+  statsCmd: infinityparkour.statscmd
+  topCmd: infinityparkour.topcmd
+  info: infinityparkour.info
+  help: infinityparkour.help
+  admin: infinityparkour.admin
+  adminOpen: infinityparkour.admin.open
+  adminDebug: infinityparkour.admin.debug
+  adminStop: infinityparkour.admin.stop
+  adminRecover: infinityparkour.admin.recover
+  # Validate-only access can be delegated without granting configuration edits.
+  adminValidate: infinityparkour.admin.validate
+  adminArena: infinityparkour.admin.arena
+  adminQueue: infinityparkour.admin.queue
+  adminSeason: infinityparkour.admin.season
+  adminExport: infinityparkour.admin.export
+  adminReward: infinityparkour.admin.reward
+  # Read-only UUID-owned retained-run evidence; separate from reward resolution.
+  adminInvestigate: infinityparkour.admin.investigate
+
+database:
+  # This standalone build stores all scores and player identities in this local SQLite file.
+  type: SQLITE
+  sqlite:
+    file: database.db
+    busyTimeoutMillis: 5000
