@@ -1,23 +1,23 @@
 # WalkThePlank future improvements and release status
 
-This is the authoritative future-development TODO and release-status document. It separates what is implemented in source release **v2.2.0 build 006** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
+This is the authoritative future-development TODO and release-status document. It separates what is implemented in source release **v2.3.0 build 007** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
 
 Status labels:
 
-- **Implemented** — present in build-006 source.
+- **Implemented** — present in build-007 source.
 - **Implemented; beta verification pending** — present, but the final JAR still needs the named Paper/live-data test.
 - **Partial** — a safe foundation exists, but an important workflow or assurance remains.
 - **Proposed** — not present and must not be advertised as a current feature.
 
 ## Deferred modernization queue
 
-Build 003 remains the frozen historical modernization baseline, build 004 the historical event-safety release, and build 005 the destructive-testing foundation. Build 006 takes the off-main durability pipeline below; every remaining unchecked feature stays deferred to a separate incremented build so its evidence cannot be confused with this candidate.
+Build 003 remains the frozen historical modernization baseline, build 004 the historical event-safety release, build 005 the destructive-testing foundation, and build 006 the off-main durability release candidate. Build 007 takes the command/API modernization below; every remaining unchecked feature stays deferred to a separate incremented build so its evidence cannot be confused with this candidate.
 
 1. [x] **v2.1.1 build 004 — event-safety and operations implemented; beta acceptance still pending.** External-teleport decisions occur at `HIGHEST` with observation-only `MONITOR` and next-tick verification; GUI sessions bind owner UUID/nonce/generation/exact inventory with one pending action; trusted formatting is parsed separately from literal dynamic components with explicit `minimessage:` opt-in and legacy `&` compatibility; `/walk admin doctor` produces a privacy-safe report with an asynchronous SQLite probe.
 2. [x] **v2.1.2 build 005 — disposable Paper integration and fault-injection harness implemented; final-candidate and real-client evidence pending.** A separate test plugin, Java 25 Class-File API instrumented-copy builder, 24 named failpoints, two-start/PlaceholderAPI/lifecycle/log runner, real-player queue/teleport/GUI/reconnect/exit probes, reflection event contracts, and positive/negative production-isolation checks are present. Development-artifact runs passed the automated two-start profile and the `config.after_runtime_commit` exit-97/recovery profile; repeat them against the clean committed candidate and complete every applicable real-client/hard-kill checklist row before treating this item as release-qualified.
 3. [x] **v2.2.0 build 006 — two-phase off-main durability pipeline implemented; Paper/destructive acceptance pending.** Bukkit/Paper capture, validation, restoration, and mutation remain on the primary thread. Immutable journal bytes go to a bounded FIFO recovery writer; audit/export/config work uses an independent bounded operations writer. Exclusive lifetime ownership is acquired before recovery journals open and remains held until any delayed writer truly terminates. Successful completion returns to the primary thread and revalidates exact run/session/platform generations, arena/block leases, player state, permissions, and block fingerprints. Uncertain post-rename commits and failed discards retain exact evidence for retry. Successor preparation begins while the player traverses the current jump and pre-placement occurs when ready; an early landing waits/rechecks without async world mutation. Predecessor journal deletion/fsync completes off-thread. Reload, administrative recovery, and shutdown use explicit barriers/completion queues without async Bukkit access or caller-thread durability fallback.
 4. [ ] **Summer Season feature bundle.** Preserve the imported Classic leaderboard while adding cosmetic themes, milestones, accessibility preferences, a versioned daily course and separate ranking, seasonal Momentum, quests, durable UUID claim keys, and a community plank goal. Run new scoring in shadow mode before rewards or public ranking.
-5. [ ] **Post-event command/API modernization.** Split the command, game, configuration, and repository monoliths by domain; migrate supported commands to Paper's lifecycle-registered Brigadier tree; evaluate experimental Dialog/data-component APIs only behind isolated version-gated adapters when they provide concrete value.
+5. [x] **v2.3.0 build 007 — command/API modernization implemented; Paper and human acceptance pending.** The former 2,789-line handler is split into player, queue, arena, season/export, reward, investigation, and database/diagnostic modules. A typed Brigadier tree is registered from the standard `JavaPlugin` through `LifecycleEvents.COMMANDS`, retaining aliases and compatibility forms without requiring `paper-plugin.yml`. Online-player and UUID arguments, bounded limits, enum/literal branches, dynamic suggestions, and destructive confirmation words are represented in the tree. Experimental Dialog/data-component APIs remain intentionally absent. SQLite-only storage, no direct CMI database access, no Vault coupling, no uncertain-reward replay, and the historical Classic leaderboard are unchanged.
 
 ## Product and data guardrails
 
@@ -36,16 +36,16 @@ Future work must preserve these rules:
 - Paper and PlaceholderAPI classes remain provided; SQLite JDBC remains the only shaded runtime library.
 - Every public behavior change gets a version/build increment, immutable 1MB artifact name, documentation, tests, staging rehearsal, and rollback plan.
 
-## Implemented in v2.2.0-006
+## Implemented in v2.3.0-007
 
-Build 006 includes the complete build-005 destructive-testing foundation, build-004 event-safety release, and build-003 modernization baseline documented in [CHANGELOG.md](CHANGELOG.md), plus the runtime durability modernization below.
+Build 007 includes the complete build-006 runtime durability pipeline, build-005 destructive-testing foundation, build-004 event-safety release, and build-003 modernization baseline documented in [CHANGELOG.md](CHANGELOG.md), plus the command/API modernization above.
 
 ### Build, platform, and packaging
 
 | Capability | Status | Notes |
 | --- | --- | --- |
 | Gradle build and wrapper | **Implemented** | Gradle 9.6.1, Shadow 9.5.1, strict Java 25 compilation. |
-| Paper target | **Implemented; final build-006 smoke pending** | Paper API/runtime 26.2 build 60 beta passed the prior build-005 development-artifact controlled profile. Repeat the controlled profile and full candidate smoke against the clean build-006 artifact before approval. |
+| Paper target | **Implemented; final build-007 smoke pending** | Paper API/runtime 26.2 build 60 beta passed the build-006 release-candidate profile. Repeat the controlled profile and full candidate smoke against the clean build-007 artifact before approval. |
 | Standalone SQLite JAR | **Implemented** | SQLite JDBC 3.53.2.0 is shaded; MySQL/MariaDB is absent. |
 | Archive-composition gate | **Implemented** | Rejects bundled Paper/Bukkit/PlaceholderAPI/live-database classes or files and remote-database drivers. |
 | Isolated scenario artifacts | **Implemented; final-candidate rerun pending** | The harness is an independent Paper plugin and the Java 25 Class-File API transformer writes a distinct `TEST-ONLY-` copy. Neither is packaged beneath `build/libs/` or allowed to replace the production JAR. Development-artifact isolation and controlled-profile gates passed. |
@@ -53,7 +53,7 @@ Build 006 includes the complete build-005 destructive-testing foundation, build-
 | Controlled Paper 26.2 profile | **Implemented; clean-candidate rerun pending** | The development-artifact two-start run passed restart-marker, PlaceholderAPI absent/present, config reload, terminal disable/service removal, fresh-JVM enable, deterministic marker, broad log, port-release, and SQLite quick-check assertions. The automated `config.after_runtime_commit` hard halt also exited 97 and recovered cleanly. Repeat both against the clean committed candidate; real-client and the remaining named hard-kill cases stay separate acceptance work. |
 | Listener annotation contracts | **Implemented** | Reflection tests lock gameplay/menu `EventHandler` priorities and `ignoreCancelled` values, including `HIGHEST` decisions and observation-only `MONITOR` callbacks. |
 | 1MB naming/build metadata | **Implemented; clean freeze pending** | The exact 1MB filename plus Git commit/dirty provenance are embedded in the resource and manifest. Final size/hash belong to the annotated candidate tag and operator release archive so recording them cannot change the embedded source commit. |
-| Dependency cleanup | **Implemented; final/provider matrix pending** | PlaceholderAPI 2.12.3 is the only Java integration. CMI, UltimateFireworks, and PyroWelcomesPro are soft startup-order hints for configured roots; CMILib, Vault, and PyroLib are not dependencies. The build-005 development-artifact profile passed with PlaceholderAPI absent and with the deployable 2.12.3 plugin present; repeat it against the clean build-006 candidate and still rehearse external reward content/providers separately. |
+| Dependency cleanup | **Implemented; final/provider matrix pending** | PlaceholderAPI 2.12.3 is the only Java integration. CMI, UltimateFireworks, and PyroWelcomesPro are soft startup-order hints for configured roots; CMILib, Vault, and PyroLib are not dependencies. Build 006 passed with PlaceholderAPI absent and with the deployable 2.12.3 plugin present; repeat it against the clean build-007 candidate and still rehearse external reward content/providers separately. |
 
 ### Persistence, identity, seasons, and history
 
@@ -126,7 +126,7 @@ These are not hidden defects; they are explicit design or release boundaries tha
 
 ### P0 — finish before event approval
 
-1. **Qualify and commit the build-006 candidate.** Commit the reviewed source, create two byte-identical clean builds, rerun the controlled two-start and automated hard-kill profiles against that exact artifact, then record archive verification, final hash/size/test result, Paper 26.2 build-60 smoke, test-server sync, and plugin-log review. Development-artifact and build-003/build-004/build-005 evidence remains historical and cannot approve a different candidate.
+1. **Qualify and commit the build-007 candidate.** Commit the reviewed source, create two byte-identical clean builds, rerun the controlled two-start and automated hard-kill profiles against that exact artifact, then record archive verification, final hash/size/test result, Paper 26.2 build-60 smoke, test-server sync, and plugin-log review. Build-003 through build-006 evidence remains historical and cannot approve a different candidate.
 2. **Repeat migration on a disposable copy of all 100 live rows.** Compare every UUID/score and top-ten position, verify both databases, and prove `_resources` stayed unchanged.
 3. **Complete the real-client abuse/recovery matrix.** The test-only plugin records deterministic evidence and its player-assisted stale command exercises the real scheduled callback/revalidation path without fabricating packets. A real player must still perform simultaneous queue/start actions, GUI click/drag/hotbar/double-click/creative cases, every cleanup cause, cancelled/retargeted teleports, reconnect recovery, world protection, signs, containers, tile PDC, conflicts, and missing-world recovery. Run named hard-kill/restart cases separately.
 4. **Rehearse reward uncertainty with staging accounts.** Test PENDING discovery/abandon and UNKNOWN downstream investigation/resolution. Assign a named operator and never interpret a resolution as a replay request.

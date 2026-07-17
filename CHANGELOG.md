@@ -2,6 +2,30 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.3.0-007] — 2026-07-17
+
+Expected artifact: `1MB-WalkThePlank-v2.3.0-007-j25-26.2.jar`
+
+### Command architecture
+
+- Replaced legacy `PluginCommand`, `CommandExecutor`, and `TabCompleter` registration with a native Paper Brigadier tree registered through `JavaPlugin#getLifecycleManager` and `LifecycleEvents.COMMANDS`.
+- Kept `plugin.yml` as the standard Bukkit plugin descriptor; no experimental `paper-plugin.yml` bootstrap is required.
+- Added typed Paper/Brigadier online-player and UUID arguments, bounded integer limits, exact enum/literal branches, dynamic arena/season suggestions, greedy bounded season names, and literal confirmation nodes for destructive arena/reward decisions.
+- Preserved `/walktheplank`, `/walk`, `/infinityparkour`, and `/infp`, the compatibility `version`, `open`, and root-level `reload`/`debug` forms, and runtime permission revalidation.
+- Split the former 2,789-line command implementation into player, queue, arena, season/export, reward evidence, retained-run investigation, and SQLite/diagnostics modules with a small registration/reload coordinator and shared safety support.
+
+### Guardrails
+
+- SQLite remains the only backend. The command refactor adds no MySQL/MariaDB path, CMI database access, Vault coupling, or external profile lookup.
+- Reward resolution and abandonment remain evidence-only and never dispatch or automatically replay an uncertain command.
+- The historical all-time/Classic leaderboard query, rows, ranking, and top ten are unchanged.
+- Experimental Paper Dialog and data-component APIs are not imported or used.
+
+### Verification
+
+- Added architecture regression tests locking lifecycle registration, typed arguments, explicit confirmations, module boundaries, the absence of legacy command interfaces, and the exclusion of experimental/external integration APIs.
+- Build 007 still requires exact-artifact Paper 26.2 startup/reload/shutdown, command-tree/permission rehearsal, controlled scenarios, test-server synchronization, and human beta acceptance before event approval.
+
 ## [2.2.0-006] — 2026-07-17
 
 Expected artifact: `1MB-WalkThePlank-v2.2.0-006-j25-26.2.jar`

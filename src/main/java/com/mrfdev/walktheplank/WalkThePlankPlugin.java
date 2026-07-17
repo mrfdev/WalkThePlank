@@ -19,6 +19,7 @@ import com.mrfdev.walktheplank.recovery.RecoveryDurabilityService;
 import com.mrfdev.walktheplank.recovery.RestorationJournal;
 import com.mrfdev.walktheplank.reward.RewardService;
 import com.mrfdev.walktheplank.text.MessageService;
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -29,7 +30,6 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BooleanSupplier;
 import java.util.logging.Level;
-import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.ServicePriority;
@@ -105,9 +105,6 @@ public final class WalkThePlankPlugin extends JavaPlugin {
                     new GameListener(this, games, scores, messages), this);
             getServer().getPluginManager().registerEvents(new MenuService.Listener(menus), this);
 
-            PluginCommand command = Objects.requireNonNull(
-                    getCommand("walktheplank"),
-                    "walktheplank command is missing from plugin.yml");
             commandHandler = new WalkCommand(
                     this,
                     configuration::runtimeSettings,
@@ -121,8 +118,10 @@ public final class WalkThePlankPlugin extends JavaPlugin {
                     operations,
                     configuration,
                     this::activateConfiguration);
-            command.setExecutor(commandHandler);
-            command.setTabCompleter(commandHandler);
+            WalkCommand registeredCommands = commandHandler;
+            getLifecycleManager().registerEventHandler(
+                    LifecycleEvents.COMMANDS,
+                    event -> registeredCommands.register(event.registrar()));
 
             registerPlaceholderExpansion();
             for (Player player : getServer().getOnlinePlayers()) {

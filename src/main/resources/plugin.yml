@@ -9,11 +9,6 @@ website: https://github.com/mrfdev/WalkThePlank
 # PlaceholderAPI is the only Java-level integration. The remaining entries are optional
 # command providers ordered before startup validation when they are installed.
 softdepend: [PlaceholderAPI, CMI, UltimateFireworks, PyroWelcomesPro]
-commands:
-  walktheplank:
-    aliases: [walk, infinityparkour, infp]
-    description: Open and control WalkThePlank.
-    usage: /walk [play|queue|leave|stats|top|info|help|admin|debug]
 permissions:
   infinityparkour.player:
     description: Grants the standard WalkThePlank player command set.

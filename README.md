@@ -12,15 +12,15 @@ intermediate builds from this modernization and are fully superseded.
 
 The Bukkit plugin name intentionally remains `InfinityParkour`. This preserves the existing data directory at `plugins/InfinityParkour/`, so the live `config.yml`, `translations.yml`, and `database.db` can be upgraded in place without renaming player data.
 
-Current source release: **v2.2.0, build 006**
+Current source release: **v2.3.0, build 007**
 
 Expected standalone artifact:
 
 ```text
-1MB-WalkThePlank-v2.2.0-006-j25-26.2.jar
+1MB-WalkThePlank-v2.3.0-007-j25-26.2.jar
 ```
 
-> Build 006 is a runtime-modernization candidate until every release gate in [checklist-walktheplank.md](checklist-walktheplank.md) is completed against the final JAR and a production-like server copy. Build-005 scenario evidence is historical; the exact clean build-006 candidate still needs controlled-scenario reruns, final smoke, freeze, and human approval.
+> Build 007 is a command-architecture candidate until every release gate in [checklist-walktheplank.md](checklist-walktheplank.md) is completed against the final JAR and a production-like server copy. Build-006 runtime evidence is historical; the exact clean build-007 candidate still needs controlled-scenario reruns, final smoke, freeze, and human approval.
 
 See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-walktheplank.md](feature-improvements-walktheplank.md) for the authoritative future-development TODO and implemented-versus-remaining status.
 
@@ -53,6 +53,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-w
 - A built-in PlaceholderAPI expansion for all-time, season, queue, arena, and active-run values, backed by one immutable game-state publication per callback so asynchronous requests never traverse Bukkit-thread mutable collections.
 - A read-only Bukkit services API plus primary-thread lifecycle events.
 - Permission-filtered help, build information, safe diagnostics, health counters, configuration validation, and guarded in-game arena editing.
+- A native Paper lifecycle-registered Brigadier command tree with typed online-player, UUID, bounded-integer, enum-literal, arena-ID, season-name, and explicit-confirmation arguments. Command behavior is separated into player, queue, arena, season, reward, investigation, and database modules; `plugin.yml` remains the plugin descriptor but no longer owns legacy command execution or tab completion.
 - Trusted translation formatting is parsed before dynamic values are inserted as literal Adventure components. Existing unmarked ampersand templates remain supported, while an explicit `minimessage:` prefix opts a trusted template into MiniMessage.
 - `/walk admin doctor` creates a bounded privacy-safe support report, schedules its read-only SQLite integrity/storage probe off the primary server thread, and reports both bounded I/O workers without paths or record contents.
 - A compact rotating JSONL audit stream for plugin, run, queue, and reward lifecycle events. Prepared immutable records are written by a separate bounded operations worker, so audit rotation, exports, or configuration commits cannot delay recovery journals. Raw reward commands and arbitrary nested data are excluded.
@@ -84,16 +85,16 @@ Build the deployment artifact with the checked-in Gradle wrapper:
 The deployable file is:
 
 ```text
-build/libs/1MB-WalkThePlank-v2.2.0-006-j25-26.2.jar
+build/libs/1MB-WalkThePlank-v2.3.0-007-j25-26.2.jar
 ```
 
 Do not deploy the `-unshaded.jar`; it does not contain SQLite JDBC. `build` runs the automated tests, creates the shaded artifact, and executes the archive/metadata verification gate. `freezeCandidate` additionally rejects a dirty Git tree. Every candidate embeds the full source commit and strict dirty state in `build-info.properties` and the JAR manifest; `/walk info`, `/walk debug overview`, and startup show the abbreviated source label.
 
-Build 004's machine evidence is preserved historically in the annotated `v2.1.1-004-rc.1` tag and its ignored operator release archive. Build 005 development artifacts passed the automated two-start and `config.after_runtime_commit` hard-kill/recovery profiles, but those results are historical for build 006. The exact clean build-006 candidate needs two byte-identical builds, repeated scenario-profile evidence, Paper smoke, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
+Build 006's runtime-modernization machine evidence is preserved historically in the annotated `v2.2.0-006-rc.1` tag and its ignored operator release archive. Those results prove the previous artifact, not build 007. The exact clean build-007 candidate needs two byte-identical builds, repeated scenario-profile evidence, Paper smoke, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
 
 | Release property | Value |
 | --- | --- |
-| Filename | `1MB-WalkThePlank-v2.2.0-006-j25-26.2.jar` |
+| Filename | `1MB-WalkThePlank-v2.3.0-007-j25-26.2.jar` |
 | Source identity | Full Git commit plus strict clean/dirty state embedded in the JAR |
 | Final size and SHA-256 | Annotated candidate tag and operator release archive |
 | Automated test result | Must pass with zero failures/errors/skips and strict Java 25 compilation |
@@ -114,11 +115,11 @@ Useful build commands:
 ./gradlew syncTestServer
 ```
 
-`releaseInfo` must print version `2.2.0`, build `006`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 006 into the active plugin directory.
+`releaseInfo` must print version `2.3.0`, build `007`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 007 into the active plugin directory.
 
 ## Install or upgrade
 
-> Stop Paper and take an operator-controlled backup before the first build-006 start. The automatic SQLite migration backup is an additional safeguard, not a substitute for a full server/data backup.
+> Stop Paper and take an operator-controlled backup before the first build-007 start. The automatic SQLite migration backup is an additional safeguard, not a substitute for a full server/data backup.
 
 For an existing server:
 
@@ -127,7 +128,7 @@ For an existing server:
 3. Back up the old plugin JAR and the complete `plugins/InfinityParkour/` directory as one matched rollback set.
 4. Keep the data directory named `plugins/InfinityParkour/`.
 5. Remove or disable every older InfinityParkour/WalkThePlank JAR. Paper must see only one plugin with the `InfinityParkour` name.
-6. Copy `1MB-WalkThePlank-v2.2.0-006-j25-26.2.jar` into `plugins/`.
+6. Copy `1MB-WalkThePlank-v2.3.0-007-j25-26.2.jar` into `plugins/`.
 7. Start Paper and inspect the complete startup log. A successful live-data start should report 100 preserved scores and, on the first schema-v2 migration only, a verified pre-migration backup path.
 8. Run `/walk info`, `/walk admin validate`, `/walk admin status`, `/walk admin doctor`, `/walk debug all`, and the full beta checklist before allowing players in.
 9. Stop Paper cleanly once and require the clean restoration/disable message before the event rehearsal is accepted.
@@ -144,7 +145,7 @@ Do not create a fresh plugin data directory over the live folder. That would dis
 
 ## Commands
 
-The primary command is `/walktheplank`. `/walk`, `/infinityparkour`, and `/infp` are equivalent aliases. Help and tab completion are permission-filtered.
+The primary command is `/walktheplank`. `/walk`, `/infinityparkour`, and `/infp` are equivalent aliases. Paper registers the typed Brigadier tree through `JavaPlugin#getLifecycleManager` and `LifecycleEvents.COMMANDS`; no `paper-plugin.yml` is used. Help, client-side syntax, and suggestions are permission-filtered. Online players use Paper's player argument, IDs use Paper's UUID argument, numeric limits are bounded by Brigadier, and destructive reward/arena decisions retain literal `confirm` nodes.
 
 ### Player commands
 
@@ -577,9 +578,9 @@ The current API intentionally does not expose mutable sessions, direct database 
 
 ## Testing and event approval
 
-The build-006 suite currently contains 227 tests across 54 test classes with zero failures, errors, or skips. It covers build provenance, bounded/FIFO/rejection behavior and exclusive lifetime locks for both I/O workers, cancellation-safe and uncertain-commit recovery tickets, lock-before-journal-open ordering, delayed-termination lock release, lock-free journal publications, exact arena/block lease ownership, immediate post-abandonment arena availability, placement commit policy, configuration CAS/rollback tokens, SQLite schema/migration/durability and the asynchronous doctor probe, reward preparation, queue fairness, arena selection, exports, external-teleport event ordering, nonce/generation GUI authorization and duplicate-action suppression, literal dynamic text/MiniMessage compatibility, core game policies, and reflection-locked `EventHandler` priority/`ignoreCancelled` contracts. Reconfirm the count against the clean frozen candidate; public API/event behavior and real player movement remain part of the server-level integration checklist.
+The build-007 suite currently contains 231 tests across 55 test classes with zero failures, errors, or skips. It covers build provenance, command lifecycle/tree/module boundaries, typed arguments and explicit confirmations, experimental/external API exclusions, bounded/FIFO/rejection behavior and exclusive lifetime locks for both I/O workers, cancellation-safe and uncertain-commit recovery tickets, lock-before-journal-open ordering, delayed-termination lock release, lock-free journal publications, exact arena/block lease ownership, immediate post-abandonment arena availability, placement commit policy, configuration CAS/rollback tokens, SQLite schema/migration/durability and the asynchronous doctor probe, reward preparation, queue fairness, arena selection, exports, external-teleport event ordering, nonce/generation GUI authorization and duplicate-action suppression, literal dynamic text/MiniMessage compatibility, core game policies, and reflection-locked `EventHandler` priority/`ignoreCancelled` contracts. Reconfirm the count against the clean frozen candidate; public API/event behavior and real player movement remain part of the server-level integration checklist.
 
-Build 006 carries forward and updates build 005's isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
+Build 007 carries forward build 006's isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
 
 ```bash
 ./gradlew scenarioArtifacts verifyProductionScenarioIsolation
@@ -588,8 +589,8 @@ Build 006 carries forward and updates build 005's isolated destructive-test syst
 The test-only outputs are deliberately outside `build/libs/`:
 
 ```text
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.2.0-006.jar
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.2.0-006-Failpoints.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.3.0-007.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.3.0-007-Failpoints.jar
 ```
 
 `verifyReleaseJar` byte-scans the production JAR for scenario packages, commands, manifest/agent markers, canaries, every scenario-property prefix, and all 24 failpoint names. `verifyProductionScenarioIsolation` repeats that negative proof and requires the harness and instrumented copy to trigger positive controls, preventing a broken scan from reporting a false pass. It also builds a second instrumented copy and requires byte-for-byte identity. The runner refuses symlinked destructive roots and writes a bounded per-run nonce marker. Both the property-armed failpoint controller and the scenario plugin require that marker, the exact generated root/working directory/layout/data paths, and the bridge loaded by the instrumented target's own classloader.
