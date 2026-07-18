@@ -11,6 +11,8 @@ import com.mojang.brigadier.tree.LiteralCommandNode;
 import com.mrfdev.walktheplank.database.RewardPlanStatus;
 import com.mrfdev.walktheplank.database.RewardStepStatus;
 import com.mrfdev.walktheplank.database.RunStatus;
+import com.mrfdev.walktheplank.database.ParticlePreference;
+import com.mrfdev.walktheplank.database.ScoreCategory;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.command.brigadier.argument.ArgumentTypes;
@@ -71,7 +73,20 @@ final class WalkCommandTree {
                         source,
                         command.support.permissions().stats()))
                 .executes(context -> command.execute(
-                        context.getSource(), command.players::stats)));
+                        context.getSource(), command.players::stats))
+                .then(Commands.literal("classic")
+                        .executes(context -> command.execute(
+                                context.getSource(), command.players::stats)))
+                .then(Commands.literal("combo")
+                        .executes(context -> command.execute(
+                                context.getSource(),
+                                sender -> command.players.categoryStats(
+                                        sender, ScoreCategory.COMBO))))
+                .then(Commands.literal("flawless")
+                        .executes(context -> command.execute(
+                                context.getSource(),
+                                sender -> command.players.categoryStats(
+                                        sender, ScoreCategory.FLAWLESS)))));
 
         LiteralArgumentBuilder<CommandSourceStack> top =
                 Commands.literal("top")
@@ -88,8 +103,20 @@ final class WalkCommandTree {
         top.then(Commands.literal("season")
                 .executes(context -> command.execute(
                         context.getSource(),
-                        sender -> command.players.top(sender, true))));
+                                sender -> command.players.top(sender, true))));
+        top.then(Commands.literal("combo")
+                .executes(context -> command.execute(
+                        context.getSource(),
+                        sender -> command.players.categoryTop(
+                                sender, ScoreCategory.COMBO))));
+        top.then(Commands.literal("flawless")
+                .executes(context -> command.execute(
+                        context.getSource(),
+                        sender -> command.players.categoryTop(
+                                sender, ScoreCategory.FLAWLESS))));
         root.then(top);
+
+        root.then(settingsNode(command));
 
         root.then(Commands.literal("info")
                 .requires(source -> command.playerPermission(
@@ -135,6 +162,61 @@ final class WalkCommandTree {
                             sender -> command.players.openOther(sender, player));
                 }));
         root.then(debugNode(command));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> settingsNode(
+            WalkCommand command) {
+        LiteralArgumentBuilder<CommandSourceStack> settings =
+                Commands.literal("settings")
+                        .requires(source -> command.playerPermission(
+                                source,
+                                command.support.permissions().preferences()))
+                        .executes(context -> command.execute(
+                                context.getSource(),
+                                command.players::preferences));
+        LiteralArgumentBuilder<CommandSourceStack> particles =
+                Commands.literal("particles");
+        particles.then(Commands.literal("full")
+                .executes(context -> command.execute(
+                        context.getSource(),
+                        sender -> command.players.setParticles(
+                                sender, ParticlePreference.FULL))));
+        particles.then(Commands.literal("reduced")
+                .executes(context -> command.execute(
+                        context.getSource(),
+                        sender -> command.players.setParticles(
+                                sender, ParticlePreference.REDUCED))));
+        particles.then(Commands.literal("off")
+                .executes(context -> command.execute(
+                        context.getSource(),
+                        sender -> command.players.setParticles(
+                                sender, ParticlePreference.OFF))));
+        settings.then(particles);
+        settings.then(toggleNode(
+                "sounds",
+                command,
+                command.players::setSounds));
+        settings.then(toggleNode(
+                "titles",
+                command,
+                command.players::setTitles));
+        return settings;
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> toggleNode(
+            String name,
+            WalkCommand command,
+            java.util.function.BiConsumer<org.bukkit.command.CommandSender, Boolean> action) {
+        LiteralArgumentBuilder<CommandSourceStack> toggle = Commands.literal(name);
+        toggle.then(Commands.literal("on")
+                .executes(context -> command.execute(
+                        context.getSource(),
+                        sender -> action.accept(sender, true))));
+        toggle.then(Commands.literal("off")
+                .executes(context -> command.execute(
+                        context.getSource(),
+                        sender -> action.accept(sender, false))));
+        return toggle;
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> playerQueueNode(

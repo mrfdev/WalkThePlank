@@ -14,6 +14,7 @@ public record PermissionSettings(
         String top,
         String info,
         String help,
+        String preferences,
         String admin,
         String adminOpen,
         String adminDebug,
@@ -26,6 +27,51 @@ public record PermissionSettings(
         String adminExport,
         String adminReward,
         String adminInvestigate) {
+    public PermissionSettings(
+            String openGui,
+            String leaveArena,
+            String playGame,
+            String reload,
+            String stats,
+            String top,
+            String info,
+            String help,
+            String admin,
+            String adminOpen,
+            String adminDebug,
+            String adminStop,
+            String adminRecover,
+            String adminValidate,
+            String adminArena,
+            String adminQueue,
+            String adminSeason,
+            String adminExport,
+            String adminReward,
+            String adminInvestigate) {
+        this(
+                openGui,
+                leaveArena,
+                playGame,
+                reload,
+                stats,
+                top,
+                info,
+                help,
+                "infinityparkour.preferences",
+                admin,
+                adminOpen,
+                adminDebug,
+                adminStop,
+                adminRecover,
+                adminValidate,
+                adminArena,
+                adminQueue,
+                adminSeason,
+                adminExport,
+                adminReward,
+                adminInvestigate);
+    }
+
     public PermissionSettings {
         openGui = validate(openGui, "openGui");
         leaveArena = validate(leaveArena, "leaveArena");
@@ -35,6 +81,7 @@ public record PermissionSettings(
         top = validate(top, "top");
         info = validate(info, "info");
         help = validate(help, "help");
+        preferences = validate(preferences, "preferences");
         admin = validate(admin, "admin");
         adminOpen = validate(adminOpen, "adminOpen");
         adminDebug = validate(adminDebug, "adminDebug");
@@ -56,6 +103,7 @@ public record PermissionSettings(
         playerPermissions.put("top", top);
         playerPermissions.put("info", info);
         playerPermissions.put("help", help);
+        playerPermissions.put("preferences", preferences);
 
         Map<String, String> privilegedPermissions = new LinkedHashMap<>();
         privilegedPermissions.put("reload", reload);

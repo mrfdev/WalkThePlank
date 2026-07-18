@@ -42,6 +42,7 @@ import org.bukkit.event.entity.EntityPotionEffectEvent;
 import org.bukkit.event.entity.EntityToggleGlideEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.player.PlayerGameModeChangeEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerBucketEvent;
@@ -54,6 +55,7 @@ import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerRiptideEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -129,6 +131,16 @@ public final class GameListener implements Listener {
             return;
         }
         if (!games.isPlaying(player)) {
+            return;
+        }
+        if (games.isExploitTeleport(event.getCause())) {
+            games.recordMovementAnomaly(
+                    player,
+                    event.getCause() == PlayerTeleportEvent.TeleportCause.ENDER_PEARL
+                            ? "ender_pearl"
+                            : "consumable_teleport",
+                    "blocked");
+            event.setCancelled(true);
             return;
         }
         games.prepareExternalTeleportCompletion(player).ifPresentOrElse(
@@ -413,6 +425,7 @@ public final class GameListener implements Listener {
     public void onMount(EntityMountEvent event) {
         if (event.getEntity() instanceof Player player && isRestricted(player)) {
             event.setCancelled(true);
+            games.recordMovementAnomaly(player, "mount_attempt", "blocked");
         }
     }
 
@@ -428,6 +441,7 @@ public final class GameListener implements Listener {
         if (isRestricted(event.getPlayer())) {
             event.setCancelled(true);
             event.getPlayer().setFlying(false);
+            games.recordMovementAnomaly(event.getPlayer(), "flight_toggle", "blocked");
         }
     }
 
@@ -435,6 +449,7 @@ public final class GameListener implements Listener {
     public void onGlide(EntityToggleGlideEvent event) {
         if (event.getEntity() instanceof Player player && isRestricted(player)) {
             event.setCancelled(true);
+            games.recordMovementAnomaly(player, "glide_toggle", "blocked");
         }
     }
 
@@ -445,6 +460,7 @@ public final class GameListener implements Listener {
                 && event.getNewEffect() != null
                 && games.isDisallowedMovementEffect(event.getNewEffect().getType())) {
             event.setCancelled(true);
+            games.recordMovementAnomaly(player, "movement_effect", "blocked");
         }
     }
 
@@ -452,6 +468,7 @@ public final class GameListener implements Listener {
     public void onVelocity(PlayerVelocityEvent event) {
         if (isRestricted(event.getPlayer())) {
             event.setCancelled(true);
+            games.recordMovementAnomaly(event.getPlayer(), "external_velocity", "blocked");
         }
     }
 
@@ -459,6 +476,25 @@ public final class GameListener implements Listener {
     public void onVehicleEnter(VehicleEnterEvent event) {
         if (event.getEntered() instanceof Player player && isRestricted(player)) {
             event.setCancelled(true);
+            games.recordMovementAnomaly(player, "vehicle_enter", "blocked");
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onProjectileLaunch(ProjectileLaunchEvent event) {
+        if (event.getEntity().getShooter() instanceof Player player
+                && games.shouldBlockProjectile(player)) {
+            event.setCancelled(true);
+            games.recordMovementAnomaly(player, "projectile_launch", "blocked");
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onRiptide(PlayerRiptideEvent event) {
+        Player player = event.getPlayer();
+        if (games.shouldBlockRiptide(player)) {
+            event.setCancelled(true);
+            games.recordMovementAnomaly(player, "riptide", "blocked");
         }
     }
 

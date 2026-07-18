@@ -1,14 +1,19 @@
 package com.mrfdev.walktheplank.command;
 
 import com.mrfdev.walktheplank.config.PermissionSettings;
+import com.mrfdev.walktheplank.database.ParticlePreference;
+import com.mrfdev.walktheplank.database.PlayerPreferences;
+import com.mrfdev.walktheplank.database.ScoreCategory;
 import com.mrfdev.walktheplank.database.ScoreEntry;
 import com.mrfdev.walktheplank.database.ScoreSnapshot;
 import com.mrfdev.walktheplank.database.Season;
 import com.mrfdev.walktheplank.game.GameManager.SessionStatus;
 import com.mrfdev.walktheplank.game.SessionEndReason;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
@@ -58,6 +63,28 @@ final class PlayerCommands {
         support.menus.sendStats(player);
     }
 
+    void categoryStats(CommandSender sender, ScoreCategory category) {
+        Player player = support.requirePlayer(sender);
+        if (player == null
+                || !support.requirePermission(sender, support.permissions().stats())) {
+            return;
+        }
+        var stats = support.scores.categoryStats(category, player.getUniqueId());
+        support.sendHeader(sender, title(category) + " statistics");
+        if (stats.isEmpty()) {
+            support.sendLine(sender, "&7No score has been recorded in this category yet.");
+            return;
+        }
+        var value = stats.orElseThrow();
+        support.sendLine(
+                sender,
+                "&7Best: &f{{score}}&7, rank: &f{{rank}}&7/&f{{total}}&7.",
+                Map.of(
+                        "score", value.bestScore(),
+                        "rank", value.rank(),
+                        "total", value.totalEntries()));
+    }
+
     void top(CommandSender sender, boolean seasonRequested) {
         if (!support.requirePermission(sender, support.permissions().top())) {
             return;
@@ -97,6 +124,114 @@ final class PlayerCommands {
         for (String line : support.messages.rawList("scoreboardRecordInChat.suffix")) {
             support.sendLine(sender, line);
         }
+    }
+
+    void categoryTop(CommandSender sender, ScoreCategory category) {
+        if (!support.requirePermission(sender, support.permissions().top())) {
+            return;
+        }
+        support.sendHeader(sender, title(category) + " top 10");
+        List<ScoreEntry> top = support.scores.categoryTop(category, 10);
+        if (top.isEmpty()) {
+            support.sendLine(sender, "&7No scores have been recorded in this category yet.");
+            return;
+        }
+        for (ScoreEntry entry : top) {
+            support.sendLine(
+                    sender,
+                    "&f{{rank}}. &9{{playerName}} &7({{score}})",
+                    Map.of(
+                            "rank", entry.rank(),
+                            "playerName", entry.username(),
+                            "score", entry.score()));
+        }
+    }
+
+    void preferences(CommandSender sender) {
+        Player player = support.requirePlayer(sender);
+        if (player == null
+                || !support.requirePermission(sender, support.permissions().preferences())) {
+            return;
+        }
+        PlayerPreferences preferences =
+                support.scores.preferences(player.getUniqueId());
+        support.sendHeader(sender, "Accessibility preferences");
+        support.sendField(sender, "Particles", preferences.particles().name().toLowerCase());
+        support.sendField(sender, "Sounds", onOff(preferences.soundsEnabled()));
+        support.sendField(sender, "Titles", onOff(preferences.titlesEnabled()));
+        support.sendLine(
+                sender,
+                "&7Change these with &f/walk settings particles|sounds|titles&7.");
+    }
+
+    void setParticles(CommandSender sender, ParticlePreference preference) {
+        Player player = preferencePlayer(sender);
+        if (player == null) {
+            return;
+        }
+        persistPreferences(
+                sender,
+                support.scores.updateParticlePreference(
+                        player.getUniqueId(), preference, Instant.now()));
+    }
+
+    void setSounds(CommandSender sender, boolean enabled) {
+        Player player = preferencePlayer(sender);
+        if (player == null) {
+            return;
+        }
+        persistPreferences(
+                sender,
+                support.scores.updateSoundPreference(
+                        player.getUniqueId(), enabled, Instant.now()));
+    }
+
+    void setTitles(CommandSender sender, boolean enabled) {
+        Player player = preferencePlayer(sender);
+        if (player == null) {
+            return;
+        }
+        persistPreferences(
+                sender,
+                support.scores.updateTitlePreference(
+                        player.getUniqueId(), enabled, Instant.now()));
+    }
+
+    private Player preferencePlayer(CommandSender sender) {
+        Player player = support.requirePlayer(sender);
+        if (player == null
+                || !support.requirePermission(sender, support.permissions().preferences())) {
+            return null;
+        }
+        return player;
+    }
+
+    private void persistPreferences(
+            CommandSender sender,
+            CompletableFuture<PlayerPreferences> update) {
+        support.completeOnMainThread(
+                update,
+                saved -> support.sendLine(
+                        sender,
+                        "&aAccessibility preferences saved: particles &f{{particles}}&a, "
+                                + "sounds &f{{sounds}}&a, titles &f{{titles}}&a.",
+                        Map.of(
+                                "particles", saved.particles().name().toLowerCase(),
+                                "sounds", onOff(saved.soundsEnabled()),
+                                "titles", onOff(saved.titlesEnabled()))),
+                "accessibility preference update",
+                sender);
+    }
+
+    private static String title(ScoreCategory category) {
+        return switch (category) {
+            case COMBO -> "Combo";
+            case FLAWLESS -> "Flawless";
+        };
+    }
+
+    private static String onOff(boolean enabled) {
+        return enabled ? "on" : "off";
     }
 
     void info(CommandSender sender) {
@@ -149,6 +284,11 @@ final class PlayerCommands {
                 "/walk stats",
                 "Show your personal best and rank");
         support.addHelp(sender, permissions.top(), "/walk top", "Show the top ten");
+        support.addHelp(
+                sender,
+                permissions.preferences(),
+                "/walk settings",
+                "Change particles, sounds, and titles");
         support.addHelp(
                 sender,
                 permissions.info(),

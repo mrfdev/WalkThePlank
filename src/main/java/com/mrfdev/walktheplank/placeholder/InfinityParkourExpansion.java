@@ -3,6 +3,7 @@ package com.mrfdev.walktheplank.placeholder;
 import com.mrfdev.walktheplank.database.PlayerStats;
 import com.mrfdev.walktheplank.database.ScoreEntry;
 import com.mrfdev.walktheplank.database.ScoreRepository;
+import com.mrfdev.walktheplank.database.ScoreCategory;
 import com.mrfdev.walktheplank.game.GameManager;
 import java.util.List;
 import java.util.Locale;
@@ -78,6 +79,16 @@ public final class InfinityParkourExpansion extends PlaceholderExpansion {
                     normalized.substring("season_".length()),
                     scores.currentSeasonTop(10));
         }
+        if (normalized.startsWith("combo_top_")) {
+            return topPlaceholder(
+                    normalized.substring("combo_".length()),
+                    scores.categoryTop(ScoreCategory.COMBO, 10));
+        }
+        if (normalized.startsWith("flawless_top_")) {
+            return topPlaceholder(
+                    normalized.substring("flawless_".length()),
+                    scores.categoryTop(ScoreCategory.FLAWLESS, 10));
+        }
         if (normalized.startsWith("top_")) {
             return topPlaceholder(normalized, scores.top());
         }
@@ -90,6 +101,21 @@ public final class InfinityParkourExpansion extends PlaceholderExpansion {
         }
         if (normalized.equals("current_score")) {
             return Integer.toString(gameplay.session().map(GameManager.SessionStatus::score).orElse(0));
+        }
+        if (normalized.equals("current_combo")) {
+            return Integer.toString(gameplay.session()
+                    .map(GameManager.SessionStatus::combo)
+                    .orElse(0));
+        }
+        if (normalized.equals("maximum_combo")) {
+            return Integer.toString(gameplay.session()
+                    .map(GameManager.SessionStatus::maximumCombo)
+                    .orElse(0));
+        }
+        if (normalized.equals("current_flawless")) {
+            return Boolean.toString(gameplay.session()
+                    .map(GameManager.SessionStatus::flawless)
+                    .orElse(false));
         }
         if (normalized.equals("queue_position")) {
             return Integer.toString(gameplay.playerQueuePosition());
@@ -111,6 +137,11 @@ public final class InfinityParkourExpansion extends PlaceholderExpansion {
 
         PlayerStats stats = scores.stats(player.getUniqueId()).orElse(null);
         PlayerStats seasonStats = scores.currentSeasonStats(player.getUniqueId()).orElse(null);
+        PlayerStats comboStats =
+                scores.categoryStats(ScoreCategory.COMBO, player.getUniqueId()).orElse(null);
+        PlayerStats flawlessStats =
+                scores.categoryStats(ScoreCategory.FLAWLESS, player.getUniqueId()).orElse(null);
+        var preferences = scores.preferences(player.getUniqueId());
         return switch (normalized) {
             case "score" -> Integer.toString(stats == null ? 0 : stats.bestScore());
             case "previous_best" -> Integer.toString(stats == null ? 0 : stats.bestScore());
@@ -128,6 +159,17 @@ public final class InfinityParkourExpansion extends PlaceholderExpansion {
                     ? 0
                     : Math.max(1, (int) Math.ceil(
                             seasonStats.rank() * 100.0 / seasonStats.totalEntries())));
+            case "combo_score" -> Integer.toString(
+                    comboStats == null ? 0 : comboStats.bestScore());
+            case "combo_rank" -> Integer.toString(
+                    comboStats == null ? 0 : comboStats.rank());
+            case "flawless_score" -> Integer.toString(
+                    flawlessStats == null ? 0 : flawlessStats.bestScore());
+            case "flawless_rank" -> Integer.toString(
+                    flawlessStats == null ? 0 : flawlessStats.rank());
+            case "particles" -> preferences.particles().name().toLowerCase(Locale.ROOT);
+            case "sounds" -> Boolean.toString(preferences.soundsEnabled());
+            case "titles" -> Boolean.toString(preferences.titlesEnabled());
             default -> null;
         };
     }

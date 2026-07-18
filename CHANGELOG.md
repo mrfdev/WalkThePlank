@@ -2,6 +2,36 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.4.0-008] — 2026-07-18
+
+Expected artifact: `1MB-WalkThePlank-v2.4.0-008-j25-26.2.jar`
+
+### Fair-play and categories
+
+- Added configurable, separate Combo and Flawless categories without changing, multiplying, or migrating the historical Classic score.
+- Combo records the longest target-to-target streak completed within the configured maximum gap. Flawless records the final Classic score only when every transition remained inside that gap.
+- Added event-level and authoritative-sweep defenses for elytra/gliding, flight, riptide, ender-pearl and consumable teleports, projectile launch, vehicles/mounts, external velocity, movement effects, changed walk speed/attributes, and leaving the bounded arena.
+- Added a conservative minimum inter-jump interval. A detected integrity failure ends the run with a zero persisted score and no category projection or reward; attempts are rate-limited in the audit and never automatically ban a player.
+- `WalkRunEndEvent` now exposes the same authoritative zero score for a movement-disqualified run; the audit retains the observed and persisted values plus explicit scoring eligibility for investigation.
+
+### Player experience
+
+- Added configured native milestone feedback through Adventure action bars/titles plus Paper sounds and particles.
+- Added UUID-owned SQLite preferences for full/reduced/off particles and independent sound/title toggles.
+- Added `/walk settings`, category variants of `/walk stats` and `/walk top`, category/accessibility PlaceholderAPI values, and the separate `infinityparkour.preferences` player permission.
+
+### SQLite and operations
+
+- Added schema v3 tables for player preferences, category personal bests, and exact per-run category projections. Classic `scoreboard` rows and ranking semantics remain untouched.
+- Added a bounded automatic migration-backup policy. Every matching automatic backup is verified with `PRAGMA quick_check` before the oldest excess files are deleted; the default retains five, the configurable range is 2–100, and operator-named files are ignored.
+- Upgraded the bounded JSONL audit stream to a restart-verified SHA-256 hash chain with durable state and retention anchors. Existing unchained logs are preserved as explicitly named legacy archives; truncation or retained-record modification fails startup rather than silently resetting evidence. Archive pruning uses a recoverable staged rename/anchor/delete protocol so interruption immediately before or after the anchor commit is resolved deterministically at restart.
+- `/walk admin doctor` now reports the configured/retained/pruned migration-backup state and privacy-safe audit-chain health.
+
+### Platform and verification
+
+- Updated the exact compile API to Paper `26.2.build.61-beta`, retaining Java 25, SQLite-only shading, PlaceholderAPI as the sole optional Java integration, and strict `-Xlint:all -Werror`.
+- Added schema/category/preference/retention, simultaneous preference-field update, audit restart/tamper/truncation/checkpoint-deletion/legacy/prune-crash, listener-contract, and accessibility-unit coverage. Exact-artifact Paper smoke, live-copy schema-v3 preservation, adversarial real-client movement, and human event acceptance remain release gates.
+
 ## [2.3.0-007] — 2026-07-17
 
 Expected artifact: `1MB-WalkThePlank-v2.3.0-007-j25-26.2.jar`
@@ -24,7 +54,7 @@ Expected artifact: `1MB-WalkThePlank-v2.3.0-007-j25-26.2.jar`
 ### Verification
 
 - Added architecture regression tests locking lifecycle registration, typed arguments, explicit confirmations, module boundaries, the absence of legacy command interfaces, and the exclusion of experimental/external integration APIs.
-- Build 007 still requires exact-artifact Paper 26.2 startup/reload/shutdown, command-tree/permission rehearsal, controlled scenarios, test-server synchronization, and human beta acceptance before event approval.
+- Build 007 subsequently passed its controlled scenarios, reproducibility/freeze, exact-artifact standalone and full-stack Paper smoke, and test-server synchronization, and was frozen as `v2.3.0-007-rc.1`. Human beta acceptance remained a separate event gate.
 
 ## [2.2.0-006] — 2026-07-17
 

@@ -61,6 +61,8 @@ final class EventHandlerContractMatrixTest {
                 "onFlight",
                 "onGlide",
                 "onPotionEffect",
+                "onProjectileLaunch",
+                "onRiptide",
                 "onVelocity",
                 "onVehicleEnter");
 

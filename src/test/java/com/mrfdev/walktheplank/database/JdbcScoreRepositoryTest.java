@@ -85,7 +85,7 @@ class JdbcScoreRepositoryTest {
 
         try (Connection connection = connect(database)) {
             assertAll(
-                    () -> assertEquals(2, pragmaInt(connection, "user_version")),
+                    () -> assertEquals(3, pragmaInt(connection, "user_version")),
                     () -> assertTrue(columnIsNullable(connection, "scoreboard", "updated_at")),
                     () -> assertTrue(tableExists(connection, "seasons")),
                     () -> assertTrue(tableExists(connection, "season_scores")),
@@ -93,6 +93,9 @@ class JdbcScoreRepositoryTest {
                     () -> assertTrue(tableExists(connection, "reward_plans")),
                     () -> assertTrue(tableExists(connection, "reward_steps")),
                     () -> assertTrue(tableExists(connection, "reward_tombstones")),
+                    () -> assertTrue(tableExists(connection, "player_preferences")),
+                    () -> assertTrue(tableExists(connection, "category_scores")),
+                    () -> assertTrue(tableExists(connection, "run_category_scores")),
                     () -> assertEquals(
                             Set.of("idx_scoreboard_ranking", "uq_scoreboard_uuid"),
                             repositoryIndexes(connection)),
@@ -609,6 +612,203 @@ class JdbcScoreRepositoryTest {
                     () -> assertTrue(duplicate.allTimeScore().isEmpty()),
                     () -> assertTrue(duplicate.seasonScore().isEmpty()));
         }
+    }
+
+    @Test
+    void atomicallyProjectsComboAndFlawlessWithoutChangingClassicSemantics()
+            throws Exception {
+        Path database = temporaryDirectory.resolve("category-scores.db");
+        RunCompletion completion = new RunCompletion(
+                RUN_ID,
+                BASE_TIME.plusSeconds(20),
+                12,
+                "FALL",
+                List.of(
+                        new RunCategoryScore(ScoreCategory.COMBO, 8),
+                        new RunCategoryScore(ScoreCategory.FLAWLESS, 12)));
+        try (JdbcScoreRepository repository = repository(database)) {
+            repository.initialize();
+            repository.startRun(new RunStart(
+                            RUN_ID,
+                            ALICE_UUID,
+                            "Alice",
+                            "main",
+                            BASE_TIME,
+                            "2.4.0-008"))
+                    .get(5, TimeUnit.SECONDS);
+
+            CompletedRunResult first = repository.completeRun(completion)
+                    .get(5, TimeUnit.SECONDS);
+            CompletedRunResult retry = repository.completeRun(completion)
+                    .get(5, TimeUnit.SECONDS);
+
+            assertAll(
+                    () -> assertTrue(first.created()),
+                    () -> assertFalse(retry.created()),
+                    () -> assertEquals(12, repository.stats(ALICE_UUID)
+                            .orElseThrow()
+                            .bestScore()),
+                    () -> assertEquals(8, repository.categoryStats(
+                                    ScoreCategory.COMBO, ALICE_UUID)
+                            .orElseThrow()
+                            .bestScore()),
+                    () -> assertEquals(12, repository.categoryStats(
+                                    ScoreCategory.FLAWLESS, ALICE_UUID)
+                            .orElseThrow()
+                            .bestScore()),
+                    () -> assertEquals(
+                            Set.of(ScoreCategory.COMBO, ScoreCategory.FLAWLESS),
+                            first.categoryScores().keySet()),
+                    () -> assertEquals(
+                            first.categoryScores().keySet(),
+                            retry.categoryScores().keySet()),
+                    () -> assertEquals(
+                            8,
+                            retry.categoryScores()
+                                    .get(ScoreCategory.COMBO)
+                                    .bestScore()),
+                    () -> assertFalse(
+                            retry.categoryScores()
+                                    .get(ScoreCategory.COMBO)
+                                    .newBest()));
+
+            RunCompletion conflictingRetry = new RunCompletion(
+                    RUN_ID,
+                    completion.endedAt(),
+                    12,
+                    "FALL",
+                    List.of(new RunCategoryScore(ScoreCategory.COMBO, 7)));
+            ExecutionException failure = assertThrows(
+                    ExecutionException.class,
+                    () -> repository.completeRun(conflictingRetry)
+                            .get(5, TimeUnit.SECONDS));
+            assertTrue(failure.getCause() instanceof ScoreRepositoryException);
+            assertEquals(8, repository.categoryStats(
+                            ScoreCategory.COMBO, ALICE_UUID)
+                    .orElseThrow()
+                    .bestScore());
+        }
+    }
+
+    @Test
+    void persistsUuidOwnedAccessibilityPreferencesAcrossRestart() throws Exception {
+        Path database = temporaryDirectory.resolve("preferences.db");
+        try (JdbcScoreRepository repository = repository(database)) {
+            repository.initialize();
+            assertEquals(
+                    PlayerPreferences.defaults(ALICE_UUID),
+                    repository.preferences(ALICE_UUID));
+            PlayerPreferences saved = repository.updatePreferences(
+                            new PlayerPreferences(
+                                    ALICE_UUID,
+                                    ParticlePreference.REDUCED,
+                                    false,
+                                    false,
+                                    BASE_TIME))
+                    .get(5, TimeUnit.SECONDS);
+            assertEquals(saved, repository.preferences(ALICE_UUID));
+            assertTrue(repository.stats(ALICE_UUID).isEmpty());
+        }
+        try (JdbcScoreRepository repository = repository(database)) {
+            repository.initialize();
+            PlayerPreferences loaded = repository.preferences(ALICE_UUID);
+            assertAll(
+                    () -> assertEquals(ParticlePreference.REDUCED, loaded.particles()),
+                    () -> assertFalse(loaded.soundsEnabled()),
+                    () -> assertFalse(loaded.titlesEnabled()),
+                    () -> assertEquals(BASE_TIME, loaded.updatedAt()),
+                    () -> assertEquals(0, repository.snapshot().totalEntries()));
+        }
+    }
+
+    @Test
+    void simultaneousPreferenceFieldUpdatesPreserveEverySetting()
+            throws Exception {
+        Path database = temporaryDirectory.resolve("preferences.db");
+        try (JdbcScoreRepository repository = repository(database)) {
+            repository.initialize();
+            var particles = repository.updateParticlePreference(
+                    ALICE_UUID, ParticlePreference.REDUCED, BASE_TIME);
+            var sounds = repository.updateSoundPreference(
+                    ALICE_UUID, false, BASE_TIME.plusMillis(1));
+            var titles = repository.updateTitlePreference(
+                    ALICE_UUID, false, BASE_TIME.plusMillis(2));
+
+            CompletableFuture.allOf(particles, sounds, titles)
+                    .get(5, TimeUnit.SECONDS);
+
+            PlayerPreferences saved = repository.preferences(ALICE_UUID);
+            assertAll(
+                    () -> assertEquals(ParticlePreference.REDUCED, saved.particles()),
+                    () -> assertFalse(saved.soundsEnabled()),
+                    () -> assertFalse(saved.titlesEnabled()),
+                    () -> assertEquals(BASE_TIME.plusMillis(2), saved.updatedAt()),
+                    () -> assertTrue(repository.stats(ALICE_UUID).isEmpty()));
+        }
+    }
+
+    @Test
+    void prunesOnlyVerifiedAutomaticBackupsAndRetainsOperatorFiles()
+            throws Exception {
+        Path database = temporaryDirectory.resolve("database.db");
+        try (JdbcScoreRepository repository = repository(database)) {
+            repository.initialize();
+        }
+        for (int index = 1; index <= 5; index++) {
+            Files.copy(
+                    database,
+                    temporaryDirectory.resolve(
+                            "database.db.pre-migration-v3-" + (1_000 + index) + ".sqlite"));
+        }
+        Path operatorBackup =
+                temporaryDirectory.resolve("database.db.operator-summer-event.sqlite");
+        Files.copy(database, operatorBackup);
+
+        try (JdbcScoreRepository repository = new JdbcScoreRepository(
+                DatabaseSettings.sqlite(database, Duration.ofSeconds(5), 2))) {
+            repository.initialize();
+            DatabaseDoctorReport doctor =
+                    repository.inspectDatabase().get(5, TimeUnit.SECONDS);
+            assertAll(
+                    () -> assertEquals(2, doctor.migrationBackupCount()),
+                    () -> assertEquals(2, doctor.migrationBackupRetention()),
+                    () -> assertEquals(3, doctor.migrationBackupsPrunedAtStartup()),
+                    () -> assertTrue(Files.isRegularFile(operatorBackup)));
+        }
+        try (var paths = Files.list(temporaryDirectory)) {
+            assertEquals(2L, paths
+                    .filter(path -> path.getFileName().toString()
+                            .matches("database\\.db\\.pre-migration-v\\d+-\\d+(?:-\\d+)?\\.sqlite"))
+                    .count());
+        }
+    }
+
+    @Test
+    void ordersMigrationBackupsByNumericTimestampAcrossSchemaVersions()
+            throws Exception {
+        Path database = temporaryDirectory.resolve("database.db");
+        try (JdbcScoreRepository repository = repository(database)) {
+            repository.initialize();
+        }
+        Path newest = temporaryDirectory.resolve(
+                "database.db.pre-migration-v3-3000.sqlite");
+        Path secondNewest = temporaryDirectory.resolve(
+                "database.db.pre-migration-v9-2000.sqlite");
+        Path oldest = temporaryDirectory.resolve(
+                "database.db.pre-migration-v10-1000.sqlite");
+        Files.copy(database, newest);
+        Files.copy(database, secondNewest);
+        Files.copy(database, oldest);
+
+        try (JdbcScoreRepository repository = new JdbcScoreRepository(
+                DatabaseSettings.sqlite(database, Duration.ofSeconds(5), 2))) {
+            repository.initialize();
+        }
+
+        assertAll(
+                () -> assertTrue(Files.isRegularFile(newest)),
+                () -> assertTrue(Files.isRegularFile(secondNewest)),
+                () -> assertFalse(Files.exists(oldest)));
     }
 
     @Test

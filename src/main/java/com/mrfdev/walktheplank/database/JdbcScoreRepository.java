@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -41,12 +42,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.UnaryOperator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** SQLite JDBC-backed implementation of the score repository. */
 public final class JdbcScoreRepository implements ScoreRepository {
-    private static final int SCHEMA_VERSION = 2;
+    private static final int SCHEMA_VERSION = 3;
     private static final int MAX_MUTATION_ATTEMPTS = 3;
     private static final int DEFAULT_RUN_HISTORY_LIMIT = 10_000;
     private static final int MAX_RUN_HISTORY_LIMIT = 1_000_000;
@@ -60,6 +64,7 @@ public final class JdbcScoreRepository implements ScoreRepository {
     private static final String RUN_PLAYER_INDEX = "idx_run_history_player";
     private static final String REWARD_PLAN_STATUS_INDEX = "idx_reward_plans_status";
     private static final String REWARD_STEP_STATUS_INDEX = "idx_reward_steps_status";
+    private static final String CATEGORY_RANKING_INDEX = "idx_category_scores_ranking";
     private static final String SQLITE_TRIMMED_UUID =
             "trim(uuid, char(9) || char(10) || char(11) || char(12) || char(13) || char(32))";
     private static final String SQLITE_RESOLVED_UUID =
@@ -81,6 +86,7 @@ public final class JdbcScoreRepository implements ScoreRepository {
     private volatile ScoreSnapshot snapshot = ScoreSnapshot.empty();
     private volatile DurabilityState durabilityState = DurabilityState.empty();
     private volatile Optional<Path> migrationBackup = Optional.empty();
+    private volatile int migrationBackupsPrunedAtStartup;
     private volatile boolean initialized;
     private volatile boolean closed;
     private volatile Thread mutationThread;
@@ -591,6 +597,8 @@ public final class JdbcScoreRepository implements ScoreRepository {
                         databaseBytes,
                         walBytes,
                         migrationBackups,
+                        settings.migrationBackupRetention(),
+                        migrationBackupsPrunedAtStartup,
                         latencyMillis);
             } catch (IOException exception) {
                 throw new ScoreRepositoryException(
@@ -602,6 +610,79 @@ public final class JdbcScoreRepository implements ScoreRepository {
     @Override
     public ScoreSnapshot snapshot() {
         return snapshot;
+    }
+
+    @Override
+    public PlayerPreferences preferences(UUID playerId) {
+        UUID checkedId = Objects.requireNonNull(playerId, "playerId");
+        return durabilityState.preferences().getOrDefault(
+                checkedId, PlayerPreferences.defaults(checkedId));
+    }
+
+    @Override
+    public CompletableFuture<PlayerPreferences> updatePreferences(
+            PlayerPreferences preferences) {
+        PlayerPreferences checked = Objects.requireNonNull(preferences, "preferences");
+        return submitMutation(() -> mutateWithRetry(
+                "accessibility preference update",
+                checked.playerId(),
+                connection -> upsertPlayerPreferences(connection, checked)));
+    }
+
+    @Override
+    public CompletableFuture<PlayerPreferences> updateParticlePreference(
+            UUID playerId,
+            ParticlePreference preference,
+            Instant changedAt) {
+        UUID checkedId = Objects.requireNonNull(playerId, "playerId");
+        ParticlePreference checkedPreference =
+                Objects.requireNonNull(preference, "preference");
+        Instant checkedChangedAt =
+                PersistenceValidation.instant(changedAt, "changedAt");
+        return updatePreferenceField(
+                checkedId,
+                "particle preference update",
+                current -> current.withParticles(checkedPreference, checkedChangedAt));
+    }
+
+    @Override
+    public CompletableFuture<PlayerPreferences> updateSoundPreference(
+            UUID playerId,
+            boolean enabled,
+            Instant changedAt) {
+        UUID checkedId = Objects.requireNonNull(playerId, "playerId");
+        Instant checkedChangedAt =
+                PersistenceValidation.instant(changedAt, "changedAt");
+        return updatePreferenceField(
+                checkedId,
+                "sound preference update",
+                current -> current.withSounds(enabled, checkedChangedAt));
+    }
+
+    @Override
+    public CompletableFuture<PlayerPreferences> updateTitlePreference(
+            UUID playerId,
+            boolean enabled,
+            Instant changedAt) {
+        UUID checkedId = Objects.requireNonNull(playerId, "playerId");
+        Instant checkedChangedAt =
+                PersistenceValidation.instant(changedAt, "changedAt");
+        return updatePreferenceField(
+                checkedId,
+                "title preference update",
+                current -> current.withTitles(enabled, checkedChangedAt));
+    }
+
+    @Override
+    public ScoreSnapshot categoryScores(ScoreCategory category) {
+        return durabilityState.categoryScores().getOrDefault(
+                Objects.requireNonNull(category, "category"),
+                ScoreSnapshot.empty());
+    }
+
+    @Override
+    public Map<ScoreCategory, ScoreSnapshot> categoryScoreSnapshots() {
+        return durabilityState.categoryScores();
     }
 
     @Override
@@ -785,6 +866,7 @@ public final class JdbcScoreRepository implements ScoreRepository {
                     migrateSQLite(connection);
                 }
             }
+            migrationBackupsPrunedAtStartup = enforceMigrationBackupRetention(databasePath);
         } catch (IOException | SQLException exception) {
             throw new ScoreRepositoryException(
                     "Could not initialize SQLite database at " + databasePath, exception);
@@ -1027,6 +1109,49 @@ public final class JdbcScoreRepository implements ScoreRepository {
                     )
                     """);
 
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS player_preferences (
+                        uuid VARCHAR(36) PRIMARY KEY COLLATE NOCASE,
+                        particle_mode VARCHAR(16) NOT NULL
+                            CHECK (particle_mode IN ('FULL', 'REDUCED', 'OFF')),
+                        sounds_enabled INTEGER NOT NULL
+                            CHECK (sounds_enabled IN (0, 1)),
+                        titles_enabled INTEGER NOT NULL
+                            CHECK (titles_enabled IN (0, 1)),
+                        updated_at INTEGER NOT NULL
+                    )
+                    """);
+
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS category_scores (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        category VARCHAR(16) NOT NULL
+                            CHECK (category IN ('COMBO', 'FLAWLESS')),
+                        uuid VARCHAR(36) NOT NULL COLLATE NOCASE,
+                        username VARCHAR(128) NOT NULL
+                            CHECK (typeof(username) = 'text'
+                                AND length(username) BETWEEN 3 AND 16
+                                AND username NOT GLOB '*[^A-Za-z0-9_]*'),
+                        score INTEGER NOT NULL CHECK (score >= 1),
+                        updated_at INTEGER NOT NULL,
+                        UNIQUE (category, uuid)
+                    )
+                    """);
+            statement.executeUpdate(
+                    "CREATE INDEX IF NOT EXISTS " + CATEGORY_RANKING_INDEX
+                            + " ON category_scores(category, score DESC, id ASC)");
+
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS run_category_scores (
+                        run_id VARCHAR(36) NOT NULL,
+                        category VARCHAR(16) NOT NULL
+                            CHECK (category IN ('COMBO', 'FLAWLESS')),
+                        score INTEGER NOT NULL CHECK (score >= 1),
+                        PRIMARY KEY (run_id, category),
+                        FOREIGN KEY (run_id) REFERENCES run_history(run_id) ON DELETE CASCADE
+                    )
+                    """);
+
             validateRequiredSchema(connection);
 
             try (PreparedStatement migration = connection.prepareStatement(
@@ -1034,8 +1159,13 @@ public final class JdbcScoreRepository implements ScoreRepository {
                 migration.setInt(1, 1);
                 migration.setString(2, "Modern UUID score repository");
                 migration.executeUpdate();
-                migration.setInt(1, SCHEMA_VERSION);
+                migration.setInt(1, 2);
                 migration.setString(2, "Seasons, bounded run history, and reward execution ledger");
+                migration.executeUpdate();
+                migration.setInt(1, SCHEMA_VERSION);
+                migration.setString(
+                        2,
+                        "Accessibility preferences and separate combo/flawless categories");
                 migration.executeUpdate();
             }
             statement.execute("PRAGMA user_version = " + SCHEMA_VERSION);
@@ -1058,6 +1188,17 @@ public final class JdbcScoreRepository implements ScoreRepository {
             throw new ScoreRepositoryException("SQLite did not create a usable backup at " + backupPath);
         }
 
+        verifySQLiteBackup(backupPath);
+        return backupPath;
+    }
+
+    private static void verifySQLiteBackup(Path backupPath)
+            throws SQLException, IOException, ScoreRepositoryException {
+        if (Files.isSymbolicLink(backupPath)
+                || !Files.isRegularFile(backupPath, LinkOption.NOFOLLOW_LINKS)
+                || Files.size(backupPath) == 0L) {
+            throw new ScoreRepositoryException("SQLite migration backup is not a safe regular file");
+        }
         String backupUrl = "jdbc:sqlite:" + backupPath;
         try (Connection backup = DriverManager.getConnection(backupUrl);
                 Statement statement = backup.createStatement();
@@ -1073,7 +1214,58 @@ public final class JdbcScoreRepository implements ScoreRepository {
                         "SQLite backup failed PRAGMA quick_check: " + backupPath);
             }
         }
-        return backupPath;
+    }
+
+    private int enforceMigrationBackupRetention(Path databasePath)
+            throws IOException, SQLException, ScoreRepositoryException {
+        Path parent = databasePath.getParent();
+        if (parent == null
+                || Files.isSymbolicLink(parent)
+                || !Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("SQLite backup directory is unavailable");
+        }
+        String prefix = databasePath.getFileName() + ".pre-migration-v";
+        Pattern automaticBackup = automaticMigrationBackupPattern(prefix);
+        List<AutomaticMigrationBackup> backups = new ArrayList<>();
+        try (DirectoryStream<Path> entries = Files.newDirectoryStream(parent)) {
+            for (Path entry : entries) {
+                String name = entry.getFileName().toString();
+                Matcher matcher = automaticBackup.matcher(name);
+                if (!matcher.matches()) {
+                    continue;
+                }
+                if (Files.isSymbolicLink(entry)
+                        || !Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)) {
+                    throw new IOException(
+                            "Automatic SQLite backup entry is not a safe regular file");
+                }
+                backups.add(parseAutomaticMigrationBackup(entry, matcher));
+            }
+        }
+        backups.sort(Comparator.comparingLong(AutomaticMigrationBackup::createdAt)
+                .reversed()
+                .thenComparing(
+                        Comparator.comparingInt(AutomaticMigrationBackup::schemaVersion)
+                                .reversed())
+                .thenComparing(
+                        Comparator.comparingInt(AutomaticMigrationBackup::suffix)
+                                .reversed()));
+        for (AutomaticMigrationBackup backup : backups) {
+            verifySQLiteBackup(backup.path());
+        }
+        int pruned = 0;
+        while (backups.size() > settings.migrationBackupRetention()) {
+            AutomaticMigrationBackup oldest = backups.removeLast();
+            Files.delete(oldest.path());
+            pruned++;
+        }
+        if (pruned > 0) {
+            forceDirectory(parent);
+            logger.info("Pruned " + pruned
+                    + " verified automatic SQLite migration backup(s); retained "
+                    + settings.migrationBackupRetention());
+        }
+        return pruned;
     }
 
     private static Path nextBackupPath(Path databasePath) {
@@ -1087,6 +1279,12 @@ public final class JdbcScoreRepository implements ScoreRepository {
             suffix++;
         }
         return backup;
+    }
+
+    private static void forceDirectory(Path directory) throws IOException {
+        try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) {
+            channel.force(true);
+        }
     }
 
     private CompletedRunResult recordCompletedRun(Connection connection, CompletedRun run)
@@ -1136,7 +1334,8 @@ public final class JdbcScoreRepository implements ScoreRepository {
         }
         if (run.status() == RunStatus.COMPLETED) {
             requireMatchingRunCompletion(run, completion);
-            return duplicateCompletedRunResult(connection, run);
+            return duplicateCompletedRunResult(
+                    connection, run, completion.categoryScores());
         }
         if (run.status() != RunStatus.STARTED) {
             throw new ScoreRepositoryException(
@@ -1161,6 +1360,8 @@ public final class JdbcScoreRepository implements ScoreRepository {
         }
         Optional<ScoreUpdateResult> allTime = Optional.empty();
         Optional<ScoreUpdateResult> seasonScore = Optional.empty();
+        EnumMap<ScoreCategory, ScoreUpdateResult> categoryScores =
+                new EnumMap<>(ScoreCategory.class);
         if (completion.score() > 0) {
             allTime = Optional.of(upsertAllTimeScore(
                     connection, run.playerId(), run.username(), completion.score()));
@@ -1174,10 +1375,23 @@ public final class JdbcScoreRepository implements ScoreRepository {
                     completion.score(),
                     completion.endedAt()));
         }
+        for (RunCategoryScore categoryScore : completion.categoryScores()) {
+            insertRunCategoryScore(connection, completion.runId(), categoryScore);
+            categoryScores.put(
+                    categoryScore.category(),
+                    upsertCategoryScore(
+                            connection,
+                            categoryScore.category(),
+                            run.playerId(),
+                            run.username(),
+                            categoryScore.score(),
+                            completion.endedAt()));
+        }
         pruneRunHistory(connection, runHistoryRetentionLimit, run.id());
         RunRecord stored = Objects.requireNonNull(
                 findRun(connection, run.id()), "Completed run was not found");
-        return new CompletedRunResult(stored, allTime, seasonScore, true);
+        return new CompletedRunResult(
+                stored, allTime, seasonScore, categoryScores, true);
     }
 
     private CompletedRunWithRewardPlanResult completeRunWithRewardPlan(
@@ -1300,10 +1514,23 @@ public final class JdbcScoreRepository implements ScoreRepository {
 
     private CompletedRunResult duplicateCompletedRunResult(
             Connection connection,
-            RunRecord run) throws SQLException, ScoreRepositoryException {
+            RunRecord run,
+            List<RunCategoryScore> requestedCategoryScores)
+            throws SQLException, ScoreRepositoryException {
+        Map<ScoreCategory, Integer> storedCategoryScores =
+                loadRunCategoryScores(connection, run.id());
+        Map<ScoreCategory, Integer> requested = new EnumMap<>(ScoreCategory.class);
+        for (RunCategoryScore categoryScore : requestedCategoryScores) {
+            requested.put(categoryScore.category(), categoryScore.score());
+        }
+        if (!storedCategoryScores.equals(requested)) {
+            throw new ScoreRepositoryException(
+                    "Run completion category shape conflicts with its committed retry");
+        }
         int score = run.score().orElseThrow();
         if (score == 0) {
-            return new CompletedRunResult(run, Optional.empty(), Optional.empty(), false);
+            return new CompletedRunResult(
+                    run, Optional.empty(), Optional.empty(), Map.of(), false);
         }
         ExistingScore allTimeExisting = findExistingScore(connection, run.playerId());
         if (allTimeExisting == null || allTimeExisting.score() < score) {
@@ -1335,7 +1562,29 @@ public final class JdbcScoreRepository implements ScoreRepository {
                     false,
                     false));
         }
-        return new CompletedRunResult(run, allTime, seasonScore, false);
+        EnumMap<ScoreCategory, ScoreUpdateResult> categoryResults =
+                new EnumMap<>(ScoreCategory.class);
+        for (Map.Entry<ScoreCategory, Integer> entry : storedCategoryScores.entrySet()) {
+            ExistingScore existing =
+                    findExistingCategoryScore(connection, entry.getKey(), run.playerId());
+            if (existing == null || existing.score() < entry.getValue()) {
+                throw new ScoreRepositoryException(
+                        "Run " + run.id()
+                                + " exists without its expected category score projection");
+            }
+            categoryResults.put(
+                    entry.getKey(),
+                    new ScoreUpdateResult(
+                            run.playerId(),
+                            run.username(),
+                            entry.getValue(),
+                            existing.score(),
+                            existing.score(),
+                            false,
+                            false));
+        }
+        return new CompletedRunResult(
+                run, allTime, seasonScore, categoryResults, false);
     }
 
     private Optional<Season> resolveRunSeason(
@@ -1442,6 +1691,137 @@ public final class JdbcScoreRepository implements ScoreRepository {
                 bestScore,
                 score > existing.score(),
                 false);
+    }
+
+    private static void insertRunCategoryScore(
+            Connection connection,
+            UUID runId,
+            RunCategoryScore categoryScore) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO run_category_scores (run_id, category, score)
+                VALUES (?, ?, ?)
+                """)) {
+            statement.setString(1, runId.toString());
+            statement.setString(2, categoryScore.category().name());
+            statement.setInt(3, categoryScore.score());
+            statement.executeUpdate();
+        }
+    }
+
+    private ScoreUpdateResult upsertCategoryScore(
+            Connection connection,
+            ScoreCategory category,
+            UUID uuid,
+            String username,
+            int score,
+            Instant updatedAt) throws SQLException {
+        ExistingScore existing = findExistingCategoryScore(connection, category, uuid);
+        if (existing == null) {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO category_scores (
+                        category, uuid, username, score, updated_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """)) {
+                statement.setString(1, category.name());
+                statement.setString(2, uuid.toString());
+                statement.setString(3, username);
+                statement.setInt(4, score);
+                statement.setLong(5, updatedAt.toEpochMilli());
+                statement.executeUpdate();
+            }
+            return new ScoreUpdateResult(uuid, username, score, 0, score, true, true);
+        }
+
+        int bestScore = Math.max(existing.score(), score);
+        try (PreparedStatement statement = connection.prepareStatement("""
+                UPDATE category_scores
+                SET score = ?, username = ?, updated_at = ?
+                WHERE id = ?
+                """)) {
+            statement.setInt(1, bestScore);
+            statement.setString(2, username);
+            statement.setLong(3, updatedAt.toEpochMilli());
+            statement.setLong(4, existing.id());
+            statement.executeUpdate();
+        }
+        return new ScoreUpdateResult(
+                uuid,
+                username,
+                score,
+                existing.score(),
+                bestScore,
+                score > existing.score(),
+                false);
+    }
+
+    private static PlayerPreferences upsertPlayerPreferences(
+            Connection connection,
+            PlayerPreferences preferences) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO player_preferences (
+                    uuid, particle_mode, sounds_enabled, titles_enabled, updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(uuid) DO UPDATE SET
+                    particle_mode = excluded.particle_mode,
+                    sounds_enabled = excluded.sounds_enabled,
+                    titles_enabled = excluded.titles_enabled,
+                    updated_at = excluded.updated_at
+                """)) {
+            statement.setString(1, preferences.playerId().toString());
+            statement.setString(2, preferences.particles().name());
+            statement.setInt(3, preferences.soundsEnabled() ? 1 : 0);
+            statement.setInt(4, preferences.titlesEnabled() ? 1 : 0);
+            statement.setLong(5, preferences.updatedAt().toEpochMilli());
+            statement.executeUpdate();
+        }
+        return preferences;
+    }
+
+    private CompletableFuture<PlayerPreferences> updatePreferenceField(
+            UUID playerId,
+            String operation,
+            UnaryOperator<PlayerPreferences> update) {
+        return submitMutation(() -> mutateWithRetry(
+                operation,
+                playerId,
+                connection -> upsertPlayerPreferences(
+                        connection,
+                        update.apply(findPlayerPreferences(connection, playerId)))));
+    }
+
+    private static PlayerPreferences findPlayerPreferences(
+            Connection connection,
+            UUID playerId) throws SQLException, ScoreRepositoryException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT particle_mode, sounds_enabled, titles_enabled, updated_at
+                FROM player_preferences
+                WHERE uuid = ? COLLATE NOCASE
+                """)) {
+            statement.setString(1, playerId.toString());
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    return PlayerPreferences.defaults(playerId);
+                }
+                PlayerPreferences preferences;
+                try {
+                    preferences = new PlayerPreferences(
+                            playerId,
+                            ParticlePreference.parse(result.getString("particle_mode")),
+                            result.getInt("sounds_enabled") == 1,
+                            result.getInt("titles_enabled") == 1,
+                            Instant.ofEpochMilli(result.getLong("updated_at")));
+                } catch (IllegalArgumentException | NullPointerException exception) {
+                    throw new ScoreRepositoryException(
+                            "player_preferences contains an invalid preference row",
+                            exception);
+                }
+                if (result.next()) {
+                    throw new ScoreRepositoryException(
+                            "player_preferences contains a duplicate UUID");
+                }
+                return preferences;
+            }
+        }
     }
 
     private Season createSeason(Connection connection, Season requested)
@@ -2254,19 +2634,43 @@ public final class JdbcScoreRepository implements ScoreRepository {
             throw new IOException("SQLite backup directory is unavailable");
         }
         String prefix = databasePath.getFileName() + ".pre-migration-v";
+        Pattern automaticBackup = automaticMigrationBackupPattern(prefix);
         int count = 0;
         try (DirectoryStream<Path> entries = Files.newDirectoryStream(parent)) {
             for (Path entry : entries) {
                 String name = entry.getFileName().toString();
-                if (name.startsWith(prefix)
-                        && name.endsWith(".sqlite")
-                        && !Files.isSymbolicLink(entry)
-                        && Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)) {
-                    count = Math.addExact(count, 1);
+                if (!automaticBackup.matcher(name).matches()) {
+                    continue;
                 }
+                if (Files.isSymbolicLink(entry)
+                        || !Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)) {
+                    throw new IOException(
+                            "Automatic SQLite backup entry is not a safe regular file");
+                }
+                count = Math.addExact(count, 1);
             }
         }
         return count;
+    }
+
+    private static Pattern automaticMigrationBackupPattern(String prefix) {
+        return Pattern.compile(
+                Pattern.quote(prefix) + "(\\d+)-(\\d+)(?:-(\\d+))?\\.sqlite");
+    }
+
+    private static AutomaticMigrationBackup parseAutomaticMigrationBackup(
+            Path path,
+            Matcher matcher) throws IOException {
+        try {
+            int schemaVersion = Integer.parseInt(matcher.group(1));
+            long createdAt = Long.parseLong(matcher.group(2));
+            int suffix = matcher.group(3) == null ? 0 : Integer.parseInt(matcher.group(3));
+            return new AutomaticMigrationBackup(path, schemaVersion, createdAt, suffix);
+        } catch (NumberFormatException exception) {
+            throw new IOException(
+                    "Automatic SQLite backup name contains an out-of-range number",
+                    exception);
+        }
     }
 
     private <T> CompletableFuture<T> submitOperation(
@@ -2300,6 +2704,12 @@ public final class JdbcScoreRepository implements ScoreRepository {
             }
         }
     }
+
+    private record AutomaticMigrationBackup(
+            Path path,
+            int schemaVersion,
+            long createdAt,
+            int suffix) {}
 
     private void recordDatabaseFailure(Throwable failure) {
         Throwable current = failure;
@@ -2461,6 +2871,53 @@ public final class JdbcScoreRepository implements ScoreRepository {
                 return new ExistingScore(result.getLong("id"), result.getInt("score"));
             }
         }
+    }
+
+    private static ExistingScore findExistingCategoryScore(
+            Connection connection,
+            ScoreCategory category,
+            UUID uuid) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT id, score FROM category_scores
+                WHERE category = ? AND uuid = ? COLLATE NOCASE
+                """)) {
+            statement.setString(1, category.name());
+            statement.setString(2, uuid.toString());
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    return null;
+                }
+                return new ExistingScore(result.getLong("id"), result.getInt("score"));
+            }
+        }
+    }
+
+    private static Map<ScoreCategory, Integer> loadRunCategoryScores(
+            Connection connection,
+            UUID runId) throws SQLException, ScoreRepositoryException {
+        EnumMap<ScoreCategory, Integer> scores = new EnumMap<>(ScoreCategory.class);
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT category, score FROM run_category_scores WHERE run_id = ?
+                """)) {
+            statement.setString(1, runId.toString());
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    ScoreCategory category;
+                    try {
+                        category = ScoreCategory.parse(result.getString("category"));
+                    } catch (IllegalArgumentException | NullPointerException exception) {
+                        throw new ScoreRepositoryException(
+                                "run_category_scores contains an invalid category", exception);
+                    }
+                    int score = result.getInt("score");
+                    if (score < 1 || scores.putIfAbsent(category, score) != null) {
+                        throw new ScoreRepositoryException(
+                                "run_category_scores contains an invalid or duplicate score");
+                    }
+                }
+            }
+        }
+        return Collections.unmodifiableMap(scores);
     }
 
     private RunRecord findRun(Connection connection, UUID runId) throws SQLException {
@@ -2728,7 +3185,74 @@ public final class JdbcScoreRepository implements ScoreRepository {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty());
-        return new DurabilityState(metrics, seasons, activeScores, loadRecentRuns(connection));
+        return new DurabilityState(
+                metrics,
+                seasons,
+                activeScores,
+                loadRecentRuns(connection),
+                loadPlayerPreferences(connection),
+                loadCategoryScoreSnapshots(connection));
+    }
+
+    private static Map<UUID, PlayerPreferences> loadPlayerPreferences(Connection connection)
+            throws SQLException, ScoreRepositoryException {
+        Map<UUID, PlayerPreferences> preferences = new HashMap<>();
+        try (Statement statement = connection.createStatement();
+                ResultSet result = statement.executeQuery("""
+                        SELECT uuid, particle_mode, sounds_enabled, titles_enabled, updated_at
+                        FROM player_preferences
+                        """)) {
+            while (result.next()) {
+                UUID playerId = parseCanonicalUuid(
+                        result.getString("uuid"), "player_preferences.uuid");
+                PlayerPreferences value;
+                try {
+                    value = new PlayerPreferences(
+                            playerId,
+                            ParticlePreference.parse(result.getString("particle_mode")),
+                            result.getInt("sounds_enabled") == 1,
+                            result.getInt("titles_enabled") == 1,
+                            Instant.ofEpochMilli(result.getLong("updated_at")));
+                } catch (IllegalArgumentException | NullPointerException exception) {
+                    throw new ScoreRepositoryException(
+                            "player_preferences contains an invalid preference row", exception);
+                }
+                if (preferences.putIfAbsent(playerId, value) != null) {
+                    throw new ScoreRepositoryException(
+                            "player_preferences contains a duplicate UUID");
+                }
+            }
+        }
+        return Map.copyOf(preferences);
+    }
+
+    private static Map<ScoreCategory, ScoreSnapshot> loadCategoryScoreSnapshots(
+            Connection connection) throws SQLException, ScoreRepositoryException {
+        EnumMap<ScoreCategory, ScoreSnapshot> snapshots = new EnumMap<>(ScoreCategory.class);
+        for (ScoreCategory category : ScoreCategory.values()) {
+            List<RawScore> rawScores = new ArrayList<>();
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    SELECT id, score, typeof(score) AS score_storage_type, uuid, username,
+                           typeof(username) AS username_storage_type, updated_at
+                    FROM category_scores
+                    WHERE category = ?
+                    """)) {
+                statement.setString(1, category.name());
+                try (ResultSet result = statement.executeQuery()) {
+                    while (result.next()) {
+                        long id = result.getLong("id");
+                        rawScores.add(new RawScore(
+                                id,
+                                parseStoredUuid(id, result.getString("uuid")),
+                                readStoredUsername(result, "category_scores", id),
+                                readStoredScore(result, "category_scores", id),
+                                optionalEpochMillis(result, "updated_at")));
+                    }
+                }
+            }
+            snapshots.put(category, buildScoreSnapshot(rawScores));
+        }
+        return Collections.unmodifiableMap(snapshots);
     }
 
     private static List<Season> loadSeasons(Connection connection) throws SQLException {
@@ -2996,6 +3520,64 @@ public final class JdbcScoreRepository implements ScoreRepository {
         }
     }
 
+    private static void validateStoredCategoryScoreRows(Connection connection)
+            throws SQLException, ScoreRepositoryException {
+        try (Statement statement = connection.createStatement();
+                ResultSet result = statement.executeQuery("""
+                        SELECT id, category, uuid, score,
+                               typeof(score) AS score_storage_type,
+                               username, typeof(username) AS username_storage_type
+                        FROM category_scores
+                        """)) {
+            while (result.next()) {
+                long id = result.getLong("id");
+                if (id < 0L) {
+                    throw new ScoreRepositoryException(
+                            "category_scores contains a negative id");
+                }
+                try {
+                    ScoreCategory.parse(result.getString("category"));
+                } catch (IllegalArgumentException | NullPointerException exception) {
+                    throw new ScoreRepositoryException(
+                            "category_scores contains an invalid category", exception);
+                }
+                parseCanonicalUuid(result.getString("uuid"), "category_scores.uuid");
+                if (readStoredScore(result, "category_scores", id) < 1) {
+                    throw new ScoreRepositoryException(
+                            "category_scores contains a non-positive score");
+                }
+                readStoredUsername(result, "category_scores", id);
+            }
+        }
+    }
+
+    private static void validateStoredPreferenceRows(Connection connection)
+            throws SQLException, ScoreRepositoryException {
+        try (Statement statement = connection.createStatement();
+                ResultSet result = statement.executeQuery("""
+                        SELECT uuid, particle_mode, sounds_enabled, titles_enabled, updated_at
+                        FROM player_preferences
+                        """)) {
+            while (result.next()) {
+                parseCanonicalUuid(result.getString("uuid"), "player_preferences.uuid");
+                try {
+                    ParticlePreference.parse(result.getString("particle_mode"));
+                } catch (IllegalArgumentException | NullPointerException exception) {
+                    throw new ScoreRepositoryException(
+                            "player_preferences contains an invalid particle mode", exception);
+                }
+                if ((result.getInt("sounds_enabled") != 0
+                                && result.getInt("sounds_enabled") != 1)
+                        || (result.getInt("titles_enabled") != 0
+                                && result.getInt("titles_enabled") != 1)
+                        || result.getLong("updated_at") < 0L) {
+                    throw new ScoreRepositoryException(
+                            "player_preferences contains an invalid setting");
+                }
+            }
+        }
+    }
+
     private static int readStoredScore(ResultSet result, String table, long id)
             throws SQLException, ScoreRepositoryException {
         String storageType = result.getString("score_storage_type");
@@ -3046,6 +3628,19 @@ public final class JdbcScoreRepository implements ScoreRepository {
         } catch (IllegalArgumentException exception) {
             throw new ScoreRepositoryException(
                     "Invalid nonblank UUID in scoreboard row " + id + ": " + text, exception);
+        }
+    }
+
+    private static UUID parseCanonicalUuid(String text, String field)
+            throws ScoreRepositoryException {
+        try {
+            UUID uuid = UUID.fromString(Objects.requireNonNull(text, field));
+            if (text.length() != 36 || !uuid.toString().equalsIgnoreCase(text)) {
+                throw new IllegalArgumentException("UUID is not in canonical form");
+            }
+            return uuid;
+        } catch (IllegalArgumentException | NullPointerException exception) {
+            throw new ScoreRepositoryException(field + " contains an invalid UUID", exception);
         }
     }
 
@@ -3208,6 +3803,10 @@ public final class JdbcScoreRepository implements ScoreRepository {
         }
         if ("season_scores".equals(tableName)) {
             validateStoredSeasonScoreRows(connection);
+        } else if ("category_scores".equals(tableName)) {
+            validateStoredCategoryScoreRows(connection);
+        } else if ("player_preferences".equals(tableName)) {
+            validateStoredPreferenceRows(connection);
         }
     }
 
@@ -3336,7 +3935,18 @@ public final class JdbcScoreRepository implements ScoreRepository {
                         "idempotency_key",
                         "terminal_status",
                         "completed_at",
-                        "pruned_at"));
+                        "pruned_at"),
+                "player_preferences",
+                Set.of(
+                        "uuid",
+                        "particle_mode",
+                        "sounds_enabled",
+                        "titles_enabled",
+                        "updated_at"),
+                "category_scores",
+                Set.of("id", "category", "uuid", "username", "score", "updated_at"),
+                "run_category_scores",
+                Set.of("run_id", "category", "score"));
     }
 
     private static Map<String, Set<String>> durabilityNotNullColumns() {
@@ -3369,7 +3979,17 @@ public final class JdbcScoreRepository implements ScoreRepository {
                         "idempotency_key",
                         "terminal_status",
                         "completed_at",
-                        "pruned_at"));
+                        "pruned_at"),
+                "player_preferences",
+                Set.of(
+                        "particle_mode",
+                        "sounds_enabled",
+                        "titles_enabled",
+                        "updated_at"),
+                "category_scores",
+                Set.of("category", "uuid", "username", "score", "updated_at"),
+                "run_category_scores",
+                Set.of("run_id", "category", "score"));
     }
 
     private static Map<String, Set<String>> durabilityTableSqlFragments() {
@@ -3410,7 +4030,24 @@ public final class JdbcScoreRepository implements ScoreRepository {
                         "run_id VARCHAR(36) NOT NULL UNIQUE",
                         "idempotency_key VARCHAR(128) NOT NULL UNIQUE",
                         "CHECK (terminal_status IN ('SUCCEEDED', 'FAILED', 'PARTIAL',"
-                                + " 'ABANDONED'))"));
+                                + " 'ABANDONED'))"),
+                "player_preferences",
+                Set.of(
+                        "uuid VARCHAR(36) PRIMARY KEY COLLATE NOCASE",
+                        "CHECK (particle_mode IN ('FULL', 'REDUCED', 'OFF'))",
+                        "CHECK (sounds_enabled IN (0, 1))",
+                        "CHECK (titles_enabled IN (0, 1))"),
+                "category_scores",
+                Set.of(
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT",
+                        "CHECK (category IN ('COMBO', 'FLAWLESS'))",
+                        "score INTEGER NOT NULL CHECK (score >= 1)",
+                        "UNIQUE (category, uuid)"),
+                "run_category_scores",
+                Set.of(
+                        "CHECK (category IN ('COMBO', 'FLAWLESS'))",
+                        "score INTEGER NOT NULL CHECK (score >= 1)",
+                        "PRIMARY KEY (run_id, category)"));
     }
 
     private static Map<String, Set<ForeignKeyInfo>> durabilityForeignKeys() {
@@ -3430,7 +4067,14 @@ public final class JdbcScoreRepository implements ScoreRepository {
                 Set.of(new ForeignKeyInfo(
                         "reward_plans", "plan_id", "plan_id", "cascade", "no action")),
                 "reward_tombstones",
-                Set.of());
+                Set.of(),
+                "player_preferences",
+                Set.of(),
+                "category_scores",
+                Set.of(),
+                "run_category_scores",
+                Set.of(new ForeignKeyInfo(
+                        "run_history", "run_id", "run_id", "cascade", "no action")));
     }
 
     private static Set<String> durabilityIndexNames() {
@@ -3440,7 +4084,8 @@ public final class JdbcScoreRepository implements ScoreRepository {
                 RUN_RECENT_INDEX,
                 RUN_PLAYER_INDEX,
                 REWARD_PLAN_STATUS_INDEX,
-                REWARD_STEP_STATUS_INDEX);
+                REWARD_STEP_STATUS_INDEX,
+                CATEGORY_RANKING_INDEX);
     }
 
     private static Map<String, String> requiredIndexSql() {
@@ -3477,7 +4122,11 @@ public final class JdbcScoreRepository implements ScoreRepository {
                 Map.entry(
                         REWARD_STEP_STATUS_INDEX,
                         "CREATE INDEX " + REWARD_STEP_STATUS_INDEX
-                                + " ON reward_steps(status, plan_id)"));
+                                + " ON reward_steps(status, plan_id)"),
+                Map.entry(
+                        CATEGORY_RANKING_INDEX,
+                        "CREATE INDEX " + CATEGORY_RANKING_INDEX
+                                + " ON category_scores(category, score DESC, id ASC)"));
     }
 
     private static void requireColumns(Map<String, ColumnInfo> columns, Set<String> required)
@@ -3605,7 +4254,9 @@ public final class JdbcScoreRepository implements ScoreRepository {
             DurabilityMetrics metrics,
             List<Season> seasons,
             Optional<ScoreSnapshot> activeSeasonScores,
-            List<RunRecord> recentRuns) {
+            List<RunRecord> recentRuns,
+            Map<UUID, PlayerPreferences> preferences,
+            Map<ScoreCategory, ScoreSnapshot> categoryScores) {
 
         private DurabilityState {
             Objects.requireNonNull(metrics, "metrics");
@@ -3613,11 +4264,19 @@ public final class JdbcScoreRepository implements ScoreRepository {
             activeSeasonScores = Objects.requireNonNull(
                     activeSeasonScores, "activeSeasonScores");
             recentRuns = List.copyOf(Objects.requireNonNull(recentRuns, "recentRuns"));
+            preferences = Map.copyOf(Objects.requireNonNull(preferences, "preferences"));
+            categoryScores = Map.copyOf(
+                    Objects.requireNonNull(categoryScores, "categoryScores"));
         }
 
         private static DurabilityState empty() {
             return new DurabilityState(
-                    DurabilityMetrics.empty(), List.of(), Optional.empty(), List.of());
+                    DurabilityMetrics.empty(),
+                    List.of(),
+                    Optional.empty(),
+                    List.of(),
+                    Map.of(),
+                    Map.of());
         }
     }
 }

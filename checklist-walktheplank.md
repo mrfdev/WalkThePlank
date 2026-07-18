@@ -1,6 +1,6 @@
-# WalkThePlank v2.3.0-007 beta and event checklist
+# WalkThePlank v2.4.0-008 beta and event checklist
 
-This is the mandatory human/server acceptance plan for `1MB-WalkThePlank-v2.3.0-007-j25-26.2.jar`.
+This is the mandatory human/server acceptance plan for `1MB-WalkThePlank-v2.4.0-008-j25-26.2.jar`.
 
 Do not treat implemented code, a successful Gradle build, or a previous release's smoke test as production approval. The candidate is approved only after this checklist is completed against the exact frozen JAR, a production-like Paper 26.2 server, a disposable copy of the live data, and the intended external reward providers.
 
@@ -12,27 +12,27 @@ Fill this table from the final clean build. Do not copy values from any prior ca
 
 | Property | Candidate value |
 | --- | --- |
-| Semantic version/build | `2.3.0-007` |
-| Expected filename | `1MB-WalkThePlank-v2.3.0-007-j25-26.2.jar` |
-| Git commit | Full clean commit embedded in the final JAR; record in a new annotated build-007 RC tag and operator release archive |
+| Semantic version/build | `2.4.0-008` |
+| Expected filename | `1MB-WalkThePlank-v2.4.0-008-j25-26.2.jar` |
+| Git commit | Full clean commit embedded in the final JAR; record in a new annotated build-008 RC tag and operator release archive |
 | Build timestamp | Not embedded; record externally with the candidate evidence |
 | File size | Record in annotated candidate tag and operator release archive |
 | SHA-256 | Record in annotated candidate tag and operator release archive |
 | Java runtime | Oracle Java `25.0.2+10-LTS-69` (aarch64) |
-| Paper version/build | `26.2-60-main@1cb58fb`; API `26.2.build.60-beta` |
+| Paper version/build | Record exact Paper 26.2 build 61 beta or newer; API `26.2.build.61-beta` |
 | Automated test result/count | Record from the final clean-commit build |
 | `verifyReleaseJar` result | Require PASS on two clean builds with byte-identical outputs |
-| Test-server sync result | Require staged SHA-256 to match and only build 007 to be active |
+| Test-server sync result | Require staged SHA-256 to match and only build 008 to be active |
 
-Build-005 development artifacts passed the automated two-start and `config.after_runtime_commit` hard-kill/recovery profiles. Build 004 retains its recorded automated suite and full-stack/standalone Paper smoke, and build 003 retains its earlier migration/profile evidence. All are historical for this release. Repeat the controlled scenario, startup/reload/shutdown, worker saturation/recovery, and log checks against the final clean build-007 artifact; human in-game/destructive acceptance remains unchecked below.
+Build 007 completed its controlled scenarios, reproducibility/freeze, standalone/full-stack Paper smoke, and test-server synchronization and is tagged `v2.3.0-007-rc.1`. Build 008 changes persistence and gameplay, so all earlier evidence remains historical. Repeat controlled scenarios, startup/reload/shutdown, worker saturation/recovery, audit verification, fair-play cases, and log checks against the final clean build-008 artifact; human in-game/destructive acceptance remains unchecked below.
 
 ## Known build-003 migration evidence
 
-A build-003 disposable-copy schema-v2 rehearsal preserved 100 rows, 100 UUIDs, score sum 4256, maximum score 149, and `PRAGMA quick_check = ok`; it created a verified `pre-migration-v2` backup and did not alter the `_resources` source hash. Repeat every check below against the frozen build-007 candidate. This historical evidence is not a sign-off.
+A build-003 disposable-copy schema-v2 rehearsal preserved 100 rows, 100 UUIDs, score sum 4256, maximum score 149, and `PRAGMA quick_check = ok`; it created a verified `pre-migration-v2` backup and did not alter the `_resources` source hash. Repeat every check below against the frozen build-008 candidate. This historical evidence is not a sign-off.
 
 ## 1. Source and release integrity
 
-- [x] Confirm `gradle.properties` says version `2.3.0`, build `007`, Java `25`, Paper `26.2`, and Paper API `26.2.build.60-beta` or the intentionally approved newer 26.2 API.
+- [x] Confirm `gradle.properties` says version `2.4.0`, build `008`, Java `25`, Paper `26.2`, and Paper API `26.2.build.61-beta` or the intentionally approved newer 26.2 API.
 - [x] Confirm the wrapper/build dependencies remain Gradle 9.6.1, Shadow 9.5.1, PlaceholderAPI 2.12.3, SQLite JDBC 3.53.2.0, and JUnit 6.1.2 unless a newer version has been deliberately reviewed and recorded.
 - [x] Confirm `plugin.yml` retains Bukkit name `InfinityParkour`, `api-version: 26.2`, and main class `com.mrfdev.walktheplank.WalkThePlankPlugin`.
 - [x] Confirm the production plugin uses `JavaPlugin#getLifecycleManager` with `LifecycleEvents.COMMANDS`, keeps `plugin.yml` rather than adding `paper-plugin.yml`, and contains no legacy `PluginCommand` executor/tab-completer registration.
@@ -47,7 +47,7 @@ A build-003 disposable-copy schema-v2 rehearsal preserved 100 rows, 100 UUIDs, s
 - [ ] Confirm the shaded JAR includes `org/sqlite/JDBC.class` and `META-INF/services/java.sql.Driver`.
 - [ ] Confirm the shaded JAR contains no `com/mysql/`, `org/mariadb/`, `org/bukkit/`, `io/papermc/paper/`, or `me/clip/placeholderapi/` classes.
 - [ ] Confirm the JAR contains no `.db` or `.sqlite` file and no `_resources` or server directory.
-- [ ] Confirm embedded `plugin.yml`, `build-info.properties`, and manifest all identify v2.3.0 build 007, Java 25, Paper 26.2, and the exact artifact name.
+- [ ] Confirm embedded `plugin.yml`, `build-info.properties`, and manifest all identify v2.4.0 build 008, Java 25, Paper 26.2, and the exact artifact name.
 - [ ] Record final size, SHA-256, source commit, runtime, test result, and smoke evidence in the annotated RC tag and operator archive.
 - [ ] Copy the JAR by checksum and prove the staged copy is byte-identical.
 - [ ] Confirm only one InfinityParkour/WalkThePlank JAR is active. Move every prior build to `plugins-disabled/walktheplank/`.
@@ -62,11 +62,11 @@ The scenario system is release tooling, not a production feature. Never copy eit
 - [ ] Require these two test-only files beneath `build/scenario-artifacts/`:
 
   ```text
-  TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.3.0-007.jar
-  TEST-ONLY-1MB-WalkThePlank-v2.3.0-007-Failpoints.jar
+  TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.4.0-008.jar
+  TEST-ONLY-1MB-WalkThePlank-v2.4.0-008-Failpoints.jar
   ```
 
-- [ ] Require the production file to remain `build/libs/1MB-WalkThePlank-v2.3.0-007-j25-26.2.jar`; prove the instrumented file has a different path and checksum and did not replace it.
+- [ ] Require the production file to remain `build/libs/1MB-WalkThePlank-v2.4.0-008-j25-26.2.jar`; prove the instrumented file has a different path and checksum and did not replace it.
 - [ ] Run `./gradlew verifyReleaseJar` separately and require the production JAR to contain no `com/mrfdev/walktheplank/scenario/` class, `WalkThePlank-Test-Artifact`/`WalkThePlank-Test-Canary` manifest attribute, scenario command, failpoint system-property prefix, scenario canary, Java agent entry point, or any of the 24 failpoint identifiers.
 - [ ] Require positive controls: the harness must be detected as test-only, the instrumented copy must contain the injected bridge/canary and all 24 identifiers, and the isolation task must reject a deliberately scanned test artifact as production-safe.
 - [ ] Inspect the scenario harness archive. Require an independent `plugin.yml` named `WalkThePlank-ScenarioHarness`, hard dependency on `InfinityParkour`, classes only under `com/mrfdev/walktheplank/scenario/harness/`, and no shaded WalkThePlank, SQLite, Paper/Bukkit, or PlaceholderAPI classes.
@@ -153,18 +153,18 @@ ORDER BY score DESC, id ASC
 LIMIT 10;
 ```
 
-## 3. Schema-v2 migration and UUID preservation
+## 3. Schema-v3 migration, backup retention, categories, preferences, and UUID preservation
 
 - [ ] Start the frozen candidate once against the disposable legacy database.
 - [ ] While that repository is open, start a second disposable WalkThePlank repository/server against the same database. Require immediate safe startup failure naming existing ownership, no migration/write from the competitor, and uninterrupted operation of the first instance.
 - [ ] Confirm the sibling `<database-filename>.walktheplank.lock` is a regular non-symlink file. Replace it with a symlink and a directory in separate stopped-server fixtures and require fail-closed startup without touching either target.
 - [ ] Confirm `.recovery-durability.lock` and `.operations-io.lock` are regular non-symlink files in `plugins/InfinityParkour/`. Replace each with a symlink and a directory in stopped disposable fixtures and require fail-closed startup before journal/audit inspection. Never delete any of the three lock files to clear ownership; an unlocked file may remain normally, and deleting a still-locked Unix pathname can defeat exclusivity.
 - [ ] Stop the first instance with a successful repository drain, then start a replacement against the same database. Require successful lock acquisition even if the unlocked lock file remains on disk; never make deletion of that file part of normal startup.
-- [ ] Require a startup log naming a verified sibling backup like `database.db.pre-migration-v2-<epoch>.sqlite`.
+- [ ] Require a startup log naming a verified sibling backup like `database.db.pre-migration-v3-<epoch>.sqlite`.
 - [ ] Confirm the backup exists, is non-empty, and independently returns `PRAGMA quick_check = ok`.
-- [ ] Require `PRAGMA user_version = 2` after migration.
-- [ ] Confirm `schema_migrations` records both the UUID repository and schema-v2 durability migration.
-- [ ] Confirm these tables exist: `scoreboard`, `schema_migrations`, `seasons`, `season_scores`, `run_history`, `reward_plans`, `reward_steps`, and `reward_tombstones`.
+- [ ] Require `PRAGMA user_version = 3` after migration.
+- [ ] Confirm `schema_migrations` records schema versions 1, 2, and 3.
+- [ ] Confirm these tables exist: `scoreboard`, `schema_migrations`, `seasons`, `season_scores`, `run_history`, `reward_plans`, `reward_steps`, `reward_tombstones`, `player_preferences`, `category_scores`, and `run_category_scores`.
 - [ ] Confirm required unique/ranking/status indexes and foreign keys exist.
 - [ ] Corrupt a disposable durability-table constraint, foreign key, and same-named index definition one at a time; require fail-closed startup rather than silent acceptance or replacement.
 - [ ] Re-run the baseline aggregates and require exactly 100 rows, 100 UUIDs, sum 4256, and max 149.
@@ -176,7 +176,12 @@ LIMIT 10;
 - [ ] On another disposable database, add a username-only/null-UUID row and confirm it remains unresolved rather than being guessed from CMI or the internet.
 - [ ] Confirm an unresolved row remains visible in ranking but cannot satisfy UUID player stats.
 - [ ] Confirm UUID-only export refuses a snapshot containing any unresolved row and creates no partial CSV/JSON pair.
-- [ ] On disposable corrupt cases, confirm malformed nonblank UUIDs, duplicate UUIDs, incompatible tables/indexes, and a schema version newer than 2 disable the plugin safely without mutating the source copy.
+- [ ] On disposable corrupt cases, confirm malformed nonblank UUIDs, duplicate UUIDs, incompatible tables/indexes, and a schema version newer than 3 disable the plugin safely without mutating the source copy.
+- [ ] Create more exact automatic migration backups than the configured retention. Require every candidate to pass `quick_check`, only the oldest excess automatic files to be pruned, the doctor to report retained/configured/pruned counts, and a nonmatching operator-named backup to remain byte-identical.
+- [ ] Replace one exact automatic backup candidate with a corrupt file, symlink, and directory in separate stopped fixtures. Require fail-closed startup and no deletion of any other backup.
+- [ ] Complete/retry one run with Combo and Flawless projections. Require one Classic projection, exact idempotent category rows, no duplicate, and unchanged Classic table/top-ten semantics.
+- [ ] Save each particle mode and sound/title toggle, restart, and require UUID-owned preferences to survive without creating a Classic leaderboard row.
+- [ ] Issue particle, sound, and title changes rapidly without waiting for earlier replies. Require the single SQLite writer to merge all three field updates without a lost update, then reconnect and restart to confirm the combined state.
 
 ## 4. Configuration version 2 and safe reload
 
@@ -204,8 +209,8 @@ LIMIT 10;
 
 ## 5. Paper startup and dependency matrix
 
-- [ ] Start with Java 25 and Paper 26.2 build 60 beta or the approved newer 26.2 build.
-- [ ] Require `InfinityParkour v2.3.0-007` to enable once with 100 preserved scores.
+- [ ] Start with Java 25 and Paper 26.2 build 61 beta or the approved newer 26.2 build.
+- [ ] Require `InfinityParkour v2.4.0-008` to enable once with 100 preserved scores.
 - [ ] Require no WalkThePlank exception, deprecated-method warning, task rejection, linkage error, or unexpected startup/shutdown warning. The JVM's JOML `sun.misc.Unsafe` warning is emitted by Paper's `joml-1.10.8.jar`, not this plugin.
 - [ ] Break configuration or journal initialization in a disposable profile and require startup to abort. The disable audit says `startup_completed:false` and `clean:false`; the log explicitly refuses a clean-restoration claim.
 - [ ] Run `/plugins` or equivalent and confirm no duplicate plugin-name conflict.
@@ -225,7 +230,8 @@ LIMIT 10;
 - [ ] Inspect client syntax/suggestions: online-player targets must use the single-player Paper argument; run/season/plan/player ownership IDs must reject non-UUID input before execution; list limits must reject values outside 1–100; reward step indexes must reject negatives.
 - [ ] Confirm arena/season suggestions refresh from current validated runtime state after `/walk admin reload`, and permissions are re-evaluated for visibility and again immediately before asynchronous or mutating work.
 - [ ] Confirm `remove`, reward `resolve`, and reward `abandon` cannot execute without their literal `confirm` node. A partial command must perform no mutation or command dispatch.
-- [ ] As a default player, test `/walk`, `play`, every queue action, `leave`, `stats`, `top all-time`, `top season`, `info`, and `help`.
+- [ ] As a default player, test `/walk`, `play`, every queue action, `leave`, `stats classic|combo|flawless`, `top all-time|season|combo|flawless`, `settings`, `info`, and `help`.
+- [ ] Give a player only `infinityparkour.preferences`; require `/walk settings` plus particles full/reduced/off and sounds/titles on/off, while denying play, stats, top, and every admin action.
 - [ ] Confirm `/walk help` and tab completion show only permitted commands.
 - [ ] Confirm `/walk admin help` and admin tab completion show only granted administrative leaves.
 - [ ] Test console-safe forms and player-only rejection for GUI/location-taking commands.
@@ -252,7 +258,7 @@ LIMIT 10;
 - [ ] Run `/walk admin doctor` from console and from a player granted only `infinityparkour.admin.debug`; require permission-filtered help/tab completion and deny a default player.
 - [ ] Require doctor to identify the exact source commit and clean/dirty state, Java/Paper compile targets versus runtime, optional hooks, and configured command-root availability without exposing provider commands.
 - [ ] Require doctor to report queue/task health, restoration journal/quarantine counts, player-recovery counts, and uncertain reward totals consistently with `/walk admin status` and `/walk debug health`.
-- [ ] Require doctor to acknowledge the asynchronous SQLite probe immediately, then report `quick_check`, database/WAL byte counts, migration-backup count, and non-negative latency without blocking command handling or the primary server thread.
+- [ ] Require doctor to acknowledge the asynchronous SQLite probe immediately, then report `quick_check`, database/WAL byte counts, retained/configured/pruned migration-backup counts, audit verified/healthy sequence/anchor state, and non-negative latency without blocking command handling or the primary server thread.
 - [ ] Seed recognizable names, coordinates, paths, reward commands, credentials, SQL fragments, and exception text in a disposable fixture/failure. None may appear in doctor success or failure output.
 
 ## 7. GUI and inventory abuse
@@ -319,6 +325,10 @@ LIMIT 10;
 - [ ] Start a run while the season is active, close the season while it is in flight, then finish. Require that run to remain associated with the captured season and also update all-time.
 - [ ] Start a later run with no active season and confirm it affects only all-time.
 - [ ] Confirm `/walk top all-time` and `/walk top season` select the intended independent snapshot.
+- [ ] With `categories.combo.maximumGapSeconds` set to a testable value, complete a run whose longest streak is shorter than its Classic score. Require `/walk stats/top combo` to record only the maximum streak and Classic to retain the ordinary score.
+- [ ] Complete one within-gap run and one run with a late gap. Require only the first final score in `/walk stats/top flawless`; neither may multiply or rewrite Classic.
+- [ ] Hit every configured milestone. Require one bounded action-bar notification plus enabled title/sound/particle feedback, and no console command or reward-plan side effect.
+- [ ] Repeat milestones with particles `full`, `reduced`, `off`, sounds off, and titles off. Require only WalkThePlank cosmetic output to change, exact persisted settings after reconnect/restart, and identical scoring/category results.
 - [ ] Close, reopen to planned, activate, close again, and archive using explicit commands.
 - [ ] Confirm an archived season cannot reopen/activate and a non-closed season cannot archive.
 - [ ] Attempt every transition with a timestamp before the season's current transition in a repository fixture; require rejection so lifecycle time never moves backwards.
@@ -381,6 +391,12 @@ Run economic/reward tests only on disposable accounts and a staging economy/inve
 
 - [ ] Start in Survival and Adventure; reject Creative/Spectator.
 - [ ] Reject start with Speed, Jump Boost, Levitation, Slow Falling, Dolphin's Grace, or Wind Charged.
+- [ ] Reject or block elytra/glide, active flight, riptide, ender-pearl and chorus/consumable teleports, trident/wind-charge/projectile launch, vehicle/mob mounting, external velocity/knockback, and disallowed effects during a run. Require no invalid landing score.
+- [ ] Attempt the same actions repeatedly. Require bounded per-player/per-kind `security.movement_anomaly` records with suppressed counts, no coordinates/item data, and no automatic kick or ban.
+- [ ] Mutate allow-flight/flying/gliding/vehicle/riptide/effects/walk speed/movement attributes after event handlers using a disposable later listener. Require the once-per-second authoritative sweep to end the exact run as `MOVEMENT_MODIFIED`.
+- [ ] On a disqualified run that already had points, require retained run evidence with persisted score `0`, no Classic/Combo/Flawless projection, no reward intent/dispatch, restored player/world state, `WalkRunEndEvent#score() == 0`, and one audit result containing bounded observed/persisted scores plus `scoring_eligible=false`.
+- [ ] Cross the configured arena boundary without falling and perform two physically impossible sub-minimum-interval landings in controlled fixtures. Require fail-closed `MOVEMENT_MODIFIED` cleanup and zero score projection; calibrate the default 150 ms with real latency so ordinary sprint jumps never false-positive.
+- [ ] Let mobs/projectiles/explosions/pistons affect the arena/player from outside the region. Require native plugin damage, velocity, collision, block, and landing defenses to hold even when no WorldGuard-style region plugin is installed.
 - [ ] Begin with residual horizontal/vertical velocity, non-zero fall distance where safely reproducible, and a legitimate non-default walk speed. Require zero start and post-cleanup velocity, zero post-cleanup fall distance, normal run walk speed, and exact captured restoration of walk speed, health, food, saturation, exhaustion, allow-flight, flying, collision, and pre-run return location. Do not expect the original velocity or fall distance to be restored.
 - [ ] Equip or hold items that alter the movement-speed base or add a custom modifier and require admission denial without inventory mutation. Begin an eligible run, inject a modifier from a disposable plugin, and require one non-rewarding `MOVEMENT_MODIFIED` cleanup within the periodic sweep. Confirm ordinary sprinting remains valid and held-slot changes are denied during the run.
 - [ ] Confirm inventories, experience, potion effects, and game mode are not unexpectedly changed by the plugin.
@@ -446,6 +462,7 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 ## 15. PlaceholderAPI and public API/events
 
 - [ ] Parse every placeholder documented in `README.md` with a player who has no score, an all-time score, an active run, a queue position/readiness claim, and an active-season score.
+- [ ] Include current/max combo, current flawless, saved Combo/Flawless score/rank, category top-ten, and particle/sound/title preference placeholders in that matrix.
 - [ ] Confirm no-score/no-run/no-season values are stable `0`, `false`, or empty as documented.
 - [ ] Confirm all-time top 1–10 name/score/rank and season top 1–10 match command output, including tied competition ranks.
 - [ ] Confirm out-of-range/missing top positions return empty and malformed placeholder parameters do not throw.
@@ -470,6 +487,12 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 - [ ] Tamper with `config.yml.backup` after a disposable arena edit commits but before rollback. Require rollback to use the exact token-bound original bytes, not the tampered shared backup.
 - [ ] Disable while an arena edit is captured, queued, durably committed, and provisionally activated in separate runs. Require the FIFO shutdown reconciliation barrier to leave either a fully verified activation or the exact prior file; no committed-but-unactivated edit may escape.
 - [ ] Confirm `audit/audit.jsonl` is valid one-object-per-line JSON with timestamp, release, event, and only bounded safe fields.
+- [ ] Require every new record to include one chain UUID, increasing sequence, previous hash, and 64-hex SHA-256 record hash. Stop/restart across rotations and require doctor to report verified healthy continuity.
+- [ ] On stopped disposable copies, modify one same-length retained record, delete/truncate the current tail, break a previous hash, alter state, and alter the retention anchor. Require fail-closed startup in every case without silently resetting or deleting evidence.
+- [ ] Start once with a valid legacy unchained `audit.jsonl`. Require it to be preserved as an explicit `audit-legacy-*.jsonl`, a new chain at sequence 1, and no claim that the legacy segment was verified.
+- [ ] Force more than ten chain archives. Require sequence-ordered retention, an advanced durable anchor, successful restart verification, and no pruning of a legacy archive merely because it shares the audit directory.
+- [ ] Hard-kill archive pruning once after the staged rename but before the anchor commit, and once after the anchor commit but before staged-file deletion. Require restart to restore the archive in the first case, finish deletion in the second, verify the complete retained chain, and leave no `.pruning` file.
+- [ ] Delete only `audit-state.properties`, then delete both checkpoint sidecars while retained chained data exists. Both cases must fail startup rather than reclassify the chain as legacy. Separately interrupt an empty first startup after its zero-sequence anchor commit and require deterministic state-checkpoint recovery.
 - [ ] Exercise plugin, run, queue, reward/staff reward, season-transition, leaderboard-export, arena-edit success/failure/rollback, startup restoration, and operator-triggered recovery events; compare audit order/IDs to database records.
 - [ ] Confirm player-run arena edits, `/walk admin recover`, queue pause/resume/drain, admin stop/open, reload, and validate carry the correct operator UUID and `player` actor category. Repeat applicable commands from console and require an explicit `system` actor category with no fabricated player UUID; verify safe target/result/fingerprint fields.
 - [ ] Exercise doctor start, pass, warning, and SQLite-probe-failure paths. Require bounded `admin.doctor` audit outcomes with actor attribution and aggregate status only—never report contents, paths, SQL, commands, credentials, or exception messages.
@@ -484,7 +507,7 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 - [ ] Invoke doctor immediately before reload/disable and force a probe failure on a disposable database. Require a bounded privacy-safe result or contained cancellation, with no raw exception, rejected-task leak, shutdown hang, repair attempt, or database replacement.
 - [ ] Start and stop with no players, active runs, pending starts, queued/ready players, and quarantined records.
 - [ ] Clean shutdown must close menus, cancel starts, drain queue, restore sessions, retry quarantine, unregister API/PlaceholderAPI, and drain accepted database work for up to 15 seconds.
-- [ ] Require `WalkThePlank disabled; arena blocks and player state were restored` and no pending recovery/operations/database-write timeout in both build-007 controlled/console-smoke profiles.
+- [ ] Require `WalkThePlank disabled; arena blocks and player state were restored` and no pending recovery/operations/database-write timeout in both build-008 controlled/console-smoke profiles.
 - [ ] Treat `disabled with cleanup errors`, any remaining quarantine/pending restoration, or an unclassified database failure as no-go.
 - [ ] Force repository drain timeout/interruption in a synthetic test and confirm every accepted future reaches success or exceptional completion; no command caller may hang forever.
 - [ ] Confirm queued operations are rejected and settled deterministically on close timeout. Separately document that a SQLite JDBC call already running may outlive an unsuccessful close if interruption is ignored; treat that log/return path as no-go and never start a second process on the database until the first process is gone.
@@ -494,11 +517,11 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 ## 17. Test-server synchronization and regression pass
 
 - [ ] Run `./gradlew syncTestServer` only after source/build/migration gates pass.
-- [ ] Confirm build 007 is active and all older WalkThePlank/InfinityParkour JARs—including both `TEST-ONLY-` artifacts—are disabled/absent.
+- [ ] Confirm build 008 is active and all older WalkThePlank/InfinityParkour JARs—including both `TEST-ONLY-` artifacts—are disabled/absent.
 - [ ] Confirm copied live data belongs to the test server, not `_resources`.
 - [ ] Restart the synchronized server from a clean stop and repeat startup/info/validate/health/doctor/top/GUI/gameplay/queue/season/export/reward/recovery/disable smoke.
 - [ ] Search the full `latest.log` for `InfinityParkour`, `WalkThePlank`, `WARN`, `ERROR`, `SEVERE`, `Exception`, `deprecated`, and task rejection; classify every match.
-- [ ] Re-run `PRAGMA quick_check` and the 100-row/top-ten comparison after build-007 console smoke: 100 UUID rows, score sum 4256, maximum 149, unchanged top ten, `quick_check=ok`.
+- [ ] Re-run `PRAGMA quick_check` and the 100-row/top-ten comparison after build-008 console smoke: 100 UUID rows, score sum 4256, maximum 149, unchanged top ten, `quick_check=ok`.
 - [ ] Re-hash the staged JAR and compare it with the candidate record.
 
 ## 18. Rollback rehearsal
@@ -507,7 +530,7 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 - [ ] Restore the exact previous JAR and matched pre-deployment data folder together.
 - [ ] Start the previous supported environment and verify the all-time leaderboard/top ten.
 - [ ] Confirm the production runbook warns that database rollback discards later event scores and never reconciles by username.
-- [ ] Confirm pending build-007 restoration/player-recovery records are resolved or preserved before starting an older plugin that cannot read them.
+- [ ] Confirm pending build-008 restoration/player-recovery records are resolved or preserved before starting an older plugin that cannot read them.
 - [ ] Record rollback duration, responsible operator, file locations, and communication plan.
 
 ## 19. Go/no-go sign-off
@@ -528,7 +551,7 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 | Git commit | |
 | Artifact SHA-256 | |
 | Full stopped-server backup | |
-| Automatic schema-v2 backup | |
+| Automatic schema-v3 backup | |
 | Config fingerprint | |
 | Reward-risk owner | |
 | Rollback owner | |

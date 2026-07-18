@@ -28,7 +28,10 @@ import java.util.regex.Pattern;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.block.BlockType;
 import org.bukkit.configuration.InvalidConfigurationException;
@@ -103,6 +106,7 @@ public final class ConfigurationManager {
             "chat.movementAttributeActive",
             "chat.startFailed",
             "chat.sessionFailed",
+            "chat.runIntegrityFailed",
             "chat.runTimedOut",
             "mainGui.title",
             "mainGui.fillItem",
@@ -153,6 +157,24 @@ public final class ConfigurationManager {
             "arenaSelection",
             "arenaSelection.policy",
             "arenaSelection.pinnedArena",
+            "milestones",
+            "milestones.enabled",
+            "milestones.scores",
+            "milestones.sound",
+            "milestones.particle",
+            "milestones.particleCount",
+            "milestones.cooldownSeconds",
+            "categories",
+            "categories.combo",
+            "categories.combo.enabled",
+            "categories.combo.maximumGapSeconds",
+            "antiCheat",
+            "antiCheat.enabled",
+            "antiCheat.blockProjectiles",
+            "antiCheat.blockRiptide",
+            "antiCheat.blockExploitTeleports",
+            "antiCheat.minimumJumpIntervalMillis",
+            "antiCheat.anomalyAuditCooldownSeconds",
             "finishCommands",
             "permissions",
             "permissions.openGui",
@@ -163,6 +185,7 @@ public final class ConfigurationManager {
             "permissions.topCmd",
             "permissions.info",
             "permissions.help",
+            "permissions.preferences",
             "permissions.admin",
             "permissions.adminOpen",
             "permissions.adminDebug",
@@ -179,7 +202,8 @@ public final class ConfigurationManager {
             "database.type",
             "database.sqlite",
             "database.sqlite.file",
-            "database.sqlite.busyTimeoutMillis");
+            "database.sqlite.busyTimeoutMillis",
+            "database.sqlite.migrationBackupRetention");
 
     private final JavaPlugin plugin;
     private final Path dataFolder;
@@ -620,6 +644,28 @@ public final class ConfigurationManager {
                 new ArenaSelectionSettings(
                         ArenaSelectionPolicy.parse(source.getString("arenaSelection.policy", "RANDOM")),
                         Optional.ofNullable(source.getString("arenaSelection.pinnedArena"))),
+                new MilestoneSettings(
+                        source.getBoolean("milestones.enabled", true),
+                        source.getIntegerList("milestones.scores"),
+                        parseSound(source.getString(
+                                "milestones.sound", "minecraft:entity.player.levelup")),
+                        parseParticle(source.getString(
+                                "milestones.particle", "HAPPY_VILLAGER")),
+                        source.getInt("milestones.particleCount", 20),
+                        Duration.ofSeconds(source.getLong("milestones.cooldownSeconds", 2L))),
+                new ComboSettings(
+                        source.getBoolean("categories.combo.enabled", true),
+                        Duration.ofSeconds(source.getLong(
+                                "categories.combo.maximumGapSeconds", 8L))),
+                new AntiCheatSettings(
+                        source.getBoolean("antiCheat.enabled", true),
+                        source.getBoolean("antiCheat.blockProjectiles", true),
+                        source.getBoolean("antiCheat.blockRiptide", true),
+                        source.getBoolean("antiCheat.blockExploitTeleports", true),
+                        Duration.ofMillis(source.getLong(
+                                "antiCheat.minimumJumpIntervalMillis", 150L)),
+                        Duration.ofSeconds(source.getLong(
+                                "antiCheat.anomalyAuditCooldownSeconds", 10L))),
                 permissions);
         validateArenaLayout(parsedSettings);
         return parsedSettings;
@@ -635,6 +681,9 @@ public final class ConfigurationManager {
                 source.getString("permissions.topCmd", "infinityparkour.topcmd"),
                 source.getString("permissions.info", "infinityparkour.info"),
                 source.getString("permissions.help", "infinityparkour.help"),
+                source.getString(
+                        "permissions.preferences",
+                        "infinityparkour.preferences"),
                 source.getString("permissions.admin", "infinityparkour.admin"),
                 source.getString("permissions.adminOpen", "infinityparkour.admin.open"),
                 source.getString("permissions.adminDebug", "infinityparkour.admin.debug"),
@@ -682,7 +731,13 @@ public final class ConfigurationManager {
                 ? SqlitePathGuard.resolve(pluginDataFolder, configuredFile)
                 : resolveConfinedDatabasePath(pluginDataFolder, configuredFile);
         long timeoutMillis = source.getLong("database.sqlite.busyTimeoutMillis", 5_000L);
-        return DatabaseSettings.sqlite(databaseFile, Duration.ofMillis(timeoutMillis));
+        int backupRetention = source.getInt(
+                "database.sqlite.migrationBackupRetention",
+                DatabaseSettings.DEFAULT_MIGRATION_BACKUP_RETENTION);
+        return DatabaseSettings.sqlite(
+                databaseFile,
+                Duration.ofMillis(timeoutMillis),
+                backupRetention);
     }
 
     private static Path resolveConfinedDatabasePath(
@@ -903,6 +958,21 @@ public final class ConfigurationManager {
         }
     }
 
+    private static Sound parseSound(String configuredName) {
+        if (configuredName == null || configuredName.isBlank()) {
+            throw new IllegalArgumentException("Milestone sound must be a nonblank registry key");
+        }
+        String configuredKey = configuredName.strip().toLowerCase(Locale.ROOT);
+        NamespacedKey key = NamespacedKey.fromString(
+                configuredKey.indexOf(':') >= 0 ? configuredKey : "minecraft:" + configuredKey);
+        Sound sound = key == null ? null : Registry.SOUND_EVENT.get(key);
+        if (sound == null) {
+            throw new IllegalArgumentException(
+                    "Invalid milestone sound '" + configuredName + "'");
+        }
+        return sound;
+    }
+
     static Particle requireParticleWithoutData(Particle particle, String configuredName) {
         Objects.requireNonNull(particle, "particle");
         Objects.requireNonNull(configuredName, "configuredName");
@@ -979,9 +1049,88 @@ public final class ConfigurationManager {
                 "particle.show",
                 "runFinishCommands",
                 "rewards.onlyOnPersonalBest",
-                "queue.enabled")) {
+                "queue.enabled",
+                "milestones.enabled",
+                "categories.combo.enabled",
+                "antiCheat.enabled",
+                "antiCheat.blockProjectiles",
+                "antiCheat.blockRiptide",
+                "antiCheat.blockExploitTeleports")) {
             requireBoolean(source.get(path), path, problems);
         }
+        Object rawMilestoneScores = source.get("milestones.scores");
+        if (!(rawMilestoneScores instanceof List<?> scores)) {
+            problems.error("milestones.scores must be a list");
+        } else {
+            Set<Integer> uniqueScores = new HashSet<>();
+            if (scores.size() > 64) {
+                problems.error("milestones.scores must not exceed 64 entries");
+            }
+            for (Object rawScore : scores) {
+                if (!(rawScore instanceof Number number)
+                        || number.doubleValue() != number.intValue()
+                        || number.intValue() < 1
+                        || number.intValue() > 1_000_000
+                        || !uniqueScores.add(number.intValue())) {
+                    problems.error(
+                            "milestones.scores must contain unique integers between 1 and 1000000");
+                    break;
+                }
+            }
+        }
+        Object rawMilestoneSound = source.get("milestones.sound");
+        if (!(rawMilestoneSound instanceof String soundName)
+                || soundName.isBlank()) {
+            problems.error("milestones.sound must be a nonblank sound registry key");
+        } else {
+            try {
+                parseSound(soundName);
+            } catch (IllegalArgumentException exception) {
+                problems.error("milestones.sound does not name a supported sound");
+            }
+        }
+        Object rawMilestoneParticle = source.get("milestones.particle");
+        if (!(rawMilestoneParticle instanceof String milestoneParticle)
+                || milestoneParticle.isBlank()) {
+            problems.error("milestones.particle must be a nonblank particle name");
+        } else {
+            try {
+                parseParticle(milestoneParticle);
+            } catch (IllegalArgumentException exception) {
+                problems.error(
+                        "milestones.particle does not name a supported untyped particle");
+            }
+        }
+        validateIntegerRange(
+                source,
+                "milestones.particleCount",
+                0,
+                1_000,
+                problems);
+        validateIntegerRange(
+                source,
+                "milestones.cooldownSeconds",
+                0,
+                60,
+                problems);
+        validateIntegerRange(
+                source,
+                "categories.combo.maximumGapSeconds",
+                1,
+                60,
+                problems);
+        validateIntegerRange(
+                source,
+                "antiCheat.minimumJumpIntervalMillis",
+                0,
+                2_000,
+                problems);
+        validateIntegerRange(
+                source,
+                "antiCheat.anomalyAuditCooldownSeconds",
+                0,
+                600,
+                problems);
         Integer joinCooldown = scalarInteger(source, "queue.joinCooldownSeconds", problems);
         Integer readinessWindow = scalarInteger(source, "queue.readinessWindowSeconds", problems);
         Integer reminderInterval = scalarInteger(source, "queue.reminderIntervalSeconds", problems);
@@ -1023,6 +1172,18 @@ public final class ConfigurationManager {
             } catch (IllegalArgumentException exception) {
                 problems.error("particle.type does not name a supported particle");
             }
+        }
+    }
+
+    private static void validateIntegerRange(
+            YamlConfiguration source,
+            String path,
+            int minimum,
+            int maximum,
+            ValidationAccumulator problems) {
+        Integer value = scalarInteger(source, path, problems);
+        if (value != null && (value < minimum || value > maximum)) {
+            problems.error(path + " must be between " + minimum + " and " + maximum);
         }
     }
 
@@ -1396,6 +1557,7 @@ public final class ConfigurationManager {
                 "topCmd",
                 "info",
                 "help",
+                "preferences",
                 "admin",
                 "adminOpen",
                 "adminDebug",
@@ -1452,6 +1614,15 @@ public final class ConfigurationManager {
         Integer timeout = scalarInteger(source, "database.sqlite.busyTimeoutMillis", problems);
         if (timeout != null && (timeout <= 0 || timeout > 600_000)) {
             problems.error("database.sqlite.busyTimeoutMillis must be between 1 and 600000");
+        }
+        Integer backupRetention = scalarInteger(
+                source, "database.sqlite.migrationBackupRetention", problems);
+        if (backupRetention != null
+                && (backupRetention < DatabaseSettings.MINIMUM_MIGRATION_BACKUP_RETENTION
+                        || backupRetention > DatabaseSettings.MAXIMUM_MIGRATION_BACKUP_RETENTION)) {
+            problems.error("database.sqlite.migrationBackupRetention must be between "
+                    + DatabaseSettings.MINIMUM_MIGRATION_BACKUP_RETENTION + " and "
+                    + DatabaseSettings.MAXIMUM_MIGRATION_BACKUP_RETENTION);
         }
     }
 

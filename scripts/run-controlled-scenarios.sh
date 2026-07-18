@@ -495,10 +495,10 @@ assert_runtime_identity() {
         || fail "server log does not identify Paper 26.2 and its build"
     [[ "$api_build" =~ ^[0-9]+$ ]] \
         || fail "server log does not identify the Paper 26.2 beta API build"
-    ((paper_build >= 60)) \
-        || fail "Paper runtime build $paper_build is below required build 60"
-    ((api_build >= 60)) \
-        || fail "Paper API runtime build $api_build is below required build 60"
+    ((paper_build >= 61)) \
+        || fail "Paper runtime build $paper_build is below required build 61"
+    ((api_build >= 61)) \
+        || fail "Paper API runtime build $api_build is below required build 61"
     note "verified runtime identity: Java 25, Paper 26.2 build $paper_build (API build $api_build)"
 }
 
@@ -555,8 +555,8 @@ record_sqlite_evidence() {
         || fail "SQLite synchronous was not numeric after $phase: $synchronous"
     [[ "$foreign_keys" =~ ^[01]$ ]] \
         || fail "SQLite foreign_keys was not boolean after $phase: $foreign_keys"
-    [[ "$user_version" == 2 ]] \
-        || fail "SQLite user_version was not schema v2 after $phase: $user_version"
+    [[ "$user_version" == 3 ]] \
+        || fail "SQLite user_version was not schema v3 after $phase: $user_version"
     [[ "$line_count" == 5 && "$quick_check" == ok ]] \
         || fail "SQLite quick_check failed after $phase: ${quick_check:-no result}"
 

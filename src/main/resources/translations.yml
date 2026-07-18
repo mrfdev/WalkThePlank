@@ -54,6 +54,7 @@ chat:
   movementAttributeActive: 'Remove equipment or modifiers that change movement speed before starting WalkThePlank.'
   startFailed: 'The arena could not start safely. Staff can find the reason in the console.'
   sessionFailed: 'The course could not generate another safe jump, so your run was ended.'
+  runIntegrityFailed: 'Your run ended because its movement state could not be verified. No score was recorded.'
   runTimedOut: 'Your run ended because its maximum or idle time was reached.'
   scoreMsgs:
     - 'Nice jump! Score: &f{{score}}'

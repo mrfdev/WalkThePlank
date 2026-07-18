@@ -164,6 +164,7 @@ final class DatabaseCommands {
         DurabilityMetrics durability = support.scores.durabilityMetrics();
         var runtimeMetrics = support.games.operationalMetrics();
         var operationsIo = support.operations.ioStatus();
+        var auditHealth = support.operations.auditHealth();
         var recoveryDurability = support.games.recoveryDurabilityStatus();
         QueueStatus queue = support.games.queueStatus();
         GameManager.TaskHealth gameTasks = support.games.taskHealth();
@@ -231,6 +232,9 @@ final class DatabaseCommands {
                 : 0;
         warnings += durability.lastDatabaseFailure().isPresent() ? 1 : 0;
         warnings += runtimeMetrics.degraded() ? 1 : 0;
+        warnings += auditHealth.verifiedAtStartup() && auditHealth.writerHealthy()
+                ? 0
+                : 1;
         warnings += operationsIo.failed() > 0L
                         || operationsIo.rejected() > 0L
                         || operationsIo.closing()
@@ -316,7 +320,9 @@ final class DatabaseCommands {
         support.sendField(
                 sender,
                 "Migration backups",
-                Integer.toString(database.migrationBackupCount()));
+                database.migrationBackupCount() + " retained / "
+                        + database.migrationBackupRetention() + " configured / "
+                        + database.migrationBackupsPrunedAtStartup() + " pruned at startup");
         support.sendField(
                 sender,
                 "Score rows",
@@ -399,6 +405,14 @@ final class DatabaseCommands {
                         + workerState(
                                 operationsIo.terminated(),
                                 operationsIo.closing()));
+        support.sendField(
+                sender,
+                "Audit chain",
+                (auditHealth.verifiedAtStartup() ? "verified" : "unverified")
+                        + " / "
+                        + (auditHealth.writerHealthy() ? "healthy" : "FAILED")
+                        + " / sequence " + auditHealth.sequence()
+                        + " / anchor " + auditHealth.anchorSequence());
         support.sendField(
                 sender,
                 "Recovery durability",
@@ -581,7 +595,7 @@ final class DatabaseCommands {
         support.sendHeader(sender, "Diagnostics: commands");
         support.sendLine(
                 sender,
-                "&7Player: &f/walk, play, queue, leave, stats, top, info, help");
+                "&7Player: &f/walk, play, queue, leave, stats, top, settings, info, help");
         support.sendLine(
                 sender,
                 "&7Staff: &f/walk admin open, reload, stop, recover, validate, "
@@ -607,6 +621,7 @@ final class DatabaseCommands {
                 Map.entry("top", permissions.top()),
                 Map.entry("info", permissions.info()),
                 Map.entry("help", permissions.help()),
+                Map.entry("preferences", permissions.preferences()),
                 Map.entry("admin", permissions.admin()),
                 Map.entry("reload", permissions.reload()),
                 Map.entry("admin.open", permissions.adminOpen()),

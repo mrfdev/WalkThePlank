@@ -21,6 +21,7 @@ permissions:
       infinityparkour.topcmd: true
       infinityparkour.info: true
       infinityparkour.help: true
+      infinityparkour.preferences: true
   infinityparkour.admin:
     description: Grants all WalkThePlank administrative commands.
     default: op
@@ -57,6 +58,9 @@ permissions:
     default: false
   infinityparkour.help:
     description: View permission-filtered WalkThePlank command help.
+    default: false
+  infinityparkour.preferences:
+    description: View and change personal WalkThePlank accessibility preferences.
     default: false
   infinityparkour.reload:
     description: Reload WalkThePlank configuration.

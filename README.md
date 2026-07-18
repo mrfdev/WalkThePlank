@@ -12,15 +12,15 @@ intermediate builds from this modernization and are fully superseded.
 
 The Bukkit plugin name intentionally remains `InfinityParkour`. This preserves the existing data directory at `plugins/InfinityParkour/`, so the live `config.yml`, `translations.yml`, and `database.db` can be upgraded in place without renaming player data.
 
-Current source release: **v2.3.0, build 007**
+Current source release: **v2.4.0, build 008**
 
 Expected standalone artifact:
 
 ```text
-1MB-WalkThePlank-v2.3.0-007-j25-26.2.jar
+1MB-WalkThePlank-v2.4.0-008-j25-26.2.jar
 ```
 
-> Build 007 is a command-architecture candidate until every release gate in [checklist-walktheplank.md](checklist-walktheplank.md) is completed against the final JAR and a production-like server copy. Build-006 runtime evidence is historical; the exact clean build-007 candidate still needs controlled-scenario reruns, final smoke, freeze, and human approval.
+> Build 007 was frozen as `v2.3.0-007-rc.1` after its controlled scenarios, standalone/full-stack Paper smoke, reproducibility, and test-server synchronization passed. Build 008 changes persistence and gameplay fairness, so build-007 evidence is historical: the exact clean build-008 candidate still needs its own scenario reruns, Paper build-61-or-newer smoke, live-copy schema-v3 rehearsal, freeze, synchronization, and human approval.
 
 See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-walktheplank.md](feature-improvements-walktheplank.md) for the authoritative future-development TODO and implemented-versus-remaining status.
 
@@ -38,31 +38,33 @@ See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-w
 - A pipelined successor platform begins durable preparation while the player traverses the current jump and is pre-placed when ready; an early landing waits for the same exact completion without asynchronous world mutation. Retired blocks are restored and verified on the primary thread; journal delete and directory fsync complete off-thread before their exact block lease is released.
 - Paper one-block structure snapshots for original block data and block-entity contents. Known stateful/workstation material families—including furnaces, barrels, chests, copper-chest variants, shelves, and note blocks—are denied as generated platforms without using Paper's deprecated interactable test. Restoration of a pre-existing tile/container/sign/PDC block remains a required beta acceptance test.
 - Active-arena protection against interaction, breaking, placement, buckets, fluids, sponges, fire, block transforms, explosions, pistons, and entity block changes.
-- Movement hardening while playing: damage and hunger are cancelled; flight, gliding, vehicles, external velocity, configured potion-effect advantages, and non-vanilla movement-speed attribute modifiers are blocked; residual velocity and Bukkit walk speed are normalized; Survival or Adventure mode is required. Eligibility is rechecked before activation and every second.
+- Movement hardening while playing: damage and hunger are cancelled; flight, elytra/gliding, riptide, ender-pearl/consumable teleports, projectile launch, vehicles/mounts, external velocity, configured potion-effect advantages, and non-vanilla movement-speed/walk-speed state are blocked or disqualify altered runs. Arena bounds and a conservative minimum inter-jump interval are checked server-side. Eligibility is rechecked before activation and every second; anomalies are rate-limited into the audit and never cause an automatic ban.
 - Active-run interaction isolation: outgoing player/projectile damage, item pickup/drop, inventory click/drag, hand swaps, held-slot changes, and entity interaction are denied while the run is active.
 - Server-side landing checks for ground support, finite non-ascending vertical velocity, and the exact intact target block.
 - A typed-holder 27-slot GUI with tutorial, play/queue behavior, personal statistics, permission-filtered leaderboard lore, click/drag cancellation, and a bounded menu-open cooldown. Every server-side session binds its owner UUID, a random nonce, a monotonic generation, and the exact inventory; stale/duplicate clicks are suppressed, only one action may be pending, and current permission/game state is revalidated immediately before execution.
 - UUID-owned all-time personal bests with competition ranking, last-known-name refresh, and a live top ten.
+- Separate Combo and Flawless personal-best categories. Combo is the longest configured time-target streak; Flawless records the final Classic score only when every transition meets that target. Neither category changes or multiplies Classic.
+- Configurable native milestones using Adventure action bars/titles and Paper sounds/particles, with UUID-owned full/reduced/off particles and independent sound/title preferences through `/walk settings`.
 - Explicit event seasons with planned, active, closed, and archived lifecycle states. Starting a run captures the active season, so closing a season does not silently redirect an already-started result.
 - Durable run history containing run UUID, player UUID, last-known name, arena, start/end, score or interruption state, end reason, release, season, and reward-plan association. The newest 10,000 prunable terminal rows are retained in addition to every active or unresolved row.
 - Permission-separated staff run investigation by exact UUID, status, arena, or season, with bounded redacted output and linked reward-plan state.
 - A reward execution ledger with deterministic plan IDs, idempotency keys, command roots and SHA-256 hashes, atomic run-completion/reward-intent persistence, per-step dispatch states, a per-player completion barrier, and startup freezing of uncertain work without automatic replay.
 - A strict 1–32-entry reward command-root allow-list checked during configuration validation and again at runtime before command-map lookup or dispatch. The bundled roots are `say`, `cmi`, `uf`, and `welcomes`; operators should remove providers they do not intentionally use.
 - Atomic UUID-only CSV and JSON exports for all-time, active-season, and historical-season leaderboards. CSV fields receive spreadsheet-formula neutralization as defense in depth.
-- Schema-v2 SQLite migration with a verified pre-migration backup, schema/index/foreign-key validation, preservation of existing UUID-linked score rows, and exclusive process ownership of the configured database.
+- Schema-v3 SQLite migration with a verified pre-migration backup, bounded verified automatic-backup retention, schema/index/foreign-key validation, preservation of existing UUID-linked Classic rows, and exclusive process ownership of the configured database.
 - A built-in PlaceholderAPI expansion for all-time, season, queue, arena, and active-run values, backed by one immutable game-state publication per callback so asynchronous requests never traverse Bukkit-thread mutable collections.
 - A read-only Bukkit services API plus primary-thread lifecycle events.
 - Permission-filtered help, build information, safe diagnostics, health counters, configuration validation, and guarded in-game arena editing.
 - A native Paper lifecycle-registered Brigadier command tree with typed online-player, UUID, bounded-integer, enum-literal, arena-ID, season-name, and explicit-confirmation arguments. Command behavior is separated into player, queue, arena, season, reward, investigation, and database modules; `plugin.yml` remains the plugin descriptor but no longer owns legacy command execution or tab completion.
 - Trusted translation formatting is parsed before dynamic values are inserted as literal Adventure components. Existing unmarked ampersand templates remain supported, while an explicit `minimessage:` prefix opts a trusted template into MiniMessage.
 - `/walk admin doctor` creates a bounded privacy-safe support report, schedules its read-only SQLite integrity/storage probe off the primary server thread, and reports both bounded I/O workers without paths or record contents.
-- A compact rotating JSONL audit stream for plugin, run, queue, and reward lifecycle events. Prepared immutable records are written by a separate bounded operations worker, so audit rotation, exports, or configuration commits cannot delay recovery journals. Raw reward commands and arbitrary nested data are excluded.
+- A compact rotating SHA-256-chained JSONL audit stream for plugin, run, queue, security-anomaly, and reward lifecycle events. Restart verifies every retained record against durable state and a retention anchor; existing unchained logs are preserved as explicitly named legacy archives. Prepared immutable records are written by a separate bounded operations worker, so audit rotation, exports, or configuration commits cannot delay recovery journals. Raw reward commands and arbitrary nested data are excluded.
 - SQLite-only standalone packaging. The shaded JAR includes SQLite JDBC and intentionally includes no MySQL/MariaDB connector, Paper classes, PlaceholderAPI classes, or live `.db` data.
 - Strict Java compilation with `-Xlint:all -Werror`; startup configuration, database, journal, or identity failures disable the plugin instead of deliberately continuing with partial state. A partially completed enable is explicitly reported as startup-aborted and never claims clean restoration.
 
 ## Requirements and dependencies
 
-- Paper **26.2 build 60 beta or newer** on the 26.2 line.
+- Paper **26.2 build 61 beta or newer** on the 26.2 line.
 - Java **25** for both building and running. Compilation uses `--release 25`.
 - PlaceholderAPI is optional. The compile target is **2.12.3**; without it, only placeholders are unavailable.
 - SQLite requires no separate service. SQLite JDBC **3.53.2.0** is shaded into the standalone artifact.
@@ -85,16 +87,16 @@ Build the deployment artifact with the checked-in Gradle wrapper:
 The deployable file is:
 
 ```text
-build/libs/1MB-WalkThePlank-v2.3.0-007-j25-26.2.jar
+build/libs/1MB-WalkThePlank-v2.4.0-008-j25-26.2.jar
 ```
 
 Do not deploy the `-unshaded.jar`; it does not contain SQLite JDBC. `build` runs the automated tests, creates the shaded artifact, and executes the archive/metadata verification gate. `freezeCandidate` additionally rejects a dirty Git tree. Every candidate embeds the full source commit and strict dirty state in `build-info.properties` and the JAR manifest; `/walk info`, `/walk debug overview`, and startup show the abbreviated source label.
 
-Build 006's runtime-modernization machine evidence is preserved historically in the annotated `v2.2.0-006-rc.1` tag and its ignored operator release archive. Those results prove the previous artifact, not build 007. The exact clean build-007 candidate needs two byte-identical builds, repeated scenario-profile evidence, Paper smoke, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
+Build 007's completed machine evidence is preserved historically in the annotated `v2.3.0-007-rc.1` tag and its ignored operator release archive. Those results prove that artifact, not build 008. The exact clean build-008 candidate needs two byte-identical builds, repeated scenario-profile evidence, Paper smoke, live-copy schema-v3 preservation, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
 
 | Release property | Value |
 | --- | --- |
-| Filename | `1MB-WalkThePlank-v2.3.0-007-j25-26.2.jar` |
+| Filename | `1MB-WalkThePlank-v2.4.0-008-j25-26.2.jar` |
 | Source identity | Full Git commit plus strict clean/dirty state embedded in the JAR |
 | Final size and SHA-256 | Annotated candidate tag and operator release archive |
 | Automated test result | Must pass with zero failures/errors/skips and strict Java 25 compilation |
@@ -115,11 +117,11 @@ Useful build commands:
 ./gradlew syncTestServer
 ```
 
-`releaseInfo` must print version `2.3.0`, build `007`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 007 into the active plugin directory.
+`releaseInfo` must print version `2.4.0`, build `008`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 008 into the active plugin directory.
 
 ## Install or upgrade
 
-> Stop Paper and take an operator-controlled backup before the first build-007 start. The automatic SQLite migration backup is an additional safeguard, not a substitute for a full server/data backup.
+> Stop Paper and take an operator-controlled backup before the first build-008 start. The automatic SQLite migration backup is an additional safeguard, not a substitute for a full server/data backup.
 
 For an existing server:
 
@@ -128,8 +130,8 @@ For an existing server:
 3. Back up the old plugin JAR and the complete `plugins/InfinityParkour/` directory as one matched rollback set.
 4. Keep the data directory named `plugins/InfinityParkour/`.
 5. Remove or disable every older InfinityParkour/WalkThePlank JAR. Paper must see only one plugin with the `InfinityParkour` name.
-6. Copy `1MB-WalkThePlank-v2.3.0-007-j25-26.2.jar` into `plugins/`.
-7. Start Paper and inspect the complete startup log. A successful live-data start should report 100 preserved scores and, on the first schema-v2 migration only, a verified pre-migration backup path.
+6. Copy `1MB-WalkThePlank-v2.4.0-008-j25-26.2.jar` into `plugins/`.
+7. Start Paper and inspect the complete startup log. A successful live-data start should report 100 preserved Classic scores and, on the first schema-v3 migration only, a verified pre-migration backup path.
 8. Run `/walk info`, `/walk admin validate`, `/walk admin status`, `/walk admin doctor`, `/walk debug all`, and the full beta checklist before allowing players in.
 9. Stop Paper cleanly once and require the clean restoration/disable message before the event rehearsal is accepted.
 
@@ -158,9 +160,17 @@ The primary command is `/walktheplank`. `/walk`, `/infinityparkour`, and `/infp`
 | `/walk queue leave` | `infinityparkour.play` | Leaves the queue and starts the configured rejoin cooldown. |
 | `/walk queue ready` | `infinityparkour.play` | Accepts an active readiness assignment and starts the reserved run. |
 | `/walk leave` | `infinityparkour.leavearena` | Ends the active run safely. An active player can still leave if this permission is revoked mid-run. |
-| `/walk stats` | `infinityparkour.statscmd` | Shows UUID-linked all-time personal best, rank, population, and top percentage. |
+| `/walk stats [classic]` | `infinityparkour.statscmd` | Shows UUID-linked Classic personal best, rank, population, and top percentage. |
+| `/walk stats combo` | `infinityparkour.statscmd` | Shows the longest within-target jump streak and category rank. |
+| `/walk stats flawless` | `infinityparkour.statscmd` | Shows the best run in which every transition met the configured combo target. |
 | `/walk top [all-time]` | `infinityparkour.topcmd` | Shows the all-time top ten. |
 | `/walk top season` | `infinityparkour.topcmd` | Shows the active-season top ten, or reports that no season is active. |
+| `/walk top combo` | `infinityparkour.topcmd` | Shows the separate Combo top ten. |
+| `/walk top flawless` | `infinityparkour.topcmd` | Shows the separate Flawless top ten. |
+| `/walk settings` | `infinityparkour.preferences` | Shows personal particle, sound, and title preferences. |
+| `/walk settings particles <full\|reduced\|off>` | `infinityparkour.preferences` | Persists WalkThePlank-owned particle density for this UUID. |
+| `/walk settings sounds <on\|off>` | `infinityparkour.preferences` | Enables or disables milestone sounds for this UUID. |
+| `/walk settings titles <on\|off>` | `infinityparkour.preferences` | Enables or disables milestone titles for this UUID; action-bar feedback remains concise. |
 | `/walk info` | `infinityparkour.info` | Shows release, artifact, target platform, score count, arenas, and docs URL. |
 | `/walk help` | `infinityparkour.help` | Shows only commands the sender can use. |
 
@@ -284,6 +294,10 @@ Examples:
 /walk queue ready
 /walk top all-time
 /walk top season
+/walk top combo
+/walk stats flawless
+/walk settings particles reduced
+/walk settings sounds off
 /walk admin validate
 /walk admin arena create summer-main
 /walk admin queue pause
@@ -315,6 +329,7 @@ Defaults below are declared in `plugin.yml`. Leaf strings may be remapped under 
 | `infinityparkour.topcmd` | False; player parent grants it | All-time and active-season top ten, including GUI lore. |
 | `infinityparkour.info` | False; player parent grants it | `/walk info` and `/walk version`. |
 | `infinityparkour.help` | False; player parent grants it | Permission-filtered help. |
+| `infinityparkour.preferences` | False; player parent grants it | View/change UUID-owned particle, sound, and title preferences. |
 | `infinityparkour.reload` | False; admin parent grants it | Root/nested reload. |
 | `infinityparkour.admin.open` | False; admin parent grants it | Open another player's menu. |
 | `infinityparkour.admin.debug` | False; admin parent grants it | Status/debug pages and the privacy-safe `/walk admin doctor` support report. |
@@ -346,6 +361,16 @@ The built-in expansion identifier remains `infinityparkour`. No eCloud expansion
 | `%infinityparkour_season_percentile%` | Active-season top percentage, or `0`. |
 | `%infinityparkour_in_game%` | `true` only for an active run. |
 | `%infinityparkour_current_score%` | Current run score, or `0`. |
+| `%infinityparkour_current_combo%` | Current within-target streak, or `0`. |
+| `%infinityparkour_maximum_combo%` | Longest streak in the active run, or `0`. |
+| `%infinityparkour_current_flawless%` | `true` while every completed transition in the active run remains within the combo target. |
+| `%infinityparkour_combo_score%` | Saved Combo personal best, or `0`. |
+| `%infinityparkour_combo_rank%` | Saved Combo competition rank, or `0`. |
+| `%infinityparkour_flawless_score%` | Saved Flawless personal best, or `0`. |
+| `%infinityparkour_flawless_rank%` | Saved Flawless competition rank, or `0`. |
+| `%infinityparkour_particles%` | Personal particle mode: `full`, `reduced`, or `off`. |
+| `%infinityparkour_sounds%` | Personal milestone sound preference. |
+| `%infinityparkour_titles%` | Personal milestone title preference. |
 | `%infinityparkour_current_arena%` | Active arena ID, or an empty string. |
 | `%infinityparkour_elapsed_seconds%` | Active run elapsed seconds, or `0`. |
 | `%infinityparkour_idle_seconds%` | Seconds since the last successful jump, or `0`. |
@@ -376,6 +401,8 @@ The built-in expansion identifier remains `infinityparkour`. No eCloud expansion
 | `%infinityparkour_season_top_1_name%` … `%infinityparkour_season_top_10_name%` | Active-season name by position. |
 | `%infinityparkour_season_top_1_score%` … `%infinityparkour_season_top_10_score%` | Active-season score by position. |
 | `%infinityparkour_season_top_1_rank%` … `%infinityparkour_season_top_10_rank%` | Active-season competition rank by position. |
+| `%infinityparkour_combo_top_1_name%` … `%infinityparkour_combo_top_10_rank%` | Combo top-ten `name`, `score`, or `rank`. |
+| `%infinityparkour_flawless_top_1_name%` … `%infinityparkour_flawless_top_10_rank%` | Flawless top-ten `name`, `score`, or `rank`. |
 
 Examples:
 
@@ -384,6 +411,8 @@ Examples:
 /papi parse me %infinityparkour_queue_position%
 /papi parse me %infinityparkour_queue_waiting%
 /papi parse me %infinityparkour_active_season_name%
+/papi parse me %infinityparkour_current_combo%
+/papi parse me %infinityparkour_combo_top_1_name%: %infinityparkour_combo_top_1_score%
 /papi parse me %infinityparkour_season_top_1_name%: %infinityparkour_season_top_1_score%
 ```
 
@@ -404,6 +433,9 @@ The bundled [config.yml](src/main/resources/config.yml) is the authoritative def
 | `queue.*` | Enablement, 0–600 second join cooldown, 5–300 second readiness, and 2–60 second reminder interval. |
 | `arenaSelection.*` | Selection policy and required configured ID for `PINNED`. A busy pinned arena safely falls back to least-recently-used. |
 | `particle.*` | Optional modern Paper particle and count. |
+| `milestones.*` | Enabled flag, unique scores, native sound/untyped particle, particle count, and 0–60 second feedback cooldown. |
+| `categories.combo.*` | Separate-category enablement and a 1–60 second maximum gap. Classic is never modified. |
+| `antiCheat.*` | Conservative projectile/riptide/exploit-teleport blocking, 0–2000 ms minimum jump interval, and 0–600 second per-kind audit cooldown. Violations never auto-ban. |
 | `runFinishCommands` | Master switch for trusted console reward commands. |
 | `rewards.onlyOnPersonalBest` | Makes otherwise matching rewards ineligible unless the all-time best improved. |
 | `rewards.allowedCommandRoots` | Effective list of 1–32 exact trusted roots; an omitted key inherits the bundled defaults. Entries are trimmed/lowercased, must match `[a-z0-9][a-z0-9:_-]{0,127}`, and must be unique after normalization. Bundled defaults are `say`, `cmi`, `uf`, and `welcomes`; remove unused providers. A configured command outside the list is always a validation error, even while rewards are disabled, and runtime preparation checks the list again before lookup/dispatch. |
@@ -412,6 +444,7 @@ The bundled [config.yml](src/main/resources/config.yml) is the authoritative def
 | `database.type` | Must be `SQLITE`. MySQL/MariaDB is deliberately rejected. |
 | `database.sqlite.file` | Relative, non-symlinked path confined beneath the plugin data directory. |
 | `database.sqlite.busyTimeoutMillis` | SQLite busy timeout; the default is 5000 ms. |
+| `database.sqlite.migrationBackupRetention` | Verified automatic migration backups retained (2–100, default 5). Nonmatching operator-named files are untouched. |
 
 Legacy configuration behavior is deliberate:
 
@@ -429,7 +462,7 @@ Runtime `{{placeholders}}`—including player and season names, database values,
 
 Reward commands are trusted console authority. They must be single-line, at most 2048 characters, and use a safe command root. When rewards are enabled, unavailable roots fail configuration validation. Matching ranges may overlap deliberately; validation warns because commands from every matching tier will be combined. An inclusive interval sweep rejects any configuration in which a possible score would combine more than the durable ledger limit of 100 non-empty steps.
 
-## SQLite schema v2, migration, and UUID ownership
+## SQLite schema v3, migration, backup retention, and UUID ownership
 
 The only supported backend is `plugins/InfinityParkour/database.db` unless a different confined relative filename is configured.
 
@@ -437,7 +470,7 @@ Before opening SQLite, the repository acquires a non-blocking exclusive operatin
 
 The Gradle wrapper distribution is SHA-256 pinned, runtime/compile/test dependencies are locked, dependency checksums are verified, and CI actions are pinned to reviewed commit SHAs with weekly dependency update proposals. Release archives also use fixed entry ordering and timestamps. These controls are intended to support byte-for-byte comparison under the same pinned build environment; the release checklist still requires two observed clean-build hashes rather than assuming reproducibility across Java vendors or patch releases.
 
-Schema v2 contains:
+Schema v3 contains:
 
 - `scoreboard`: UUID-owned all-time bests and last-known names;
 - `schema_migrations`: applied schema records;
@@ -445,16 +478,21 @@ Schema v2 contains:
 - `run_history`: durable starts/completions/interruption states; the runtime retains the newest 10,000 prunable `COMPLETED`/`ABORTED` rows plus all `STARTED`, `UNKNOWN`, and uncertain-ledger evidence;
 - `reward_plans` and `reward_steps`: redacted reward execution state;
 - `reward_tombstones`: compact terminal plan/run/idempotency evidence retained after an old terminal run and its full ledger are pruned.
+- `player_preferences`: UUID-owned particle/sound/title choices independent of leaderboard rows;
+- `category_scores`: separate Combo and Flawless personal bests;
+- `run_category_scores`: the exact category projections committed with each run.
 
 Before mutating an existing non-empty database that requires migration, the plugin creates a sibling backup named like:
 
 ```text
-database.db.pre-migration-v2-<epoch-millis>.sqlite
+database.db.pre-migration-v3-<epoch-millis>.sqlite
 ```
 
-The backup is made with SQLite `VACUUM INTO` and must pass `PRAGMA quick_check` before migration proceeds. The schema migration then runs transactionally and validates required columns, indexes, constraints, and foreign keys. Persistence accepts only vanilla Java last-known names matching `[A-Za-z0-9_]{3,16}` and non-negative scores no larger than Java's integer maximum; the fresh schema also records matching constraints. A database with a newer unsupported schema, malformed nonblank UUID, duplicate nonblank UUID, incompatible table/index definition, unsafe path, or failed backup disables the plugin safely.
+The backup is made with SQLite `VACUUM INTO` and must pass `PRAGMA quick_check` before migration proceeds. At every startup, exact automatic names matching `<database>.pre-migration-v<schema>-<epoch>[-suffix].sqlite` are treated as plugin-owned retention candidates: every candidate is a safe regular file and must pass `quick_check`, then only the oldest excess files beyond `database.sqlite.migrationBackupRetention` are removed. The default retains five and the accepted range is 2–100. A corrupt or non-regular automatic candidate fails startup; an operator-named file that does not match the exact pattern is never pruned.
 
-Development rehearsal against a disposable copy of the supplied live database preserved all **100** rows and all **100** UUIDs, score sum **4256**, maximum score **149**, and a valid `PRAGMA quick_check`; a verified schema-v2 backup was created. The `_resources` source database hash remained unchanged. This is migration evidence, not final server/event approval; repeat it using the exact frozen candidate and production-like copy in the checklist.
+The schema migration runs transactionally and validates required columns, indexes, constraints, and foreign keys. Persistence accepts only vanilla Java last-known names matching `[A-Za-z0-9_]{3,16}` and non-negative scores no larger than Java's integer maximum; the fresh schema also records matching constraints. A database with a newer unsupported schema, malformed nonblank UUID, duplicate nonblank UUID, incompatible table/index definition, unsafe path, or failed backup disables the plugin safely.
+
+Historical build-003 rehearsal against a disposable copy of the supplied live database preserved all **100** rows and all **100** UUIDs, score sum **4256**, maximum score **149**, and a valid `PRAGMA quick_check`; a verified schema-v2 backup was created and `_resources` remained unchanged. Build 008 adds schema v3, so that historical result is not sufficient: repeat the exact invariants, require a verified v3 backup/retention result, and prove the Classic table/top ten are unchanged using the frozen build-008 candidate.
 
 Migration never guesses identity from a username. Blank UUID text is normalized to unresolved `NULL`; malformed or duplicate nonblank UUIDs fail. Unresolved rows can remain visible in rankings, but player-specific lookup cannot claim them and UUID-only export refuses the entire affected snapshot. No CMI database or online API is queried automatically.
 
@@ -533,7 +571,7 @@ Safety limits are 1,024 pending records, 16 MiB of original structure data per s
 - reward-plan status counts when rewards are enabled;
 - sanitized last database/runtime failure categories.
 
-`/walk admin doctor` supplements those snapshot pages with a copy/paste-safe support report. The command immediately acknowledges that work is pending, then schedules a read-only SQLite `quick_check` and storage inspection on the repository worker rather than blocking the primary server thread. The completed report contains the exact source commit and clean/dirty provenance, compile targets versus the current Java/Paper runtime, optional-hook and configured command-root availability, journal/quarantine and uncertain-reward totals, queue/task health, recovery/operations writer queue and failure counters, integrity result, database and WAL byte counts, migration-backup count, and probe latency.
+`/walk admin doctor` supplements those snapshot pages with a copy/paste-safe support report. The command immediately acknowledges that work is pending, then schedules a read-only SQLite `quick_check` and storage inspection on the repository worker rather than blocking the primary server thread. The completed report contains the exact source commit and clean/dirty provenance, compile targets versus the current Java/Paper runtime, optional-hook and configured command-root availability, journal/quarantine and uncertain-reward totals, queue/task health, recovery/operations writer queue and failure counters, audit-chain verification/sequence/anchor state, integrity result, database and WAL byte counts, retained/configured/pruned migration-backup counts, and probe latency.
 
 Doctor output deliberately excludes player and season names, coordinates, filesystem paths, raw reward commands or arguments, credentials, SQL text, stack traces, and exception messages. A failed probe returns a bounded safe failure category and does not expose the underlying path or database contents.
 
@@ -543,7 +581,9 @@ The structured audit stream is:
 plugins/InfinityParkour/audit/audit.jsonl
 ```
 
-It rotates before exceeding 10 MiB and retains up to 10 timestamped archives. The caller prepares one immutable bounded record; the operations writer appends and fsyncs its JSON line, rotates, prunes, and directory-syncs off the primary thread. It currently covers plugin enable/disable/failure, run start/end/persistence and staff investigation queries, queue lifecycle, reward lifecycle and staff reward decisions, season transitions, leaderboard exports, arena-edit attempts/results, doctor probe outcomes, and startup/administrative restoration retries. It deliberately excludes IPs, inventory contents, chat, raw commands, credentials, and arbitrary paths. An unsafe or unwritable audit location during initialization is a startup failure. After the audit stream opens successfully, queue or append/rotation failure degrades diagnostics and is logged/counted without recursively mutating gameplay state or falling back to the caller.
+Each line carries a chain UUID, monotonic sequence, previous hash, and SHA-256 record hash. Startup verifies the current file plus every retained chain archive against `audit-state.properties` and `audit-anchor.properties`; a modified record, broken link, truncation, missing checkpoint, or attempt to reclassify chained data as legacy fails plugin startup. The sole checkpoint-recovery exception is a provable empty first-start chain interrupted after its zero-sequence anchor commit. An existing genuinely unchained `audit.jsonl` is preserved once as `audit-legacy-<timestamp>.jsonl` and a new verified chain begins—legacy evidence is never misrepresented as verified.
+
+The stream rotates before exceeding 10 MiB and retains up to 10 sequence-ordered archives. Pruning stages the oldest archive under an exact temporary name, durably advances the verified retention anchor, and then deletes the staged file; startup either restores a pre-anchor staged archive or finishes deletion after an anchor commit, so a hard kill at that boundary does not produce a false tamper alarm. The caller prepares one immutable bounded payload; the operations writer appends and fsyncs its chained JSON line, updates state, rotates, prunes, and directory-syncs off the primary thread. It covers plugin/run/queue/reward/season/export/arena/recovery lifecycle plus rate-limited movement anomalies. It deliberately excludes IPs, inventory contents, chat, raw commands, credentials, coordinates, and arbitrary paths. This is tamper-evident, not a signature: an operator with filesystem authority could replace both logs and sidecars, so external immutable backups remain the stronger control. An unsafe/unwritable audit location or failed startup verification disables the plugin; a later queue/append failure marks audit health degraded and logs/counts it without caller-thread fallback.
 
 Runtime reload and arena edits capture file bytes on the operations writer, parse and validate captured content on the primary thread where Paper world lookups are legal, then return to the worker for compare-before-write, fsync, atomic rename, and final disk-state verification. Publication uses a configuration generation CAS. Arena layout mutation additionally requires an empty queue and no active, pending, quarantined, or recovery-owned work. A committed edit remains bound to its exact backup bytes until final verified activation; disable queues a FIFO reconciliation barrier so a committed-but-unactivated edit cannot escape shutdown.
 
@@ -570,7 +610,7 @@ Primary-thread events in `com.mrfdev.walktheplank.api.event` are:
 | --- | --- |
 | `WalkRunStartEvent` | Before session/world allocation completes; cancellable. Cancellation persists the start as aborted and makes no course available to the player. |
 | `WalkJumpEvent` | After a target landing advances the current score; read-only. |
-| `WalkRunEndEvent` | After removal from active sessions and the primary-thread cleanup attempt; exposes reason, duration, score, and `cleanupComplete`. That flag is true only if both journal deletions have already durably settled and the exact leases/quarantine are gone; accepted-but-pending cleanup remains false. Score persistence is also asynchronous, so this event does not certify that the completion transaction has committed. |
+| `WalkRunEndEvent` | After removal from active sessions and the primary-thread cleanup attempt; exposes reason, duration, authoritative score, and `cleanupComplete`. A `MOVEMENT_MODIFIED` run exposes score `0`, matching its database/category/reward projection; the observed pre-disqualification points remain audit evidence only. The cleanup flag is true only if both journal deletions have already durably settled and the exact leases/quarantine are gone; accepted-but-pending cleanup remains false. Score persistence is also asynchronous, so this event does not certify that the completion transaction has committed. |
 | `WalkPersonalBestEvent` | After the new all-time best is durably persisted; read-only. |
 | `WalkRewardPlanEvent` | Before an eligible durable plan begins dispatch; cancellable and exposes IDs/counts but no command text. Cancellation finalizes without dispatch. |
 
@@ -578,9 +618,9 @@ The current API intentionally does not expose mutable sessions, direct database 
 
 ## Testing and event approval
 
-The build-007 suite currently contains 231 tests across 55 test classes with zero failures, errors, or skips. It covers build provenance, command lifecycle/tree/module boundaries, typed arguments and explicit confirmations, experimental/external API exclusions, bounded/FIFO/rejection behavior and exclusive lifetime locks for both I/O workers, cancellation-safe and uncertain-commit recovery tickets, lock-before-journal-open ordering, delayed-termination lock release, lock-free journal publications, exact arena/block lease ownership, immediate post-abandonment arena availability, placement commit policy, configuration CAS/rollback tokens, SQLite schema/migration/durability and the asynchronous doctor probe, reward preparation, queue fairness, arena selection, exports, external-teleport event ordering, nonce/generation GUI authorization and duplicate-action suppression, literal dynamic text/MiniMessage compatibility, core game policies, and reflection-locked `EventHandler` priority/`ignoreCancelled` contracts. Reconfirm the count against the clean frozen candidate; public API/event behavior and real player movement remain part of the server-level integration checklist.
+The build-008 suite currently contains 246 tests across 56 test classes with zero failures, errors, or skips. It includes schema-v3/category/preference atomicity and simultaneous field updates, verified backup retention and numeric retention ordering across schema versions, audit-chain restart/tamper/truncation/checkpoint-deletion/legacy/prune-crash behavior, build provenance, command lifecycle/tree/module boundaries, typed arguments and explicit confirmations, external/experimental API exclusions, both bounded I/O workers, recovery ownership, SQLite durability, reward preparation, queues, exports, teleport ordering, GUI authorization, literal components, core game policies, and reflection-locked `EventHandler` priority/`ignoreCancelled` contracts. Reconfirm the count against the clean frozen candidate; public API/event behavior and real-player movement remain server-level integration gates.
 
-Build 007 carries forward build 006's isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
+Build 008 carries forward build 007's isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
 
 ```bash
 ./gradlew scenarioArtifacts verifyProductionScenarioIsolation
@@ -589,8 +629,8 @@ Build 007 carries forward build 006's isolated destructive-test system. It never
 The test-only outputs are deliberately outside `build/libs/`:
 
 ```text
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.3.0-007.jar
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.3.0-007-Failpoints.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.4.0-008.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.4.0-008-Failpoints.jar
 ```
 
 `verifyReleaseJar` byte-scans the production JAR for scenario packages, commands, manifest/agent markers, canaries, every scenario-property prefix, and all 24 failpoint names. `verifyProductionScenarioIsolation` repeats that negative proof and requires the harness and instrumented copy to trigger positive controls, preventing a broken scan from reporting a false pass. It also builds a second instrumented copy and requires byte-for-byte identity. The runner refuses symlinked destructive roots and writes a bounded per-run nonce marker. Both the property-armed failpoint controller and the scenario plugin require that marker, the exact generated root/working directory/layout/data paths, and the bridge loaded by the instrumented target's own classloader.

@@ -53,6 +53,33 @@ particle:
   type: TOTEM_OF_UNDYING
   count: 12
 
+# Native, non-command milestone feedback. Each player can independently reduce or disable
+# particles, sounds, and titles without changing scoring.
+milestones:
+  enabled: true
+  scores: [5, 10, 25, 50, 100]
+  sound: minecraft:entity.player.levelup
+  particle: HAPPY_VILLAGER
+  particleCount: 20
+  cooldownSeconds: 2
+
+# These are separate categories. Classic scores and the historical Classic leaderboard
+# are never multiplied or rewritten.
+categories:
+  combo:
+    enabled: true
+    maximumGapSeconds: 8
+
+# Conservative run-integrity controls. A rejected action is audited and may end the run,
+# but this plugin never automatically bans a player.
+antiCheat:
+  enabled: true
+  blockProjectiles: true
+  blockRiptide: true
+  blockExploitTeleports: true
+  minimumJumpIntervalMillis: 150
+  anomalyAuditCooldownSeconds: 10
+
 # These are trusted console commands. They run only after normal /walk leave or a fall,
 # never during quit, reload, administrative cleanup, or server shutdown.
 runFinishCommands: false
@@ -86,6 +113,7 @@ permissions:
   topCmd: infinityparkour.topcmd
   info: infinityparkour.info
   help: infinityparkour.help
+  preferences: infinityparkour.preferences
   admin: infinityparkour.admin
   adminOpen: infinityparkour.admin.open
   adminDebug: infinityparkour.admin.debug
@@ -107,3 +135,6 @@ database:
   sqlite:
     file: database.db
     busyTimeoutMillis: 5000
+    # Automatic verified pre-migration backups use exact sibling names and are checked
+    # before pruning. The newest five are retained; operator-named backups are untouched.
+    migrationBackupRetention: 5

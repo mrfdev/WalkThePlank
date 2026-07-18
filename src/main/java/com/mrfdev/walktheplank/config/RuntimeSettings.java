@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.Set;
 import org.bukkit.Material;
 import org.bukkit.Particle;
+import org.bukkit.Sound;
 
 public record RuntimeSettings(
         int configVersion,
@@ -26,7 +27,65 @@ public record RuntimeSettings(
         List<RewardTier> rewardTiers,
         QueueSettings queue,
         ArenaSelectionSettings arenaSelection,
+        MilestoneSettings milestones,
+        ComboSettings combo,
+        AntiCheatSettings antiCheat,
         PermissionSettings permissions) {
+    public RuntimeSettings(
+            int configVersion,
+            List<Arena> arenas,
+            List<Material> parkourBlocks,
+            boolean particlesEnabled,
+            Particle particle,
+            int particleCount,
+            double fallDistance,
+            int horizontalRadius,
+            int maximumRunSeconds,
+            int idleTimeoutSeconds,
+            boolean onlyReplaceAir,
+            boolean finishCommandsEnabled,
+            boolean rewardsOnlyOnPersonalBest,
+            Set<String> allowedRewardCommandRoots,
+            List<RewardTier> rewardTiers,
+            QueueSettings queue,
+            ArenaSelectionSettings arenaSelection,
+            PermissionSettings permissions) {
+        this(
+                configVersion,
+                arenas,
+                parkourBlocks,
+                particlesEnabled,
+                particle,
+                particleCount,
+                fallDistance,
+                horizontalRadius,
+                maximumRunSeconds,
+                idleTimeoutSeconds,
+                onlyReplaceAir,
+                finishCommandsEnabled,
+                rewardsOnlyOnPersonalBest,
+                allowedRewardCommandRoots,
+                rewardTiers,
+                queue,
+                arenaSelection,
+                new MilestoneSettings(
+                        true,
+                        List.of(5, 10, 25, 50, 100),
+                        Sound.ENTITY_PLAYER_LEVELUP,
+                        Particle.HAPPY_VILLAGER,
+                        20,
+                        java.time.Duration.ofSeconds(2)),
+                new ComboSettings(true, java.time.Duration.ofSeconds(8)),
+                new AntiCheatSettings(
+                        true,
+                        true,
+                        true,
+                        true,
+                        java.time.Duration.ofMillis(150),
+                        java.time.Duration.ofSeconds(10)),
+                permissions);
+    }
+
     public RuntimeSettings {
         arenas = List.copyOf(arenas);
         parkourBlocks = List.copyOf(parkourBlocks);
@@ -35,6 +94,9 @@ public record RuntimeSettings(
         rewardTiers = List.copyOf(rewardTiers);
         Objects.requireNonNull(queue, "queue");
         Objects.requireNonNull(arenaSelection, "arenaSelection");
+        Objects.requireNonNull(milestones, "milestones");
+        Objects.requireNonNull(combo, "combo");
+        Objects.requireNonNull(antiCheat, "antiCheat");
         Objects.requireNonNull(particle, "particle");
         Objects.requireNonNull(permissions, "permissions");
         if (configVersion != 2) {

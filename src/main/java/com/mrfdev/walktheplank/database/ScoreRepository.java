@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -146,6 +147,53 @@ public interface ScoreRepository extends AutoCloseable {
     default List<ScoreEntry> top() {
         return snapshot().top();
     }
+
+    /** Lock-free UUID-owned accessibility preferences; absent rows use safe defaults. */
+    PlayerPreferences preferences(UUID playerId);
+
+    /** Persists one complete preference state on the repository writer. */
+    CompletableFuture<PlayerPreferences> updatePreferences(PlayerPreferences preferences);
+
+    /** Atomically changes only the particle preference, preserving concurrent field updates. */
+    default CompletableFuture<PlayerPreferences> updateParticlePreference(
+            UUID playerId,
+            ParticlePreference preference,
+            Instant changedAt) {
+        return updatePreferences(
+                preferences(playerId).withParticles(preference, changedAt));
+    }
+
+    /** Atomically changes only the sound preference, preserving concurrent field updates. */
+    default CompletableFuture<PlayerPreferences> updateSoundPreference(
+            UUID playerId,
+            boolean enabled,
+            Instant changedAt) {
+        return updatePreferences(
+                preferences(playerId).withSounds(enabled, changedAt));
+    }
+
+    /** Atomically changes only the title preference, preserving concurrent field updates. */
+    default CompletableFuture<PlayerPreferences> updateTitlePreference(
+            UUID playerId,
+            boolean enabled,
+            Instant changedAt) {
+        return updatePreferences(
+                preferences(playerId).withTitles(enabled, changedAt));
+    }
+
+    /** Immutable category leaderboard that never changes the historical Classic snapshot. */
+    ScoreSnapshot categoryScores(ScoreCategory category);
+
+    default List<ScoreEntry> categoryTop(ScoreCategory category, int limit) {
+        return categoryScores(category).top(limit);
+    }
+
+    default Optional<PlayerStats> categoryStats(ScoreCategory category, UUID playerId) {
+        return categoryScores(category).stats(playerId);
+    }
+
+    /** All category publications from the same last committed repository state. */
+    Map<ScoreCategory, ScoreSnapshot> categoryScoreSnapshots();
 
     /** The verified pre-migration SQLite backup created by this instance, when any. */
     Optional<Path> migrationBackup();

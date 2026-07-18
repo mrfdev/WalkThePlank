@@ -1,6 +1,9 @@
 package com.mrfdev.walktheplank.game;
 
 import com.mrfdev.walktheplank.config.RuntimeSettings;
+import com.mrfdev.walktheplank.database.ParticlePreference;
+import com.mrfdev.walktheplank.database.RunCategoryScore;
+import com.mrfdev.walktheplank.database.ScoreCategory;
 import com.mrfdev.walktheplank.recovery.RecoveryDurabilityService;
 import com.mrfdev.walktheplank.recovery.RestorationCoordinator;
 import java.time.Duration;
@@ -32,6 +35,7 @@ final class GameSession {
     private final ArenaLeaseRegistry.ArenaLease arenaLease;
     private final SplittableRandom random = new SplittableRandom();
     private final BlockLeaseRegistry blockLeases;
+    private final ParticlePreference particlePreference;
     private final Deque<PlacedBlock> placedBlocks = new ArrayDeque<>(3);
 
     private GridPoint currentPoint;
@@ -45,6 +49,10 @@ final class GameSession {
     private long startedAtNanos;
     private long lastProgressAtNanos;
     private long nextPlatformGeneration = 1L;
+    private long lastMilestoneFeedbackAtNanos = Long.MIN_VALUE;
+    private int currentCombo;
+    private int maximumCombo;
+    private boolean flawless = true;
 
     GameSession(
             Player player,
@@ -53,6 +61,7 @@ final class GameSession {
             Instant startedAt,
             ArenaLeaseRegistry.ArenaLease arenaLease,
             RuntimeSettings settings,
+            ParticlePreference particlePreference,
             BlockLeaseRegistry blockLeases,
             RestorationCoordinator restoration) {
         this.player = Objects.requireNonNull(player, "player");
@@ -64,6 +73,8 @@ final class GameSession {
             throw new IllegalArgumentException("Arena lease run does not match session run");
         }
         this.settings = Objects.requireNonNull(settings, "settings");
+        this.particlePreference =
+                Objects.requireNonNull(particlePreference, "particlePreference");
         this.blockLeases = Objects.requireNonNull(blockLeases, "blockLeases");
         this.restoration = Objects.requireNonNull(restoration, "restoration");
         playerSnapshot = PlayerSnapshot.capture(player);
@@ -137,6 +148,10 @@ final class GameSession {
     }
 
     AdvanceResult advance() {
+        return advance(System.nanoTime());
+    }
+
+    AdvanceResult advance(long nowNanos) {
         ensureActive();
         PlacedBlock expectedTarget = targetBlock;
         if (expectedTarget == null
@@ -153,6 +168,19 @@ final class GameSession {
             throw new IllegalStateException("The pipelined successor is no longer intact and protected");
         }
         score++;
+        Duration jumpInterval =
+                Duration.ofNanos(Math.max(0L, nowNanos - lastProgressAtNanos));
+        if (settings.combo().enabled()) {
+            if (score == 1) {
+                currentCombo = 1;
+            } else if (jumpInterval.compareTo(settings.combo().maximumGap()) <= 0) {
+                currentCombo++;
+            } else {
+                currentCombo = 1;
+                flawless = false;
+            }
+            maximumCombo = Math.max(maximumCombo, currentCombo);
+        }
 
         PlacedBlock previous = placedBlocks.peekFirst();
         if (previous == null) {
@@ -182,10 +210,14 @@ final class GameSession {
                     "Previous platform could not be restored: " + cleanup.worldOutcome());
         }
         placedBlocks.removeFirst();
-        lastProgressAtNanos = System.nanoTime();
+        lastProgressAtNanos = nowNanos;
         return new AdvanceResult(
                 true,
                 score,
+                currentCombo,
+                maximumCombo,
+                flawless,
+                jumpInterval,
                 next,
                 new BlockCleanup(
                         previous.key(),
@@ -214,7 +246,11 @@ final class GameSession {
             abandoned.add(pendingSuccessor.abandon());
         }
         if (placedBlocks.isEmpty()) {
-            return new FinishResult(score, List.of(), List.copyOf(abandoned));
+            return new FinishResult(
+                    score,
+                    categoryScores(),
+                    List.of(),
+                    List.copyOf(abandoned));
         }
         RuntimeException failure = null;
         Deque<PlacedBlock> failedRestores = new ArrayDeque<>();
@@ -243,7 +279,11 @@ final class GameSession {
         if (failure != null) {
             throw failure;
         }
-        return new FinishResult(score, List.copyOf(cleanups), List.copyOf(abandoned));
+        return new FinishResult(
+                score,
+                categoryScores(),
+                List.copyOf(cleanups),
+                List.copyOf(abandoned));
     }
 
     CompletableFuture<Void> abandonIncompleteStartPreparation() {
@@ -271,6 +311,26 @@ final class GameSession {
         return bounds.contains(location);
     }
 
+    boolean jumpWouldBeTooFast(long nowNanos) {
+        return settings.antiCheat().enabled()
+                && score > 0
+                && Duration.ofNanos(Math.max(0L, nowNanos - lastProgressAtNanos))
+                        .compareTo(settings.antiCheat().minimumJumpInterval()) < 0;
+    }
+
+    boolean claimMilestoneFeedback(int candidateScore, long nowNanos) {
+        if (!settings.milestones().isMilestone(candidateScore)) {
+            return false;
+        }
+        long cooldownNanos = settings.milestones().cooldown().toNanos();
+        if (lastMilestoneFeedbackAtNanos != Long.MIN_VALUE
+                && nowNanos - lastMilestoneFeedbackAtNanos < cooldownNanos) {
+            return false;
+        }
+        lastMilestoneFeedbackAtNanos = nowNanos;
+        return true;
+    }
+
     Player player() {
         return player;
     }
@@ -285,6 +345,18 @@ final class GameSession {
 
     int score() {
         return score;
+    }
+
+    int currentCombo() {
+        return currentCombo;
+    }
+
+    int maximumCombo() {
+        return maximumCombo;
+    }
+
+    boolean flawless() {
+        return flawless;
     }
 
     UUID runId() {
@@ -404,15 +476,15 @@ final class GameSession {
     }
 
     private void showParticles(PlacedBlock placed) {
-        if (!settings.particlesEnabled() || settings.particleCount() <= 0) {
+        int visibleCount = particlePreference.apply(settings.particleCount());
+        if (!settings.particlesEnabled() || visibleCount <= 0) {
             return;
         }
         Location particleLocation = placed.location().add(0.5, 1.1, 0.5);
-        World world = Objects.requireNonNull(particleLocation.getWorld(), "particle world");
-        world.spawnParticle(
+        player.spawnParticle(
                 settings.particle(),
                 particleLocation,
-                settings.particleCount(),
+                visibleCount,
                 0.25,
                 0.2,
                 0.25,
@@ -455,21 +527,49 @@ final class GameSession {
     record AdvanceResult(
             boolean advanced,
             int score,
+            int combo,
+            int maximumCombo,
+            boolean flawless,
+            Duration jumpInterval,
             PreparedBlock successorPreparation,
             BlockCleanup cleanup) {
         static AdvanceResult waiting(int score) {
-            return new AdvanceResult(false, score, null, null);
+            return new AdvanceResult(
+                    false,
+                    score,
+                    0,
+                    0,
+                    false,
+                    Duration.ZERO,
+                    null,
+                    null);
         }
     }
 
     record FinishResult(
             int score,
+            List<RunCategoryScore> categoryScores,
             List<BlockCleanup> cleanups,
             List<CompletableFuture<Void>> abandonedPreparations) {
         FinishResult {
+            categoryScores = List.copyOf(categoryScores);
             cleanups = List.copyOf(cleanups);
             abandonedPreparations = List.copyOf(abandonedPreparations);
         }
+    }
+
+    List<RunCategoryScore> categoryScores() {
+        if (!settings.combo().enabled() || score < 1) {
+            return List.of();
+        }
+        List<RunCategoryScore> result = new ArrayList<>(2);
+        if (maximumCombo > 0) {
+            result.add(new RunCategoryScore(ScoreCategory.COMBO, maximumCombo));
+        }
+        if (flawless) {
+            result.add(new RunCategoryScore(ScoreCategory.FLAWLESS, score));
+        }
+        return List.copyOf(result);
     }
 
     record BlockCleanup(

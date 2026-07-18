@@ -14,6 +14,7 @@ import com.mrfdev.walktheplank.database.RewardPlanStatus;
 import com.mrfdev.walktheplank.database.RewardStepDispatchResult;
 import com.mrfdev.walktheplank.database.RewardStepStatus;
 import com.mrfdev.walktheplank.database.RunCompletion;
+import com.mrfdev.walktheplank.database.RunCategoryScore;
 import com.mrfdev.walktheplank.database.RunInvestigationRecord;
 import com.mrfdev.walktheplank.database.RunRecord;
 import com.mrfdev.walktheplank.database.RunStart;
@@ -57,6 +58,9 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.logging.Level;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.title.Title;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -103,6 +107,7 @@ public final class GameManager {
     private final Set<PlayerRecoveryCompletion> pendingPlayerRecoveryCompletions =
             new HashSet<>();
     private final Map<UUID, PendingExternalTeleport> pendingExternalTeleports = new HashMap<>();
+    private final Map<AnomalyKey, AnomalyWindow> anomalyWindows = new HashMap<>();
     private final Set<UUID> playerRecoveryLookups = ConcurrentHashMap.newKeySet();
     private final List<Arena> freeArenas = new ArrayList<>();
     private final RewardCompletionBarrier rewardCompletionBarrier = new RewardCompletionBarrier();
@@ -332,6 +337,7 @@ public final class GameManager {
                     persisted.startedAt(),
                     pending.arenaLease(),
                     settings.get(),
+                    scoreRepository.preferences(player.getUniqueId()).particles(),
                     blockLeases,
                     restoration);
         } catch (RuntimeException | LinkageError constructionFailure) {
@@ -597,7 +603,10 @@ public final class GameManager {
             }
             return false;
         }
-        if (player.isInsideVehicle() || player.isGliding()) {
+        if (player.isInsideVehicle()
+                || player.isGliding()
+                || player.isFlying()
+                || player.isRiptiding()) {
             if (sendMessages) {
                 messages.send(player, "chat.movementStateActive");
                 player.closeInventory();
@@ -642,6 +651,8 @@ public final class GameManager {
                 player != null
                         && !player.isInsideVehicle()
                         && !player.isGliding()
+                        && !player.isFlying()
+                        && !player.isRiptiding()
                         && hasEligibleMovementAttribute(player),
                 player != null && hasDisallowedMovementEffect(player));
     }
@@ -652,6 +663,8 @@ public final class GameManager {
         GameSession session = sessions.remove(player.getUniqueId());
         pendingExternalTeleports.remove(player.getUniqueId());
         if (session == null) {
+            anomalyWindows.keySet().removeIf(key ->
+                    key.playerId().equals(player.getUniqueId()));
             PendingStart pending = pendingStarts.get(player.getUniqueId());
             if (pending != null) {
                 abortPendingStart(pending, reason.name());
@@ -670,6 +683,7 @@ public final class GameManager {
             }
             return false;
         }
+        flushMovementAnomalies(session);
 
         try {
             publishSessionScores();
@@ -681,6 +695,9 @@ public final class GameManager {
                     publicationFailure);
         }
         int score = session.score();
+        boolean scoringEligible = reason != SessionEndReason.MOVEMENT_MODIFIED;
+        int authoritativeScore = scoringEligible ? score : 0;
+        List<RunCategoryScore> categoryScores = session.categoryScores();
         PlayerSnapshot snapshot = session.playerSnapshot();
         RuntimeException cleanupFailure = null;
         boolean blocksRestored = true;
@@ -771,7 +788,7 @@ public final class GameManager {
         }
 
         try {
-            persistResult(session, reason, score);
+            persistResult(session, reason, score, categoryScores);
         } catch (RuntimeException | LinkageError persistenceFailure) {
             recordRunPersistenceFailure(session, persistenceFailure);
             try {
@@ -812,6 +829,8 @@ public final class GameManager {
             operations.audit("run.end", player.getUniqueId(), session.arena().id(), Map.of(
                     "run_id", session.runId(),
                     "score", score,
+                    "persisted_score", authoritativeScore,
+                    "scoring_eligible", scoringEligible,
                     "reason", reason,
                     "cleanup_queued", cleanupQueued,
                     "cleanup_complete", cleanupComplete));
@@ -826,7 +845,7 @@ public final class GameManager {
             plugin.getServer().getPluginManager().callEvent(new WalkRunEndEvent(
                     player,
                     session.arena().id(),
-                    score,
+                    authoritativeScore,
                     session.elapsedDuration(System.nanoTime()),
                     reason,
                     cleanupComplete));
@@ -1067,6 +1086,12 @@ public final class GameManager {
             end(player, SessionEndReason.FALL);
             return;
         }
+        if (!session.contains(destination)) {
+            recordMovementAnomaly(player, "arena_boundary", "run_ended");
+            end(player, SessionEndReason.MOVEMENT_MODIFIED);
+            messages.send(player, "chat.runIntegrityFailed");
+            return;
+        }
 
         Location underPlayer = destination.clone().subtract(0.0, 1.0, 0.0);
         if (!LandingPolicy.isGroundedAndNotAscending(
@@ -1081,7 +1106,14 @@ public final class GameManager {
     private void advanceLandedSession(Player player, GameSession session) {
         GameSession.AdvanceResult result;
         try {
-            result = session.advance();
+            long nowNanos = System.nanoTime();
+            if (session.jumpWouldBeTooFast(nowNanos)) {
+                recordMovementAnomaly(player, "jump_interval", "run_ended");
+                end(player, SessionEndReason.MOVEMENT_MODIFIED);
+                messages.send(player, "chat.runIntegrityFailed");
+                return;
+            }
+            result = session.advance(nowNanos);
             if (!result.advanced()) {
                 return;
             }
@@ -1108,6 +1140,7 @@ public final class GameManager {
                     "WalkJumpEvent listener failed; the active run will continue",
                     eventFailure);
         }
+        showMilestoneFeedback(player, session, result);
         try {
             List<String> scoreMessages = messages.rawList("chat.scoreMsgs");
             String template = scoreMessages.isEmpty()
@@ -1895,13 +1928,12 @@ public final class GameManager {
                     "permissionName", settings.get().permissions().playGame()));
             return;
         }
-        if (!hasEligibleMovementAttribute(player)) {
+        String movementViolation = movementViolation(player, session);
+        if (movementViolation != null) {
+            recordMovementAnomaly(player, movementViolation, "run_ended");
             end(player, SessionEndReason.MOVEMENT_MODIFIED);
-            messages.send(player, "chat.movementAttributeActive");
+            messages.send(player, "chat.runIntegrityFailed");
             return;
-        }
-        if (player.getWalkSpeed() != 0.2F) {
-            player.setWalkSpeed(0.2F);
         }
         if (session.isExpired(now)) {
             end(player, SessionEndReason.TIMEOUT);
@@ -2587,14 +2619,26 @@ public final class GameManager {
         }
     }
 
-    private void persistResult(GameSession session, SessionEndReason reason, int score) {
+    private void persistResult(
+            GameSession session,
+            SessionEndReason reason,
+            int score,
+            List<RunCategoryScore> categoryScores) {
         UUID playerId = session.player().getUniqueId();
         String playerName = session.player().getName();
         String arenaId = session.arena().id();
         UUID runId = session.runId();
         Instant completedAt = Instant.ofEpochMilli(System.currentTimeMillis());
+        boolean scoringEligible = reason != SessionEndReason.MOVEMENT_MODIFIED;
+        int persistedScore = scoringEligible ? score : 0;
+        List<RunCategoryScore> persistedCategories =
+                scoringEligible ? List.copyOf(categoryScores) : List.of();
         RunCompletion completion = new RunCompletion(
-                runId, completedAt, score, reason.name());
+                runId,
+                completedAt,
+                persistedScore,
+                reason.name(),
+                persistedCategories);
         CompletionReward prepared = prepareCompletionRewardSafely(
                 session, reason, score, completedAt);
         CompletionReward reward;
@@ -3259,6 +3303,159 @@ public final class GameManager {
         return false;
     }
 
+    private String movementViolation(Player player, GameSession session) {
+        if (!settings.get().antiCheat().enabled()) {
+            return null;
+        }
+        if (player.isFlying() || player.getAllowFlight()) {
+            return "flight_state";
+        }
+        if (player.isGliding()) {
+            return "glide_state";
+        }
+        if (player.isInsideVehicle()) {
+            return "vehicle_state";
+        }
+        if (player.isRiptiding()) {
+            return "riptide_state";
+        }
+        if (hasDisallowedMovementEffect(player)) {
+            return "movement_effect";
+        }
+        if (!hasEligibleMovementAttribute(player)) {
+            return "movement_attribute";
+        }
+        if (Float.compare(player.getWalkSpeed(), 0.2F) != 0) {
+            return "walk_speed";
+        }
+        if (!session.contains(player.getLocation())) {
+            return "arena_boundary";
+        }
+        return null;
+    }
+
+    public boolean shouldBlockProjectile(Player player) {
+        return isPlaying(player)
+                && settings.get().antiCheat().enabled()
+                && settings.get().antiCheat().blockProjectiles();
+    }
+
+    public boolean shouldBlockRiptide(Player player) {
+        return isPlaying(player)
+                && settings.get().antiCheat().enabled()
+                && settings.get().antiCheat().blockRiptide();
+    }
+
+    public boolean isExploitTeleport(PlayerTeleportEvent.TeleportCause cause) {
+        return settings.get().antiCheat().enabled()
+                && settings.get().antiCheat().blockExploitTeleports()
+                && (cause == PlayerTeleportEvent.TeleportCause.ENDER_PEARL
+                        || cause == PlayerTeleportEvent.TeleportCause.CONSUMABLE_EFFECT);
+    }
+
+    public void recordMovementAnomaly(Player player, String kind, String action) {
+        Objects.requireNonNull(player, "player");
+        Objects.requireNonNull(kind, "kind");
+        Objects.requireNonNull(action, "action");
+        GameSession session = sessions.get(player.getUniqueId());
+        if (session == null) {
+            return;
+        }
+        long nowNanos = System.nanoTime();
+        long cooldownNanos = settings.get().antiCheat().anomalyAuditCooldown().toNanos();
+        AnomalyKey key = new AnomalyKey(player.getUniqueId(), kind);
+        AnomalyWindow previous = anomalyWindows.get(key);
+        if (previous != null
+                && nowNanos - previous.lastAuditAtNanos() < cooldownNanos) {
+            anomalyWindows.put(
+                    key,
+                    new AnomalyWindow(
+                            previous.lastAuditAtNanos(),
+                            previous.suppressed() == Integer.MAX_VALUE
+                                    ? Integer.MAX_VALUE
+                                    : previous.suppressed() + 1));
+            return;
+        }
+        int suppressed = previous == null ? 0 : previous.suppressed();
+        anomalyWindows.put(key, new AnomalyWindow(nowNanos, 0));
+        operations.audit(
+                "security.movement_anomaly",
+                player.getUniqueId(),
+                session.arena().id(),
+                Map.of(
+                        "run_id", session.runId(),
+                        "kind", kind,
+                        "action", action,
+                        "suppressed", suppressed));
+    }
+
+    private void flushMovementAnomalies(GameSession session) {
+        UUID playerId = session.player().getUniqueId();
+        for (Map.Entry<AnomalyKey, AnomalyWindow> entry :
+                List.copyOf(anomalyWindows.entrySet())) {
+            if (!entry.getKey().playerId().equals(playerId)
+                    || entry.getValue().suppressed() == 0) {
+                continue;
+            }
+            operations.audit(
+                    "security.movement_anomaly_summary",
+                    playerId,
+                    session.arena().id(),
+                    Map.of(
+                            "run_id", session.runId(),
+                            "kind", entry.getKey().kind(),
+                            "suppressed", entry.getValue().suppressed()));
+        }
+        anomalyWindows.keySet().removeIf(key -> key.playerId().equals(playerId));
+    }
+
+    private void showMilestoneFeedback(
+            Player player,
+            GameSession session,
+            GameSession.AdvanceResult result) {
+        if (sessions.get(player.getUniqueId()) != session) {
+            return;
+        }
+        long nowNanos = System.nanoTime();
+        if (!session.claimMilestoneFeedback(result.score(), nowNanos)) {
+            return;
+        }
+        var milestone = settings.get().milestones();
+        var preferences = scoreRepository.preferences(player.getUniqueId());
+        Component headline =
+                Component.text("Milestone " + result.score(), NamedTextColor.GOLD);
+        Component detail = Component.text(
+                "Combo " + result.combo()
+                        + (result.flawless() ? " \u2022 flawless" : ""),
+                NamedTextColor.AQUA);
+        player.sendActionBar(
+                headline.append(Component.text(" \u2022 ", NamedTextColor.DARK_GRAY))
+                        .append(detail));
+        if (preferences.titlesEnabled()) {
+            player.showTitle(Title.title(
+                    headline,
+                    detail,
+                    Title.Times.times(
+                            Duration.ofMillis(200),
+                            Duration.ofSeconds(1),
+                            Duration.ofMillis(400))));
+        }
+        if (preferences.soundsEnabled()) {
+            player.playSound(player.getLocation(), milestone.sound(), 0.8F, 1.1F);
+        }
+        int count = preferences.particles().apply(milestone.particleCount());
+        if (count > 0) {
+            player.spawnParticle(
+                    milestone.particle(),
+                    player.getLocation().add(0.0, 1.0, 0.0),
+                    count,
+                    0.5,
+                    0.7,
+                    0.5,
+                    0.02);
+        }
+    }
+
     private static boolean hasEligibleMovementAttribute(Player player) {
         AttributeInstance movementSpeed = player.getAttribute(Attribute.MOVEMENT_SPEED);
         if (movementSpeed == null) {
@@ -3423,6 +3620,9 @@ public final class GameManager {
             active.put(entry.getKey(), new SessionStatus(
                     session.arena().id(),
                     session.score(),
+                    session.currentCombo(),
+                    session.maximumCombo(),
+                    session.flawless(),
                     session.elapsedSeconds(nowNanos),
                     session.idleSeconds(nowNanos),
                     session.runId(),
@@ -3481,11 +3681,20 @@ public final class GameManager {
     public record SessionStatus(
             String arenaId,
             int score,
+            int combo,
+            int maximumCombo,
+            boolean flawless,
             long elapsedSeconds,
             long idleSeconds,
             UUID runId,
             Instant startedAt,
             Duration elapsedDuration) {
+    }
+
+    private record AnomalyKey(UUID playerId, String kind) {
+    }
+
+    private record AnomalyWindow(long lastAuditAtNanos, int suppressed) {
     }
 
     public record QueueStatus(

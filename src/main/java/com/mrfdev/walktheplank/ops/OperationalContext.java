@@ -94,6 +94,10 @@ public final class OperationalContext {
         return ioWorker.status();
     }
 
+    public StructuredAuditLog.AuditHealth auditHealth() {
+        return auditLog.health();
+    }
+
     /** Stops acceptance and drains accepted audit and required operations. */
     public boolean close(Duration timeout) {
         return ioWorker.close(timeout);
