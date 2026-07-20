@@ -2,6 +2,18 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.5.0-017] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.5.0-017-j25-26.2.jar`
+
+### Player and navigation controls
+
+- Added the opening player's textured `PLAYER_HEAD` at bottom-left. Its non-italic pastel tooltip uses one immutable score snapshot to show the Classic personal best, rank/total and percentile; no-score and no-permission states have dedicated bounded lore.
+- Clicking the head uses the same permission-checked behavior as `/walk stats`. The exact live permission is revalidated immediately before execution by the existing owner/nonce/generation/inventory-bound action gate.
+- Added a bottom-right `BARRIER` close action and an adjacent `ARROW` that closes WalkThePlank before executing `/menu` as the player. A missing, denied or failed external menu command produces a bounded translated fallback instead of an unhandled GUI exception.
+- Player-head creation uses the online player's already-loaded Paper profile through the supported Paper 26.2 `SkullMeta#setPlayerProfile` API; it performs no username lookup or network request.
+- New menu sections are inherited from bundled translation defaults without rewriting historical live files. Validation requires `PLAYER_HEAD` for the profile item, restricts every dynamic lore token by path, and keeps unsupported/malformed placeholders fail-closed.
+
 ## [2.4.7-016] — 2026-07-20
 
 Expected artifact: `1MB-WalkThePlank-v2.4.7-016-j25-26.2.jar`

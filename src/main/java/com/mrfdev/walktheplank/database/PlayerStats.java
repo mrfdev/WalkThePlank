@@ -25,4 +25,8 @@ public record PlayerStats(
             throw new IllegalArgumentException("totalEntries must be positive");
         }
     }
+
+    public int percentile() {
+        return Math.max(1, (int) Math.ceil(rank * 100.0 / totalEntries));
+    }
 }

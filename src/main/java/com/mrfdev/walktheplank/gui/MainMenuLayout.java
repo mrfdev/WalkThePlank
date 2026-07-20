@@ -7,6 +7,9 @@ final class MainMenuLayout {
     static final int TUTORIAL_SLOT = 20;
     static final int PLAY_SLOT = 22;
     static final int SCOREBOARD_SLOT = 24;
+    static final int PLAYER_STATS_SLOT = 45;
+    static final int BACK_SLOT = 52;
+    static final int CLOSE_SLOT = 53;
     static final List<Integer> BORDER_SLOTS = List.of(
             0, 1, 2, 3, 4, 5, 6, 7, 8,
             9, 17,

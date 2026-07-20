@@ -108,6 +108,7 @@ public final class ConfigurationManager {
             "chat.sessionFailed",
             "chat.runIntegrityFailed",
             "chat.runTimedOut",
+            "chat.menuUnavailable",
             "mainGui.title",
             "mainGui.titleColor",
             "mainGui.fillItem",
@@ -117,7 +118,13 @@ public final class ConfigurationManager {
             "mainGui.playItem.title",
             "mainGui.scoreboardItem.item",
             "mainGui.scoreboardItem.title",
-            "mainGui.scoreboardItem.scoreboardRecord");
+            "mainGui.scoreboardItem.scoreboardRecord",
+            "mainGui.playerItem.item",
+            "mainGui.playerItem.title",
+            "mainGui.backItem.item",
+            "mainGui.backItem.title",
+            "mainGui.closeItem.item",
+            "mainGui.closeItem.title");
     private static final List<String> TRANSLATION_STRING_LIST_PATHS = List.of(
             "scoreboardRecordInChat.prefix",
             "scoreboardRecordInChat.suffix",
@@ -126,12 +133,20 @@ public final class ConfigurationManager {
             "mainGui.tutorialItem.lore",
             "mainGui.playItem.lore",
             "mainGui.scoreboardItem.noPermissionLore",
-            "mainGui.scoreboardItem.lore");
+            "mainGui.scoreboardItem.lore",
+            "mainGui.playerItem.noPermissionLore",
+            "mainGui.playerItem.noScoreLore",
+            "mainGui.playerItem.lore",
+            "mainGui.backItem.lore",
+            "mainGui.closeItem.lore");
     private static final List<String> TRANSLATION_BOOLEAN_PATHS = List.of(
             "mainGui.useFillItem",
             "mainGui.tutorialItem.glow",
             "mainGui.playItem.glow",
-            "mainGui.scoreboardItem.glow");
+            "mainGui.scoreboardItem.glow",
+            "mainGui.playerItem.glow",
+            "mainGui.backItem.glow",
+            "mainGui.closeItem.glow");
     private static final Set<String> KNOWN_CONFIG_KEYS = Set.of(
             "configVersion",
             "startPositions",
@@ -1639,7 +1654,10 @@ public final class ConfigurationManager {
                 "mainGui",
                 "mainGui.tutorialItem",
                 "mainGui.playItem",
-                "mainGui.scoreboardItem")) {
+                "mainGui.scoreboardItem",
+                "mainGui.playerItem",
+                "mainGui.backItem",
+                "mainGui.closeItem")) {
             if (source.getConfigurationSection(path) == null) {
                 problems.error("translations.yml is missing section " + path);
             }
@@ -1660,6 +1678,14 @@ public final class ConfigurationManager {
         validateTranslationItem(source, "mainGui.tutorialItem.item", problems);
         validateTranslationItem(source, "mainGui.playItem.item", problems);
         validateTranslationItem(source, "mainGui.scoreboardItem.item", problems);
+        validateTranslationItem(source, "mainGui.playerItem.item", problems);
+        validateTranslationItem(source, "mainGui.backItem.item", problems);
+        validateTranslationItem(source, "mainGui.closeItem.item", problems);
+        requireTranslationItemType(
+                source,
+                "mainGui.playerItem.item",
+                Material.PLAYER_HEAD,
+                problems);
         if (Boolean.TRUE.equals(source.get("mainGui.useFillItem"))) {
             validateTranslationPane(source, "mainGui.fillItem", problems);
         }
@@ -1707,6 +1733,18 @@ public final class ConfigurationManager {
                 source, "mainGui.scoreboardItem.noPermissionLore", "permissionName", problems);
         requireTranslationPlaceholderInList(
                 source, "mainGui.scoreboardItem.lore", "scoreboard", problems);
+        requireTranslationPlaceholders(
+                source, "mainGui.playerItem.title", problems, "playerName");
+        requireTranslationPlaceholderInList(
+                source, "mainGui.playerItem.noPermissionLore", "permissionName", problems);
+        for (String placeholder : List.of(
+                "playerScore",
+                "playerPlace",
+                "totalPlaces",
+                "percentile")) {
+            requireTranslationPlaceholderInList(
+                    source, "mainGui.playerItem.lore", placeholder, problems);
+        }
     }
 
     static boolean hasValidExplicitGuiTitleColor(Object configuredTitleColor) {
@@ -1726,6 +1764,18 @@ public final class ConfigurationManager {
             requireGuiItem(configuredName, path);
         } catch (IllegalArgumentException exception) {
             problems.error("translations.yml " + path + " is not a valid GUI item");
+        }
+    }
+
+    private static void requireTranslationItemType(
+            YamlConfiguration source,
+            String path,
+            Material required,
+            ValidationAccumulator problems) {
+        Object raw = source.get(path);
+        if (raw instanceof String configuredName
+                && Material.matchMaterial(configuredName) != required) {
+            problems.error("translations.yml " + path + " must be " + required.name());
         }
     }
 
@@ -1928,6 +1978,9 @@ public final class ConfigurationManager {
                     "mainGui.scoreboardItem.scoreboardRecord" ->
                 Set.of("index", "rank", "playerName", "score");
             case "mainGui.tutorialItem.lore" -> Set.of("platformBlock");
+            case "mainGui.playerItem.title" -> Set.of("playerName");
+            case "mainGui.playerItem.lore" ->
+                Set.of("playerScore", "playerPlace", "totalPlaces", "percentile");
             case "chat.playerNotFound" -> Set.of("playerName");
             case "chat.noPermissionGui",
                     "chat.noPermissionLeave",
@@ -1936,7 +1989,8 @@ public final class ConfigurationManager {
                     "chat.noPermissionTop",
                     "chat.noPermissionStats",
                     "chat.noPermission",
-                    "mainGui.scoreboardItem.noPermissionLore" ->
+                    "mainGui.scoreboardItem.noPermissionLore",
+                    "mainGui.playerItem.noPermissionLore" ->
                 Set.of("permissionName");
             case "chat.queueJoined", "chat.queueAlready", "chat.queueNotReady" ->
                 Set.of("position");

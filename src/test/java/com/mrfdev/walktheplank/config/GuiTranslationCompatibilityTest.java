@@ -75,11 +75,23 @@ final class GuiTranslationCompatibilityTest {
     }
 
     @Test
-    void tutorialValidationAllowsOnlyTheRuntimePlatformLabel() {
+    void guiValidationAllowsOnlyItsRuntimeLabels() {
         assertEquals(
                 Set.of("platformBlock"),
                 ConfigurationManager.allowedTranslationPlaceholders(
                         "mainGui.tutorialItem.lore"));
+        assertEquals(
+                Set.of("playerName"),
+                ConfigurationManager.allowedTranslationPlaceholders(
+                        "mainGui.playerItem.title"));
+        assertEquals(
+                Set.of("playerScore", "playerPlace", "totalPlaces", "percentile"),
+                ConfigurationManager.allowedTranslationPlaceholders(
+                        "mainGui.playerItem.lore"));
+        assertEquals(
+                Set.of("permissionName"),
+                ConfigurationManager.allowedTranslationPlaceholders(
+                        "mainGui.playerItem.noPermissionLore"));
     }
 
     private static YamlConfiguration legacyTranslations() {

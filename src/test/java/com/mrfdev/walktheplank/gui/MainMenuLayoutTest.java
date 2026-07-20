@@ -13,7 +13,14 @@ final class MainMenuLayoutTest {
     private static final Set<Integer> ACTION_SLOTS = Set.of(
             MainMenuLayout.TUTORIAL_SLOT,
             MainMenuLayout.PLAY_SLOT,
-            MainMenuLayout.SCOREBOARD_SLOT);
+            MainMenuLayout.SCOREBOARD_SLOT,
+            MainMenuLayout.PLAYER_STATS_SLOT,
+            MainMenuLayout.BACK_SLOT,
+            MainMenuLayout.CLOSE_SLOT);
+    private static final Set<Integer> FRAME_ACTION_SLOTS = Set.of(
+            MainMenuLayout.PLAYER_STATS_SLOT,
+            MainMenuLayout.BACK_SLOT,
+            MainMenuLayout.CLOSE_SLOT);
 
     @Test
     void usesFullHeightOneMbFrameWithOpenCenter() {
@@ -33,8 +40,11 @@ final class MainMenuLayoutTest {
                     "unexpected frame state at slot " + slot);
         }
 
-        assertEquals(Set.of(20, 22, 24), ACTION_SLOTS);
-        assertTrue(ACTION_SLOTS.stream().noneMatch(MainMenuLayout.BORDER_SLOTS::contains));
+        assertEquals(Set.of(20, 22, 24, 45, 52, 53), ACTION_SLOTS);
+        assertTrue(FRAME_ACTION_SLOTS.stream().allMatch(MainMenuLayout.BORDER_SLOTS::contains));
+        assertTrue(ACTION_SLOTS.stream()
+                .filter(slot -> !FRAME_ACTION_SLOTS.contains(slot))
+                .noneMatch(MainMenuLayout.BORDER_SLOTS::contains));
         assertEquals(25, openUnusedCenterSlots().size());
     }
 

@@ -10,9 +10,11 @@ import java.util.logging.Logger;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.SkullMeta;
 
 public final class ItemFactory {
     private final MessageService messages;
@@ -35,6 +37,22 @@ public final class ItemFactory {
             ConfigurationSection section,
             Map<String, ?> literalReplacements) {
         return create(section, literalReplacements, null);
+    }
+
+    public ItemStack createPlayerHead(
+            ConfigurationSection section,
+            Player player,
+            Map<String, ?> literalReplacements,
+            List<Component> loreOverride) {
+        Objects.requireNonNull(player, "player");
+        ItemStack item = create(section, literalReplacements, loreOverride);
+        if (!(item.getItemMeta() instanceof SkullMeta skull)) {
+            throw new IllegalArgumentException(
+                    "mainGui.playerItem.item must be PLAYER_HEAD");
+        }
+        skull.setPlayerProfile(player.getPlayerProfile());
+        item.setItemMeta(skull);
+        return item;
     }
 
     private ItemStack create(

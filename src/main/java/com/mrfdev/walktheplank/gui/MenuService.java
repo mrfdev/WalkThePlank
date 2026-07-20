@@ -38,6 +38,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public final class MenuService {
     private static final Duration MENU_OPEN_COOLDOWN = Duration.ofMillis(750);
+    private static final String SERVER_MENU_COMMAND = "menu";
 
     private final JavaPlugin plugin;
     private final ConfigurationManager configuration;
@@ -153,11 +154,10 @@ public final class MenuService {
             messages.send(player, "chat.chatStatsError");
             return;
         }
-        int percentile = Math.max(1, (int) Math.ceil(stats.rank() * 100.0 / stats.totalEntries()));
         messages.send(player, "chat.chatStats", Map.of(
                 "playerPlace", stats.rank(),
                 "totalPlaces", stats.totalEntries(),
-                "percentile", percentile,
+                "percentile", stats.percentile(),
                 "playerScore", stats.bestScore()));
     }
 
@@ -376,6 +376,33 @@ public final class MenuService {
                     MainMenuLayout.SCOREBOARD_SLOT,
                     items.create(scoreboardSection, scoreboardLore(scoreboardSection)),
                     this::showStats);
+
+            ConfigurationSection playerSection =
+                    requireSection("mainGui.playerItem");
+            PlayerStats playerStats =
+                    scores.stats(player.getUniqueId()).orElse(null);
+            Map<String, Object> playerReplacements =
+                    playerStatsReplacements(current, playerStats);
+            setAction(
+                    MainMenuLayout.PLAYER_STATS_SLOT,
+                    items.createPlayerHead(
+                            playerSection,
+                            player,
+                            playerReplacements,
+                            playerStatsLore(
+                                    playerSection,
+                                    playerReplacements,
+                                    current,
+                                    playerStats)),
+                    this::showStats);
+            setAction(
+                    MainMenuLayout.BACK_SLOT,
+                    items.create(requireSection("mainGui.backItem")),
+                    this::backToServerMenu);
+            setAction(
+                    MainMenuLayout.CLOSE_SLOT,
+                    items.create(requireSection("mainGui.closeItem")),
+                    Player::closeInventory);
         }
 
         private void play(Player clicker) {
@@ -409,6 +436,57 @@ public final class MenuService {
             }
             sendStats(clicker);
             clicker.closeInventory();
+        }
+
+        private Map<String, Object> playerStatsReplacements(
+                RuntimeSettings current,
+                PlayerStats stats) {
+            Map<String, Object> replacements = new HashMap<>();
+            replacements.put("playerName", player.getName());
+            String permission = current.permissions().stats();
+            replacements.put("permissionName", permission);
+            if (stats != null) {
+                replacements.put("playerScore", stats.bestScore());
+                replacements.put("playerPlace", stats.rank());
+                replacements.put("totalPlaces", stats.totalEntries());
+                replacements.put("percentile", stats.percentile());
+            }
+            return Map.copyOf(replacements);
+        }
+
+        private List<Component> playerStatsLore(
+                ConfigurationSection section,
+                Map<String, Object> replacements,
+                RuntimeSettings current,
+                PlayerStats stats) {
+            String lorePath;
+            if (!player.hasPermission(current.permissions().stats())) {
+                lorePath = "noPermissionLore";
+            } else if (stats == null) {
+                lorePath = "noScoreLore";
+            } else {
+                lorePath = "lore";
+            }
+            return section.getStringList(lorePath).stream()
+                    .map(line -> messages.render(line, replacements))
+                    .toList();
+        }
+
+        private void backToServerMenu(Player clicker) {
+            clicker.closeInventory();
+            boolean successful;
+            try {
+                successful = clicker.performCommand(SERVER_MENU_COMMAND);
+            } catch (RuntimeException | LinkageError commandFailure) {
+                successful = false;
+                plugin.getLogger().log(
+                        Level.WARNING,
+                        "The external /menu command failed safely",
+                        commandFailure);
+            }
+            if (!successful && clicker.isOnline()) {
+                messages.send(clicker, "chat.menuUnavailable");
+            }
         }
 
         private List<Component> scoreboardLore(ConfigurationSection section) {
