@@ -112,12 +112,21 @@ public final class GameListener implements Listener {
         if (!games.isPlaying(event.getPlayer())) {
             return;
         }
-        if (event.getFrom().getBlockX() == event.getTo().getBlockX()
-                && event.getFrom().getBlockY() == event.getTo().getBlockY()
-                && event.getFrom().getBlockZ() == event.getTo().getBlockZ()) {
+        /*
+         * A landing normally changes the player's precise Y position without changing the
+         * block-coordinate occupied by their feet. Filtering for block-coordinate changes loses
+         * that grounded transition, so the target never scores and the departed platform is never
+         * restored. Paper exposes this distinction directly: inspect every position change while
+         * a player has an active run, but continue to ignore orientation-only events.
+         */
+        if (!hasLandingRelevantMovement(event)) {
             return;
         }
         games.handleMove(event.getPlayer(), event.getTo());
+    }
+
+    static boolean hasLandingRelevantMovement(PlayerMoveEvent event) {
+        return Objects.requireNonNull(event, "event").hasChangedPosition();
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
