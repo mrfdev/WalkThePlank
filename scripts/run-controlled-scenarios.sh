@@ -495,10 +495,10 @@ assert_runtime_identity() {
         || fail "server log does not identify Paper 26.2 and its build"
     [[ "$api_build" =~ ^[0-9]+$ ]] \
         || fail "server log does not identify the Paper 26.2 beta API build"
-    ((paper_build >= 61)) \
-        || fail "Paper runtime build $paper_build is below required build 61"
-    ((api_build >= 61)) \
-        || fail "Paper API runtime build $api_build is below required build 61"
+    ((paper_build >= 62)) \
+        || fail "Paper runtime build $paper_build is below required build 62"
+    ((api_build >= 62)) \
+        || fail "Paper API runtime build $api_build is below required build 62"
     note "verified runtime identity: Java 25, Paper 26.2 build $paper_build (API build $api_build)"
 }
 

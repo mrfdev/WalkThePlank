@@ -12,15 +12,15 @@ intermediate builds from this modernization and are fully superseded.
 
 The Bukkit plugin name intentionally remains `InfinityParkour`. This preserves the existing data directory at `plugins/InfinityParkour/`, so the live `config.yml`, `translations.yml`, and `database.db` can be upgraded in place without renaming player data.
 
-Current source release: **v2.4.3, build 012**
+Current source release: **v2.4.4, build 013**
 
 Expected standalone artifact:
 
 ```text
-1MB-WalkThePlank-v2.4.3-012-j25-26.2.jar
+1MB-WalkThePlank-v2.4.4-013-j25-26.2.jar
 ```
 
-> Build 011 corrected Paper 26.2's player-specific movement baseline and legitimate sprint operation, but real-player testing then exposed a second activation regression: the final gate rejected the exact recovery record it had just written. Build 012 verifies exact durable player/run/arena ownership instead, reports the precise failed condition to the console and audit, and makes `/walk settings` an explicitly granted permission. Prior build evidence remains historical, so the exact clean build-012 candidate needs its own automated freeze, Paper smoke, synchronization, and human gameplay approval.
+> Build 012 fixed durable-record ownership, but real-player testing showed that exact sub-block position/look revalidation made a forward walking start fail until the player backed into the trigger and paused. It also exposed a cancellation loop for the plugin's own zero-velocity packet. Build 013 permits normal within-block movement during durable preparation, reports the exact critical-state mismatch, zeroes non-zero server-applied velocity without cancelling the event, compiles against Paper API build 62, and refuses Paper runtimes below 26.2 build 62. Prior build evidence remains historical, so build 013 needs its own freeze, Paper smoke, synchronization, and human gameplay approval.
 
 See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-walktheplank.md](feature-improvements-walktheplank.md) for the authoritative future-development TODO and implemented-versus-remaining status.
 
@@ -38,7 +38,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-w
 - A pipelined successor platform begins durable preparation while the player traverses the current jump and is pre-placed when ready; an early landing waits for the same exact completion without asynchronous world mutation. Retired blocks are restored and verified on the primary thread; journal delete and directory fsync complete off-thread before their exact block lease is released.
 - Paper one-block structure snapshots for original block data and block-entity contents. Known stateful/workstation material families—including furnaces, barrels, chests, copper-chest variants, shelves, and note blocks—are denied as generated platforms without using Paper's deprecated interactable test. Restoration of a pre-existing tile/container/sign/PDC block remains a required beta acceptance test.
 - Active-arena protection against interaction, breaking, placement, buckets, fluids, sponges, fire, block transforms, explosions, pistons, and entity block changes.
-- Movement hardening while playing: damage and hunger are cancelled; flight, elytra/gliding, riptide, ender-pearl/consumable teleports, projectile launch, vehicles/mounts, external velocity, configured potion-effect advantages, and non-vanilla movement-speed/walk-speed state are blocked or disqualify altered runs. Arena bounds and a conservative minimum inter-jump interval are checked server-side. Eligibility is rechecked before activation and every second; anomalies are rate-limited into the audit and never cause an automatic ban.
+- Movement hardening while playing: damage and hunger are cancelled; flight, elytra/gliding, riptide, ender-pearl/consumable teleports, projectile launch, vehicles/mounts, configured potion-effect advantages, and non-vanilla movement-speed/walk-speed state are blocked or disqualify altered runs. Non-zero server-applied velocity is replaced with zero without cancelling Paper's cause-less velocity event, preventing knockback assistance and cancellation loops. Arena bounds and a conservative minimum inter-jump interval are checked server-side. Eligibility is rechecked before activation and every second; anomalies are rate-limited into the audit and never cause an automatic ban.
 - Active-run interaction isolation: outgoing player/projectile damage, item pickup/drop, inventory click/drag, hand swaps, held-slot changes, and entity interaction are denied while the run is active.
 - Server-side landing checks for ground support, finite non-ascending vertical velocity, and the exact intact target block.
 - A typed-holder 54-slot GUI with a readable near-black title, the standard 1MB light-blue outer frame, an open center, centered tutorial/play/statistics actions, permission-filtered leaderboard lore, click/drag cancellation, and a bounded menu-open cooldown. Every server-side session binds its owner UUID, a random nonce, a monotonic generation, and the exact inventory; stale/duplicate clicks are suppressed, only one action may be pending, and current permission/game state is revalidated immediately before execution.
@@ -64,7 +64,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-w
 
 ## Requirements and dependencies
 
-- Paper **26.2 build 61 beta or newer** on the 26.2 line.
+- Paper **26.2 build 62 beta or newer**. `plugin.yml` rejects pre-26.2 servers and startup additionally fails closed when Paper's reported build is below 62 or unavailable.
 - Java **25** for both building and running. Compilation uses `--release 25`.
 - PlaceholderAPI is optional. The compile target is **2.12.3**; without it, only placeholders are unavailable.
 - SQLite requires no separate service. SQLite JDBC **3.53.2.0** is shaded into the standalone artifact.
@@ -87,16 +87,16 @@ Build the deployment artifact with the checked-in Gradle wrapper:
 The deployable file is:
 
 ```text
-build/libs/1MB-WalkThePlank-v2.4.3-012-j25-26.2.jar
+build/libs/1MB-WalkThePlank-v2.4.4-013-j25-26.2.jar
 ```
 
 Do not deploy the `-unshaded.jar`; it does not contain SQLite JDBC. `build` runs the automated tests, creates the shaded artifact, and executes the archive/metadata verification gate. `freezeCandidate` additionally rejects a dirty Git tree. Every candidate embeds the full source commit and strict dirty state in `build-info.properties` and the JAR manifest; `/walk info`, `/walk debug overview`, and startup show the abbreviated source label.
 
-Build 010's completed machine evidence is preserved historically in the annotated `v2.4.1-010-rc.1` tag and its ignored operator release archive. Builds 010 and 011 both produced useful diagnostic evidence, but neither proves build 012. The exact clean build-012 candidate needs two byte-identical builds, scenario-profile evidence, Paper smoke, live-copy preservation checks, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
+Earlier completed machine evidence is preserved in annotated RC tags and ignored operator release archives, but it does not prove build 013. The exact clean build-013 candidate needs two byte-identical builds, scenario-profile evidence, Paper smoke, live-copy preservation checks, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
 
 | Release property | Value |
 | --- | --- |
-| Filename | `1MB-WalkThePlank-v2.4.3-012-j25-26.2.jar` |
+| Filename | `1MB-WalkThePlank-v2.4.4-013-j25-26.2.jar` |
 | Source identity | Full Git commit plus strict clean/dirty state embedded in the JAR |
 | Final size and SHA-256 | Annotated candidate tag and operator release archive |
 | Automated test result | Must pass with zero failures/errors/skips and strict Java 25 compilation |
@@ -117,11 +117,11 @@ Useful build commands:
 ./gradlew syncTestServer
 ```
 
-`releaseInfo` must print version `2.4.3`, build `012`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 012 into the active plugin directory.
+`releaseInfo` must print version `2.4.4`, build `013`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 013 into the active plugin directory.
 
 ## Install or upgrade
 
-> Stop Paper and take an operator-controlled backup before the first build-012 start. The automatic SQLite migration backup is an additional safeguard, not a substitute for a full server/data backup.
+> Stop Paper and take an operator-controlled backup before the first build-013 start. The automatic SQLite migration backup is an additional safeguard, not a substitute for a full server/data backup.
 
 For an existing server:
 
@@ -130,7 +130,7 @@ For an existing server:
 3. Back up the old plugin JAR and the complete `plugins/InfinityParkour/` directory as one matched rollback set.
 4. Keep the data directory named `plugins/InfinityParkour/`.
 5. Remove or disable every older InfinityParkour/WalkThePlank JAR. Paper must see only one plugin with the `InfinityParkour` name.
-6. Copy `1MB-WalkThePlank-v2.4.3-012-j25-26.2.jar` into `plugins/`.
+6. Copy `1MB-WalkThePlank-v2.4.4-013-j25-26.2.jar` into `plugins/`.
 7. Start Paper and inspect the complete startup log. A successful live-data start should report 100 preserved Classic scores and, on the first schema-v3 migration only, a verified pre-migration backup path.
 8. Run `/walk info`, `/walk admin validate`, `/walk admin status`, `/walk admin doctor`, `/walk debug all`, and the full beta checklist before allowing players in.
 9. Stop Paper cleanly once and require the clean restoration/disable message before the event rehearsal is accepted.
@@ -494,7 +494,7 @@ The backup is made with SQLite `VACUUM INTO` and must pass `PRAGMA quick_check` 
 
 The schema migration runs transactionally and validates required columns, indexes, constraints, and foreign keys. Persistence accepts only vanilla Java last-known names matching `[A-Za-z0-9_]{3,16}` and non-negative scores no larger than Java's integer maximum; the fresh schema also records matching constraints. A database with a newer unsupported schema, malformed nonblank UUID, duplicate nonblank UUID, incompatible table/index definition, unsafe path, or failed backup disables the plugin safely.
 
-Build 008's disposable-copy schema-v3 rehearsal preserved all **100** rows and all **100** UUIDs, score sum **4256**, maximum score **149**, the unchanged Classic top ten, and a valid `PRAGMA quick_check`; its automatic backup passed retention verification and `_resources` remained unchanged. Build 012 has no database-schema change, but repeat the same invariants against its frozen candidate rather than treating older evidence as approval.
+Build 008's disposable-copy schema-v3 rehearsal preserved all **100** rows and all **100** UUIDs, score sum **4256**, maximum score **149**, the unchanged Classic top ten, and a valid `PRAGMA quick_check`; its automatic backup passed retention verification and `_resources` remained unchanged. Build 013 has no database-schema change, but repeat the same invariants against its frozen candidate rather than treating older evidence as approval.
 
 Migration never guesses identity from a username. Blank UUID text is normalized to unresolved `NULL`; malformed or duplicate nonblank UUIDs fail. Unresolved rows can remain visible in rankings, but player-specific lookup cannot claim them and UUID-only export refuses the entire affected snapshot. No CMI database or online API is queried automatically.
 
@@ -620,9 +620,9 @@ The current API intentionally does not expose mutable sessions, direct database 
 
 ## Testing and event approval
 
-The build-012 suite currently contains **258 tests across 61 test classes** with zero failures, errors, or skips. It includes exact post-durability recovery-record ownership, condition-level activation diagnostics, and static settings-permission graph regressions in addition to player-specific movement-baseline and exact vanilla-sprint checks, exact 54-slot GUI frame/open-center geometry, title/pane migration, unchanged-live-translation default inheritance, schema-v3/category/preference atomicity, verified backup retention, audit-chain recovery/tamper behavior, build provenance, command lifecycle/tree/module boundaries, external/experimental API exclusions, both bounded I/O workers, SQLite durability, rewards, queues, exports, teleport ordering, GUI authorization, literal components, core game policies, and reflection-locked `EventHandler` priority/`ignoreCancelled` contracts. Reconfirm the count against the clean frozen candidate; public API/event behavior and real-player movement remain server-level integration gates.
+The build-013 suite currently passes **263 tests across 63 test classes**, with zero failures, errors, or skips. It adds an exact Paper 26.2 build-62 runtime policy and critical-state snapshot revalidation coverage to the existing durable ownership, movement baseline, sprint, GUI, schema, permission, audit, recovery, reward, queue, export, teleport, and reflection-locked event-contract tests. Real-player forward/sprinting starts, jumping, knockback defense, and cleanup remain server-level integration gates.
 
-Build 012 carries forward build 008's isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
+Build 013 carries forward build 008's isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
 
 ```bash
 ./gradlew scenarioArtifacts verifyProductionScenarioIsolation
@@ -631,8 +631,8 @@ Build 012 carries forward build 008's isolated destructive-test system. It never
 The test-only outputs are deliberately outside `build/libs/`:
 
 ```text
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.4.3-012.jar
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.4.3-012-Failpoints.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.4.4-013.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.4.4-013-Failpoints.jar
 ```
 
 `verifyReleaseJar` byte-scans the production JAR for scenario packages, commands, manifest/agent markers, canaries, every scenario-property prefix, and all 24 failpoint names. `verifyProductionScenarioIsolation` repeats that negative proof and requires the harness and instrumented copy to trigger positive controls, preventing a broken scan from reporting a false pass. It also builds a second instrumented copy and requires byte-for-byte identity. The runner refuses symlinked destructive roots and writes a bounded per-run nonce marker. Both the property-armed failpoint controller and the scenario plugin require that marker, the exact generated root/working directory/layout/data paths, and the bridge loaded by the instrumented target's own classloader.

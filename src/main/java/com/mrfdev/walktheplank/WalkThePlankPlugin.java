@@ -3,6 +3,7 @@ package com.mrfdev.walktheplank;
 import com.mrfdev.walktheplank.api.DefaultWalkThePlankApi;
 import com.mrfdev.walktheplank.api.WalkThePlankApi;
 import com.mrfdev.walktheplank.build.BuildInfo;
+import com.mrfdev.walktheplank.build.PaperRuntimePolicy;
 import com.mrfdev.walktheplank.command.WalkCommand;
 import com.mrfdev.walktheplank.config.ConfigurationManager;
 import com.mrfdev.walktheplank.database.DatabaseSettings;
@@ -52,8 +53,10 @@ public final class WalkThePlankPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         try {
-            Path dataFolder = requireSafeDataFolder();
             buildInfo = BuildInfo.load(this);
+            PaperRuntimePolicy.Verification paperRuntime =
+                    PaperRuntimePolicy.requireSupported(buildInfo);
+            Path dataFolder = requireSafeDataFolder();
             String releaseIdentity = buildInfo.releaseLabel() + " / " + buildInfo.artifactFile();
             operations = OperationalContext.open(
                     dataFolder,
@@ -146,7 +149,8 @@ public final class WalkThePlankPlugin extends JavaPlugin {
             enableCompleted = true;
             getLogger().info("1MB-WalkThePlank " + buildInfo.releaseLabel()
                     + " (" + buildInfo.sourceLabel() + ") enabled with "
-                    + scores.snapshot().totalEntries() + " preserved scores");
+                    + scores.snapshot().totalEntries() + " preserved scores on "
+                    + paperRuntime.runtimeLabel());
         } catch (Exception | LinkageError exception) {
             enableCompleted = false;
             if (operations != null) {

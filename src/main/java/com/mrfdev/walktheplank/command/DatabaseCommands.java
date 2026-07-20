@@ -1,5 +1,6 @@
 package com.mrfdev.walktheplank.command;
 
+import com.mrfdev.walktheplank.build.PaperRuntimePolicy;
 import com.mrfdev.walktheplank.config.PermissionSettings;
 import com.mrfdev.walktheplank.config.RuntimeSettings;
 import com.mrfdev.walktheplank.database.DatabaseDoctorReport;
@@ -184,10 +185,9 @@ final class DatabaseCommands {
         int runtimeJava = Runtime.version().feature();
         boolean javaMatches = Integer.toString(runtimeJava)
                 .equals(support.buildInfo.javaTarget());
-        String runtimeMinecraft =
-                support.plugin.getServer().getMinecraftVersion();
-        boolean paperMatches =
-                runtimeMinecraft.equals(support.buildInfo.paperTarget());
+        PaperRuntimePolicy.Verification paperRuntime =
+                PaperRuntimePolicy.current(support.buildInfo);
+        boolean paperMatches = paperRuntime.supported();
 
         List<String> commandRoots =
                 current.allowedRewardCommandRoots().stream().sorted().toList();
@@ -268,8 +268,8 @@ final class DatabaseCommands {
         support.sendField(
                 sender,
                 "Paper target/runtime",
-                support.buildInfo.paperApiVersion() + " / "
-                        + support.plugin.getServer().getVersion()
+                paperRuntime.targetLabel() + " / "
+                        + paperRuntime.runtimeLabel()
                         + (paperMatches ? " (match)" : " (MISMATCH)"));
 
         support.sendHeader(sender, "Doctor: hooks and command roots");
@@ -471,6 +471,8 @@ final class DatabaseCommands {
     }
 
     private void showOverview(CommandSender sender) {
+        PaperRuntimePolicy.Verification paperRuntime =
+                PaperRuntimePolicy.current(support.buildInfo);
         support.sendHeader(sender, "Diagnostics: overview");
         support.sendField(
                 sender, "Release", support.buildInfo.releaseLabel());
@@ -481,14 +483,14 @@ final class DatabaseCommands {
         support.sendField(
                 sender,
                 "Runtime",
-                System.getProperty("java.version") + " / "
-                        + support.plugin.getServer().getName() + " "
-                        + support.plugin.getServer().getMinecraftVersion());
+                "Java " + System.getProperty("java.version") + " / "
+                        + paperRuntime.runtimeLabel());
         support.sendField(
                 sender,
                 "Compile targets",
-                "Java " + support.buildInfo.javaTarget() + ", Paper "
-                        + support.buildInfo.paperApiVersion()
+                "Java " + support.buildInfo.javaTarget() + ", "
+                        + paperRuntime.targetLabel()
+                        + " (API " + support.buildInfo.paperApiVersion() + ")"
                         + ", PlaceholderAPI "
                         + support.buildInfo.placeholderApiVersion());
     }

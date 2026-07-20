@@ -2,6 +2,19 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.4.4-013] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.4.4-013-j25-26.2.jar`
+
+### Paper build 62 and real-player activation
+
+- Updated the exact compile dependency and locked verification metadata to official Paper API `26.2.build.62-beta`. `api-version: 26.2` continues to reject older Minecraft lines, and startup now verifies Paper's supported `ServerBuildInfo` version/build before opening plugin data; Paper below 26.2 build 62 or a runtime without a build number fails closed.
+- Fixed forward walking starts failing as `PLAYER_STATE_CHANGED` while backward re-entry worked. Post-durability revalidation now permits ordinary sub-block movement, look-direction changes, saturation, and exhaustion while the pending-start listener still prevents cross-block/world movement and critical health/food/walk-speed/flight/collision changes.
+- Expanded snapshot refusals into exact `PLAYER_STATE_<condition>` console and audit codes.
+- Reworked external velocity defense. A non-zero server-applied velocity during an active run is replaced with zero without cancelling Paper's cause-less `PlayerVelocityEvent`; the plugin's own zero-velocity start normalization is ignored. This prevents the cancellation loop that produced hundreds of false anomalies and interfered with normal gameplay.
+- Expected asynchronous journal cleanup now logs an informational arena reservation/settlement transition instead of a false `ERROR`; actual cleanup failures remain severe and quarantined.
+- Diagnostics now distinguish `Paper 26.2 build 62 or newer` from the exact API coordinate and show the runtime build explicitly.
+
 ## [2.4.3-012] — 2026-07-20
 
 Expected artifact: `1MB-WalkThePlank-v2.4.3-012-j25-26.2.jar`

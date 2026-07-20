@@ -69,7 +69,7 @@ The runner also requires the local `sqlite3` CLI. Every clean phase records a re
 `quick_check=ok`; `foreign_keys` is recorded rather than required to be enabled because that
 setting belongs to the short-lived read-only inspection connection, not the plugin's runtime
 connection. It parses the bootstrap log to require Java 25 and both the Paper runtime and API
-identity at 26.2 build 61 or newer.
+identity at 26.2 build 62 or newer.
 
 The automated sequence proves:
 

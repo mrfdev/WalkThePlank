@@ -466,10 +466,17 @@ public final class GameListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onVelocity(PlayerVelocityEvent event) {
-        if (isRestricted(event.getPlayer())) {
-            event.setCancelled(true);
-            games.recordMovementAnomaly(event.getPlayer(), "external_velocity", "blocked");
+        if (!games.shouldBlockExternalVelocity(event.getPlayer())) {
+            return;
         }
+        var velocity = event.getVelocity();
+        if (velocity.getX() == 0.0
+                && velocity.getY() == 0.0
+                && velocity.getZ() == 0.0) {
+            return;
+        }
+        event.setVelocity(velocity.clone().zero());
+        games.recordMovementAnomaly(event.getPlayer(), "external_velocity", "zeroed");
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

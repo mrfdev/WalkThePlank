@@ -422,8 +422,12 @@ public final class GameManager {
                                 pending,
                                 player,
                                 checkedRecords.playerRecovery());
-        if (reason == null && !session.playerSnapshot().matchesCurrent(player)) {
-            reason = "PLAYER_STATE_CHANGED";
+        if (reason == null) {
+            PlayerSnapshotRevalidationPolicy.Difference playerState =
+                    session.playerSnapshot().currentMismatch(player);
+            if (playerState != PlayerSnapshotRevalidationPolicy.Difference.NONE) {
+                reason = "PLAYER_STATE_" + playerState.name();
+            }
         }
         if (reason != null) {
             abortPendingStart(pending, reason);
@@ -3366,6 +3370,11 @@ public final class GameManager {
                 && settings.get().antiCheat().blockRiptide();
     }
 
+    public boolean shouldBlockExternalVelocity(Player player) {
+        return isPlaying(player)
+                && settings.get().antiCheat().enabled();
+    }
+
     public boolean isExploitTeleport(PlayerTeleportEvent.TeleportCause cause) {
         return settings.get().antiCheat().enabled()
                 && settings.get().antiCheat().blockExploitTeleports()
@@ -3521,8 +3530,9 @@ public final class GameManager {
             }
         } else {
             quarantinedSessions.put(arena.id(), session);
-            plugin.getLogger().severe(
-                    "Arena " + arena.id() + " was quarantined because session cleanup did not fully settle");
+            plugin.getLogger().info(
+                    "Arena " + arena.id()
+                            + " remains reserved while durable session cleanup settles");
         }
         refreshJournalProtection();
         rebuildFreeArenas();
@@ -3557,7 +3567,9 @@ public final class GameManager {
             arenaLeases.reserve(session.arena().id(), session.arenaLease());
             return;
         }
-        plugin.getLogger().info("Recovered quarantined arena " + session.arena().id());
+        plugin.getLogger().info(
+                "Durable cleanup settled; arena "
+                        + session.arena().id() + " is available");
         rebuildFreeArenas();
     }
 

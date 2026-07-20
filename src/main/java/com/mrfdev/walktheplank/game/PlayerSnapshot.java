@@ -63,32 +63,39 @@ public record PlayerSnapshot(
         player.setFallDistance(0.0F);
     }
 
-    /**
-     * Revalidates the exact captured state before an asynchronous recovery record is allowed to
-     * authorize temporary player mutation.
-     */
-    boolean matchesCurrent(Player player) {
+    /** Revalidates critical captured state after the asynchronous recovery write. */
+    PlayerSnapshotRevalidationPolicy.Difference currentMismatch(Player player) {
         Objects.requireNonNull(player, "player");
         Location current = player.getLocation();
         Location captured = returnLocation();
         World currentWorld = current.getWorld();
         World capturedWorld = captured.getWorld();
-        return currentWorld != null
-                && capturedWorld != null
-                && currentWorld.getUID().equals(capturedWorld.getUID())
-                && Double.compare(current.getX(), captured.getX()) == 0
-                && Double.compare(current.getY(), captured.getY()) == 0
-                && Double.compare(current.getZ(), captured.getZ()) == 0
-                && Float.compare(current.getYaw(), captured.getYaw()) == 0
-                && Float.compare(current.getPitch(), captured.getPitch()) == 0
-                && Double.compare(player.getHealth(), health) == 0
-                && player.getFoodLevel() == foodLevel
-                && Float.compare(player.getSaturation(), saturation) == 0
-                && Float.compare(player.getExhaustion(), exhaustion) == 0
-                && Float.compare(player.getWalkSpeed(), walkSpeed) == 0
-                && player.getAllowFlight() == allowFlight
-                && player.isFlying() == flying
-                && player.isCollidable() == collidable;
+        if (currentWorld == null || capturedWorld == null) {
+            return PlayerSnapshotRevalidationPolicy.Difference.WORLD_CHANGED;
+        }
+        return PlayerSnapshotRevalidationPolicy.compare(
+                new PlayerSnapshotRevalidationPolicy.State(
+                        capturedWorld.getUID(),
+                        captured.getBlockX(),
+                        captured.getBlockY(),
+                        captured.getBlockZ(),
+                        health,
+                        foodLevel,
+                        walkSpeed,
+                        allowFlight,
+                        flying,
+                        collidable),
+                new PlayerSnapshotRevalidationPolicy.State(
+                        currentWorld.getUID(),
+                        current.getBlockX(),
+                        current.getBlockY(),
+                        current.getBlockZ(),
+                        player.getHealth(),
+                        player.getFoodLevel(),
+                        player.getWalkSpeed(),
+                        player.getAllowFlight(),
+                        player.isFlying(),
+                        player.isCollidable()));
     }
 
     public void restore(Player player) {

@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /** Immutable identity embedded into every 1MB release artifact. */
@@ -18,6 +20,8 @@ public record BuildInfo(
         String sourceCommit,
         boolean sourceDirty) {
     private static final String RESOURCE = "build-info.properties";
+    private static final Pattern PAPER_API_VERSION =
+            Pattern.compile("^(\\d+\\.\\d+)\\.build\\.(\\d+)-(?:alpha|beta|stable)$");
 
     public BuildInfo {
         pluginVersion = requireValue(pluginVersion, "pluginVersion");
@@ -34,6 +38,11 @@ public record BuildInfo(
         if (!sourceCommit.matches("[0-9a-f]{40}")) {
             throw new IllegalArgumentException(
                     "sourceCommit must be a full lowercase 40-character Git commit");
+        }
+        Matcher paperApi = PAPER_API_VERSION.matcher(paperApiVersion);
+        if (!paperApi.matches() || !paperApi.group(1).equals(paperTarget)) {
+            throw new IllegalArgumentException(
+                    "paperApiVersion must be an exact build on the Paper target line");
         }
     }
 
@@ -68,6 +77,14 @@ public record BuildInfo(
 
     public String sourceLabel() {
         return sourceCommit.substring(0, 12) + (sourceDirty ? "-dirty" : "-clean");
+    }
+
+    public int paperApiBuild() {
+        Matcher paperApi = PAPER_API_VERSION.matcher(paperApiVersion);
+        if (!paperApi.matches()) {
+            throw new IllegalStateException("Validated Paper API version no longer matches");
+        }
+        return Integer.parseInt(paperApi.group(2));
     }
 
     private static String requireValue(String value, String name) {
