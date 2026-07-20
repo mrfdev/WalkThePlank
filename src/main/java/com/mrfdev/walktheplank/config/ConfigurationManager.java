@@ -1660,8 +1660,8 @@ public final class ConfigurationManager {
         if (Boolean.TRUE.equals(source.get("mainGui.useFillItem"))) {
             validateTranslationPane(source, "mainGui.fillItem", problems);
         }
-        String titleColor = source.getString("mainGui.titleColor", "");
-        if (!titleColor.matches("#[0-9a-fA-F]{6}")) {
+        Object configuredTitleColor = source.get("mainGui.titleColor", true);
+        if (!hasValidExplicitGuiTitleColor(configuredTitleColor)) {
             problems.error("translations.yml mainGui.titleColor must use #RRGGBB notation");
         }
 
@@ -1704,6 +1704,11 @@ public final class ConfigurationManager {
                 source, "mainGui.scoreboardItem.noPermissionLore", "permissionName", problems);
         requireTranslationPlaceholderInList(
                 source, "mainGui.scoreboardItem.lore", "scoreboard", problems);
+    }
+
+    static boolean hasValidExplicitGuiTitleColor(Object configuredTitleColor) {
+        return !(configuredTitleColor instanceof String titleColor)
+                || titleColor.matches("#[0-9a-fA-F]{6}");
     }
 
     private static void validateTranslationItem(

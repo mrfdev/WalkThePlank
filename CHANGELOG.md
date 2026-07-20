@@ -2,6 +2,16 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.4.1-010] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.4.1-010-j25-26.2.jar`
+
+### Legacy translation compatibility
+
+- Fixed startup validation for existing `translations.yml` files that predate `mainGui.titleColor`. The missing key now inherits bundled `#111827` in memory without rewriting the live file; an explicitly invalid color remains a fail-closed validation error.
+- Added a regression test for Bukkit's explicit-versus-default configuration semantics.
+- Build 009 was rejected by the persistent full-stack smoke when this compatibility gap was found. It was never tagged as a release candidate and is superseded by build 010.
+
 ## [2.4.1-009] — 2026-07-20
 
 Expected artifact: `1MB-WalkThePlank-v2.4.1-009-j25-26.2.jar`
