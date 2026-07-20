@@ -2,6 +2,18 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.5.1-018] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.5.1-018-j25-26.2.jar`
+
+### Two-platform gameplay invariant
+
+- Fixed the durability pipeline placing its already-prepared successor before the player landed. A run now exposes exactly the original two-platform window: the platform supporting the player and one destination, never an additional preview platform.
+- The next restoration record is still captured and fsynced on the bounded recovery worker while the player traverses the current jump, but successful durability completion remains hidden until an exact grounded landing.
+- Landing revalidates the current run/session generations, arena and block leases, player online/death/permission state, and the exact prepared owner immediately before world mutation. The departed platform is restored first and exactly one replacement destination is then placed on the primary thread.
+- The claimed successor is registered with normal failure cleanup before either world mutation, so a restore or placement exception cannot orphan its journal record or block lease.
+- Added a focused successor-state-machine test suite covering pending, durable-hidden, exact consume, stale callback, duplicate callback, and run-end abandonment paths.
+
 ## [2.5.0-017] — 2026-07-20
 
 Expected artifact: `1MB-WalkThePlank-v2.5.0-017-j25-26.2.jar`

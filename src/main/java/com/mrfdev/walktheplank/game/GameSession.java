@@ -36,14 +36,15 @@ final class GameSession {
     private final SplittableRandom random = new SplittableRandom();
     private final BlockLeaseRegistry blockLeases;
     private final ParticlePreference particlePreference;
-    private final Deque<PlacedBlock> placedBlocks = new ArrayDeque<>(3);
+    private final Deque<PlacedBlock> placedBlocks = new ArrayDeque<>(2);
+    private final SuccessorPipeline<PreparedBlock,
+            com.mrfdev.walktheplank.recovery.RestorationRecord> successorPipeline =
+            new SuccessorPipeline<>();
 
     private GridPoint currentPoint;
     private PlacedBlock targetBlock;
-    private PlacedBlock successorBlock;
     private StartPreparation startPreparation;
     private PreparedBlock incompleteStartPreparation;
-    private PreparedBlock preparedSuccessor;
     private int score;
     private boolean ended;
     private long startedAtNanos;
@@ -134,52 +135,31 @@ final class GameSession {
         return prepareSuccessor();
     }
 
-    void commitSuccessor(PreparedBlock prepared, com.mrfdev.walktheplank.recovery.RestorationRecord record) {
+    void markSuccessorDurable(
+            PreparedBlock prepared,
+            com.mrfdev.walktheplank.recovery.RestorationRecord record) {
         ensureActive();
-        if (preparedSuccessor != Objects.requireNonNull(prepared, "prepared")) {
-            throw new IllegalStateException("Successor preparation is stale");
-        }
-        PlacedBlock placed = prepared.claim(Objects.requireNonNull(record, "record"));
-        placedBlocks.addLast(placed);
-        preparedSuccessor = null;
-        placed.place();
-        showParticles(placed);
-        successorBlock = placed;
+        successorPipeline.complete(
+                Objects.requireNonNull(prepared, "prepared"),
+                Objects.requireNonNull(record, "record"));
     }
 
-    AdvanceResult advance() {
-        return advance(System.nanoTime());
+    SuccessorCommit readySuccessor() {
+        SuccessorPipeline.Ready<PreparedBlock,
+                com.mrfdev.walktheplank.recovery.RestorationRecord> ready =
+                successorPipeline.ready();
+        return ready == null
+                ? null
+                : new SuccessorCommit(ready);
     }
 
-    AdvanceResult advance(long nowNanos) {
+    AdvanceResult advance(long nowNanos, SuccessorCommit expectedCommit) {
         ensureActive();
         PlacedBlock expectedTarget = targetBlock;
         if (expectedTarget == null
                 || !expectedTarget.isIntact()
                 || !blockLeases.owns(expectedTarget.key(), expectedTarget.lease())) {
             throw new IllegalStateException("The current parkour target is no longer intact and protected");
-        }
-        PlacedBlock readySuccessor = successorBlock;
-        if (readySuccessor == null) {
-            return AdvanceResult.waiting(score);
-        }
-        if (!readySuccessor.isIntact()
-                || !blockLeases.owns(readySuccessor.key(), readySuccessor.lease())) {
-            throw new IllegalStateException("The pipelined successor is no longer intact and protected");
-        }
-        score++;
-        Duration jumpInterval =
-                Duration.ofNanos(Math.max(0L, nowNanos - lastProgressAtNanos));
-        if (settings.combo().enabled()) {
-            if (score == 1) {
-                currentCombo = 1;
-            } else if (jumpInterval.compareTo(settings.combo().maximumGap()) <= 0) {
-                currentCombo++;
-            } else {
-                currentCombo = 1;
-                flawless = false;
-            }
-            maximumCombo = Math.max(maximumCombo, currentCombo);
         }
 
         PlacedBlock previous = placedBlocks.peekFirst();
@@ -199,20 +179,52 @@ final class GameSession {
         if (landed != expectedTarget) {
             throw new IllegalStateException("Session target does not match the landed block");
         }
-        currentPoint = new GridPoint(landed.key().x(), landed.key().y(), landed.key().z());
-        targetBlock = readySuccessor;
-        successorBlock = null;
-        PreparedBlock next = prepareSuccessor();
 
+        SuccessorPipeline.Ready<PreparedBlock,
+                com.mrfdev.walktheplank.recovery.RestorationRecord> successor =
+                successorPipeline.consume(
+                        Objects.requireNonNull(expectedCommit, "expectedCommit").ready());
+        PlacedBlock nextTarget = successor.preparation().claim(successor.record());
+        /*
+         * Register the claimed record before either world mutation so the normal failure cleanup
+         * owns it even if restoring the departed platform or placing the destination throws.
+         */
+        placedBlocks.addLast(nextTarget);
+
+        /*
+         * Preserve the original game's two-visible-platform invariant. The durable successor has
+         * stayed hidden until this confirmed landing. Restore the departed platform first, then
+         * place exactly one new destination in the same primary-thread transition.
+         */
         RestorationCoordinator.DeferredRestoration cleanup = previous.restoreDeferred();
         if (!cleanup.worldSettled()) {
             throw new IllegalStateException(
                     "Previous platform could not be restored: " + cleanup.worldOutcome());
         }
         placedBlocks.removeFirst();
+        nextTarget.place();
+        showParticles(nextTarget);
+
+        score++;
+        Duration jumpInterval =
+                Duration.ofNanos(Math.max(0L, nowNanos - lastProgressAtNanos));
+        if (settings.combo().enabled()) {
+            if (score == 1) {
+                currentCombo = 1;
+            } else if (jumpInterval.compareTo(settings.combo().maximumGap()) <= 0) {
+                currentCombo++;
+            } else {
+                currentCombo = 1;
+                flawless = false;
+            }
+            maximumCombo = Math.max(maximumCombo, currentCombo);
+        }
+
+        currentPoint = new GridPoint(landed.key().x(), landed.key().y(), landed.key().z());
+        targetBlock = nextTarget;
+        PreparedBlock next = prepareSuccessor();
         lastProgressAtNanos = nowNanos;
         return new AdvanceResult(
-                true,
                 score,
                 currentCombo,
                 maximumCombo,
@@ -240,8 +252,7 @@ final class GameSession {
             abandoned.add(pendingStart.base().abandon());
             abandoned.add(pendingStart.target().abandon());
         }
-        PreparedBlock pendingSuccessor = preparedSuccessor;
-        preparedSuccessor = null;
+        PreparedBlock pendingSuccessor = successorPipeline.clear();
         if (pendingSuccessor != null) {
             abandoned.add(pendingSuccessor.abandon());
         }
@@ -417,8 +428,8 @@ final class GameSession {
     }
 
     private PreparedBlock prepareSuccessor() {
-        if (preparedSuccessor != null || successorBlock != null) {
-            throw new IllegalStateException("A successor is already prepared or placed");
+        if (!successorPipeline.isEmpty()) {
+            throw new IllegalStateException("A successor is already prepared");
         }
         PlacedBlock futureCurrent = Objects.requireNonNull(targetBlock, "targetBlock");
         GridPoint from = new GridPoint(
@@ -426,8 +437,9 @@ final class GameSession {
                 futureCurrent.key().y(),
                 futureCurrent.key().z());
         GridPoint next = findNext(from, score + 1);
-        preparedSuccessor = prepare(location(next), settings.onlyReplaceAir());
-        return preparedSuccessor;
+        PreparedBlock prepared = prepare(location(next), settings.onlyReplaceAir());
+        successorPipeline.begin(prepared);
+        return prepared;
     }
 
     private PreparedBlock prepare(Location location, boolean requireAir) {
@@ -525,7 +537,6 @@ final class GameSession {
     }
 
     record AdvanceResult(
-            boolean advanced,
             int score,
             int combo,
             int maximumCombo,
@@ -533,16 +544,17 @@ final class GameSession {
             Duration jumpInterval,
             PreparedBlock successorPreparation,
             BlockCleanup cleanup) {
-        static AdvanceResult waiting(int score) {
-            return new AdvanceResult(
-                    false,
-                    score,
-                    0,
-                    0,
-                    false,
-                    Duration.ZERO,
-                    null,
-                    null);
+    }
+
+    record SuccessorCommit(
+            SuccessorPipeline.Ready<PreparedBlock,
+                    com.mrfdev.walktheplank.recovery.RestorationRecord> ready) {
+        SuccessorCommit {
+            Objects.requireNonNull(ready, "ready");
+        }
+
+        PreparedBlock prepared() {
+            return ready.preparation();
         }
     }
 

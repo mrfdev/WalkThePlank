@@ -1128,6 +1128,21 @@ public final class GameManager {
     }
 
     private void advanceLandedSession(Player player, GameSession session) {
+        GameSession.SuccessorCommit successor = session.readySuccessor();
+        if (successor == null) {
+            return;
+        }
+        String successorRejection = successorPlacementRejection(session, successor.prepared());
+        if (successorRejection != null) {
+            failActiveSession(
+                    player,
+                    session,
+                    "successor_landing_revalidation",
+                    new IllegalStateException(
+                            "Successor landing commit rejected: " + successorRejection));
+            return;
+        }
+
         GameSession.AdvanceResult result;
         try {
             long nowNanos = System.nanoTime();
@@ -1137,10 +1152,7 @@ public final class GameManager {
                 messages.send(player, "chat.runIntegrityFailed");
                 return;
             }
-            result = session.advance(nowNanos);
-            if (!result.advanced()) {
-                return;
-            }
+            result = session.advance(nowNanos, successor);
             attachSuccessorPreparation(session, result.successorPreparation());
             attachBlockCleanup(session, result.cleanup());
             publishSessionScores();
@@ -1200,6 +1212,42 @@ public final class GameManager {
             return;
         }
 
+        String rejection = successorPlacementRejection(session, prepared);
+        if (rejection != null) {
+            prepared.abandon();
+            if (sessions.get(player.getUniqueId()) == session
+                    && !rejection.equals(PlacementCommitPolicy.Decision.PLAYER_OFFLINE.name())
+                    && !shuttingDown) {
+                failActiveSession(
+                        player,
+                        session,
+                        "successor_revalidation",
+                        new IllegalStateException("Successor durability rejected: " + rejection));
+            }
+            return;
+        }
+
+        try {
+            session.markSuccessorDurable(prepared, Objects.requireNonNull(record, "record"));
+        } catch (RuntimeException | LinkageError commitFailure) {
+            failActiveSession(player, session, "successor_commit", commitFailure);
+            return;
+        }
+        Location actual = player.getLocation();
+        Location underPlayer = actual.clone().subtract(0.0, 1.0, 0.0);
+        if (sessions.get(player.getUniqueId()) == session
+                && LandingPolicy.isGroundedAndNotAscending(
+                        hasGroundSupport(player),
+                        player.getVelocity().getY())
+                && session.isTarget(BlockKey.from(underPlayer))) {
+            advanceLandedSession(player, session);
+        }
+    }
+
+    private String successorPlacementRejection(
+            GameSession session,
+            PreparedBlock prepared) {
+        Player player = session.player();
         BlockLeaseRegistry.BlockLease blockLease = prepared.lease();
         PlacementCommitPolicy.Decision decision = PlacementCommitPolicy.decide(
                 new PlacementCommitPolicy.CapturedOwner(
@@ -1221,37 +1269,16 @@ public final class GameManager {
                         player.isOnline(),
                         arenaLeases.owns(session.arena().id(), session.arenaLease()),
                         blockLeases.owns(prepared.key(), blockLease)));
-        if (decision != PlacementCommitPolicy.Decision.COMMIT
-                || player.isDead()
-                || !player.hasPermission(settings.get().permissions().playGame())) {
-            prepared.abandon();
-            if (sessions.get(player.getUniqueId()) == session
-                    && decision != PlacementCommitPolicy.Decision.PLAYER_OFFLINE
-                    && !shuttingDown) {
-                failActiveSession(
-                        player,
-                        session,
-                        "successor_revalidation",
-                        new IllegalStateException("Successor commit rejected: " + decision));
-            }
-            return;
+        if (decision != PlacementCommitPolicy.Decision.COMMIT) {
+            return decision.name();
         }
-
-        try {
-            session.commitSuccessor(prepared, Objects.requireNonNull(record, "record"));
-        } catch (RuntimeException | LinkageError commitFailure) {
-            failActiveSession(player, session, "successor_commit", commitFailure);
-            return;
+        if (player.isDead()) {
+            return "PLAYER_DEAD";
         }
-        Location actual = player.getLocation();
-        Location underPlayer = actual.clone().subtract(0.0, 1.0, 0.0);
-        if (sessions.get(player.getUniqueId()) == session
-                && LandingPolicy.isGroundedAndNotAscending(
-                        hasGroundSupport(player),
-                        player.getVelocity().getY())
-                && session.isTarget(BlockKey.from(underPlayer))) {
-            advanceLandedSession(player, session);
+        if (!player.hasPermission(settings.get().permissions().playGame())) {
+            return "PLAY_PERMISSION_REVOKED";
         }
+        return null;
     }
 
     private void attachBlockCleanup(
