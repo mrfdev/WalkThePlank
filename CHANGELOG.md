@@ -2,6 +2,18 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.4.1-009] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.4.1-009-j25-26.2.jar`
+
+### Main menu
+
+- Expanded the player menu from 27 to 54 slots and adopted the established 1MB CMI-API frame: light-blue stained-glass panes on the outer border only, with unused center slots left empty.
+- Moved tutorial, play/queue, and statistics/leaderboard actions to centered slots 20, 22, and 24 without changing their behavior, permission checks, queue decisions, or owner/nonce/generation/inventory session protections.
+- Replaced the hard-to-read legacy blue window title with configurable `#RRGGBB` coloring. The default `#111827` is a near-black charcoal; existing formatted title text is reduced to literal plain text before the trusted color is applied.
+- Added an in-memory compatibility migration from the historical white pane to the light-blue 1MB pane. Existing live `translations.yml` and SQLite data do not need to be rewritten.
+- Added regression tests for the exact 54-slot border geometry, deliberately empty center, action positions, title formatting removal, hex validation, and legacy pane migration.
+
 ## [2.4.0-008] — 2026-07-18
 
 Expected artifact: `1MB-WalkThePlank-v2.4.0-008-j25-26.2.jar`

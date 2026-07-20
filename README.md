@@ -12,15 +12,15 @@ intermediate builds from this modernization and are fully superseded.
 
 The Bukkit plugin name intentionally remains `InfinityParkour`. This preserves the existing data directory at `plugins/InfinityParkour/`, so the live `config.yml`, `translations.yml`, and `database.db` can be upgraded in place without renaming player data.
 
-Current source release: **v2.4.0, build 008**
+Current source release: **v2.4.1, build 009**
 
 Expected standalone artifact:
 
 ```text
-1MB-WalkThePlank-v2.4.0-008-j25-26.2.jar
+1MB-WalkThePlank-v2.4.1-009-j25-26.2.jar
 ```
 
-> Build 007 was frozen as `v2.3.0-007-rc.1` after its controlled scenarios, standalone/full-stack Paper smoke, reproducibility, and test-server synchronization passed. Build 008 changes persistence and gameplay fairness, so build-007 evidence is historical: the exact clean build-008 candidate still needs its own scenario reruns, Paper build-61-or-newer smoke, live-copy schema-v3 rehearsal, freeze, synchronization, and human approval.
+> Build 008 was frozen as `v2.4.0-008-rc.1` after its controlled scenarios, standalone/full-stack Paper smoke, reproducibility, live-copy schema-v3 preservation, and test-server synchronization passed. Build 009 is a deliberately small GUI presentation release; build-008 evidence remains historical, so the exact clean build-009 candidate still needs its own automated freeze, Paper smoke, synchronization, and human GUI approval.
 
 See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-walktheplank.md](feature-improvements-walktheplank.md) for the authoritative future-development TODO and implemented-versus-remaining status.
 
@@ -41,7 +41,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-w
 - Movement hardening while playing: damage and hunger are cancelled; flight, elytra/gliding, riptide, ender-pearl/consumable teleports, projectile launch, vehicles/mounts, external velocity, configured potion-effect advantages, and non-vanilla movement-speed/walk-speed state are blocked or disqualify altered runs. Arena bounds and a conservative minimum inter-jump interval are checked server-side. Eligibility is rechecked before activation and every second; anomalies are rate-limited into the audit and never cause an automatic ban.
 - Active-run interaction isolation: outgoing player/projectile damage, item pickup/drop, inventory click/drag, hand swaps, held-slot changes, and entity interaction are denied while the run is active.
 - Server-side landing checks for ground support, finite non-ascending vertical velocity, and the exact intact target block.
-- A typed-holder 27-slot GUI with tutorial, play/queue behavior, personal statistics, permission-filtered leaderboard lore, click/drag cancellation, and a bounded menu-open cooldown. Every server-side session binds its owner UUID, a random nonce, a monotonic generation, and the exact inventory; stale/duplicate clicks are suppressed, only one action may be pending, and current permission/game state is revalidated immediately before execution.
+- A typed-holder 54-slot GUI with a readable near-black title, the standard 1MB light-blue outer frame, an open center, centered tutorial/play/statistics actions, permission-filtered leaderboard lore, click/drag cancellation, and a bounded menu-open cooldown. Every server-side session binds its owner UUID, a random nonce, a monotonic generation, and the exact inventory; stale/duplicate clicks are suppressed, only one action may be pending, and current permission/game state is revalidated immediately before execution.
 - UUID-owned all-time personal bests with competition ranking, last-known-name refresh, and a live top ten.
 - Separate Combo and Flawless personal-best categories. Combo is the longest configured time-target streak; Flawless records the final Classic score only when every transition meets that target. Neither category changes or multiplies Classic.
 - Configurable native milestones using Adventure action bars/titles and Paper sounds/particles, with UUID-owned full/reduced/off particles and independent sound/title preferences through `/walk settings`.
@@ -87,16 +87,16 @@ Build the deployment artifact with the checked-in Gradle wrapper:
 The deployable file is:
 
 ```text
-build/libs/1MB-WalkThePlank-v2.4.0-008-j25-26.2.jar
+build/libs/1MB-WalkThePlank-v2.4.1-009-j25-26.2.jar
 ```
 
 Do not deploy the `-unshaded.jar`; it does not contain SQLite JDBC. `build` runs the automated tests, creates the shaded artifact, and executes the archive/metadata verification gate. `freezeCandidate` additionally rejects a dirty Git tree. Every candidate embeds the full source commit and strict dirty state in `build-info.properties` and the JAR manifest; `/walk info`, `/walk debug overview`, and startup show the abbreviated source label.
 
-Build 007's completed machine evidence is preserved historically in the annotated `v2.3.0-007-rc.1` tag and its ignored operator release archive. Those results prove that artifact, not build 008. The exact clean build-008 candidate needs two byte-identical builds, repeated scenario-profile evidence, Paper smoke, live-copy schema-v3 preservation, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
+Build 008's completed machine evidence is preserved historically in the annotated `v2.4.0-008-rc.1` tag and its ignored operator release archive. Those results prove that artifact, not build 009. The exact clean build-009 candidate needs two byte-identical builds, scenario-profile evidence, Paper smoke, live-copy preservation checks, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
 
 | Release property | Value |
 | --- | --- |
-| Filename | `1MB-WalkThePlank-v2.4.0-008-j25-26.2.jar` |
+| Filename | `1MB-WalkThePlank-v2.4.1-009-j25-26.2.jar` |
 | Source identity | Full Git commit plus strict clean/dirty state embedded in the JAR |
 | Final size and SHA-256 | Annotated candidate tag and operator release archive |
 | Automated test result | Must pass with zero failures/errors/skips and strict Java 25 compilation |
@@ -117,11 +117,11 @@ Useful build commands:
 ./gradlew syncTestServer
 ```
 
-`releaseInfo` must print version `2.4.0`, build `008`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 008 into the active plugin directory.
+`releaseInfo` must print version `2.4.1`, build `009`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 009 into the active plugin directory.
 
 ## Install or upgrade
 
-> Stop Paper and take an operator-controlled backup before the first build-008 start. The automatic SQLite migration backup is an additional safeguard, not a substitute for a full server/data backup.
+> Stop Paper and take an operator-controlled backup before the first build-009 start. The automatic SQLite migration backup is an additional safeguard, not a substitute for a full server/data backup.
 
 For an existing server:
 
@@ -130,7 +130,7 @@ For an existing server:
 3. Back up the old plugin JAR and the complete `plugins/InfinityParkour/` directory as one matched rollback set.
 4. Keep the data directory named `plugins/InfinityParkour/`.
 5. Remove or disable every older InfinityParkour/WalkThePlank JAR. Paper must see only one plugin with the `InfinityParkour` name.
-6. Copy `1MB-WalkThePlank-v2.4.0-008-j25-26.2.jar` into `plugins/`.
+6. Copy `1MB-WalkThePlank-v2.4.1-009-j25-26.2.jar` into `plugins/`.
 7. Start Paper and inspect the complete startup log. A successful live-data start should report 100 preserved Classic scores and, on the first schema-v3 migration only, a verified pre-migration backup path.
 8. Run `/walk info`, `/walk admin validate`, `/walk admin status`, `/walk admin doctor`, `/walk debug all`, and the full beta checklist before allowing players in.
 9. Stop Paper cleanly once and require the clean restoration/disable message before the event rehearsal is accepted.
@@ -456,7 +456,9 @@ Legacy configuration behavior is deliberate:
 
 ### Translation formatting and literal values
 
-Translation strings are trusted operator templates. Existing unmarked values continue to use legacy ampersand formatting, so current live `translations.yml` files remain backward compatible. Prefix one trusted value with `minimessage:` to opt only that value into MiniMessage; for example, `minimessage:<dark_blue><bold>WalkThePlank</bold>`. The bundled GUI titles use this explicit marker while the remaining bundled legacy values continue to work unchanged.
+Translation strings are trusted operator templates. Existing unmarked values continue to use legacy ampersand formatting, so current live `translations.yml` files remain backward compatible. Prefix one trusted value with `minimessage:` to opt only that value into MiniMessage; for example, `minimessage:<dark_blue><bold>WalkThePlank</bold>`. Bundled GUI item titles use this explicit marker while the remaining bundled legacy values continue to work unchanged.
+
+The inventory window title has a narrower readability rule: `mainGui.title` supplies text, all of its legacy/MiniMessage styling is removed, and `mainGui.titleColor` applies one validated `#RRGGBB` color. The default is the near-black charcoal `#111827`; use `#000000` for complete black. The 54-slot menu draws `mainGui.fillItem` only on its outer frame and leaves unused inner slots empty. The bundled pane is `LIGHT_BLUE_STAINED_GLASS_PANE`, and the historical `WHITE_STAINED_GLASS_PANE` value is upgraded to light blue in memory so the supplied live file does not need to be rewritten. `mainGui.useFillItem: false` still disables the frame.
 
 Runtime `{{placeholders}}`—including player and season names, database values, permission nodes, and counts—are replaced with literal Adventure components only after the trusted template is parsed. Replacement text cannot introduce legacy colors, MiniMessage tags, click/hover events, or other template behavior. Do not add `minimessage:` to an untrusted dynamic value; the marker belongs only on an operator-controlled template.
 
@@ -492,7 +494,7 @@ The backup is made with SQLite `VACUUM INTO` and must pass `PRAGMA quick_check` 
 
 The schema migration runs transactionally and validates required columns, indexes, constraints, and foreign keys. Persistence accepts only vanilla Java last-known names matching `[A-Za-z0-9_]{3,16}` and non-negative scores no larger than Java's integer maximum; the fresh schema also records matching constraints. A database with a newer unsupported schema, malformed nonblank UUID, duplicate nonblank UUID, incompatible table/index definition, unsafe path, or failed backup disables the plugin safely.
 
-Historical build-003 rehearsal against a disposable copy of the supplied live database preserved all **100** rows and all **100** UUIDs, score sum **4256**, maximum score **149**, and a valid `PRAGMA quick_check`; a verified schema-v2 backup was created and `_resources` remained unchanged. Build 008 adds schema v3, so that historical result is not sufficient: repeat the exact invariants, require a verified v3 backup/retention result, and prove the Classic table/top ten are unchanged using the frozen build-008 candidate.
+Build 008's disposable-copy schema-v3 rehearsal preserved all **100** rows and all **100** UUIDs, score sum **4256**, maximum score **149**, the unchanged Classic top ten, and a valid `PRAGMA quick_check`; its automatic backup passed retention verification and `_resources` remained unchanged. Build 009 has no database change, but repeat the same invariants against its frozen candidate rather than treating older evidence as approval.
 
 Migration never guesses identity from a username. Blank UUID text is normalized to unresolved `NULL`; malformed or duplicate nonblank UUIDs fail. Unresolved rows can remain visible in rankings, but player-specific lookup cannot claim them and UUID-only export refuses the entire affected snapshot. No CMI database or online API is queried automatically.
 
@@ -618,9 +620,9 @@ The current API intentionally does not expose mutable sessions, direct database 
 
 ## Testing and event approval
 
-The build-008 suite currently contains 246 tests across 56 test classes with zero failures, errors, or skips. It includes schema-v3/category/preference atomicity and simultaneous field updates, verified backup retention and numeric retention ordering across schema versions, audit-chain restart/tamper/truncation/checkpoint-deletion/legacy/prune-crash behavior, build provenance, command lifecycle/tree/module boundaries, typed arguments and explicit confirmations, external/experimental API exclusions, both bounded I/O workers, recovery ownership, SQLite durability, reward preparation, queues, exports, teleport ordering, GUI authorization, literal components, core game policies, and reflection-locked `EventHandler` priority/`ignoreCancelled` contracts. Reconfirm the count against the clean frozen candidate; public API/event behavior and real-player movement remain server-level integration gates.
+The build-009 suite currently contains 251 tests across 58 test classes with zero failures, errors, or skips. It includes exact 54-slot GUI frame/open-center geometry and title/pane migration in addition to schema-v3/category/preference atomicity, verified backup retention, audit-chain recovery/tamper behavior, build provenance, command lifecycle/tree/module boundaries, external/experimental API exclusions, both bounded I/O workers, recovery ownership, SQLite durability, rewards, queues, exports, teleport ordering, GUI authorization, literal components, core game policies, and reflection-locked `EventHandler` priority/`ignoreCancelled` contracts. Reconfirm the count against the clean frozen candidate; public API/event behavior and real-player movement remain server-level integration gates.
 
-Build 008 carries forward build 007's isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
+Build 009 carries forward build 008's isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
 
 ```bash
 ./gradlew scenarioArtifacts verifyProductionScenarioIsolation
@@ -629,8 +631,8 @@ Build 008 carries forward build 007's isolated destructive-test system. It never
 The test-only outputs are deliberately outside `build/libs/`:
 
 ```text
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.4.0-008.jar
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.4.0-008-Failpoints.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.4.1-009.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.4.1-009-Failpoints.jar
 ```
 
 `verifyReleaseJar` byte-scans the production JAR for scenario packages, commands, manifest/agent markers, canaries, every scenario-property prefix, and all 24 failpoint names. `verifyProductionScenarioIsolation` repeats that negative proof and requires the harness and instrumented copy to trigger positive controls, preventing a broken scan from reporting a false pass. It also builds a second instrumented copy and requires byte-for-byte identity. The runner refuses symlinked destructive roots and writes a bounded per-run nonce marker. Both the property-armed failpoint controller and the scenario plugin require that marker, the exact generated root/working directory/layout/data paths, and the bridge loaded by the instrumented target's own classloader.

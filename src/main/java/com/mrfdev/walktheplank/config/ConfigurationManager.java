@@ -109,6 +109,7 @@ public final class ConfigurationManager {
             "chat.runIntegrityFailed",
             "chat.runTimedOut",
             "mainGui.title",
+            "mainGui.titleColor",
             "mainGui.fillItem",
             "mainGui.tutorialItem.item",
             "mainGui.tutorialItem.title",
@@ -1657,7 +1658,11 @@ public final class ConfigurationManager {
         validateTranslationItem(source, "mainGui.playItem.item", problems);
         validateTranslationItem(source, "mainGui.scoreboardItem.item", problems);
         if (Boolean.TRUE.equals(source.get("mainGui.useFillItem"))) {
-            validateTranslationItem(source, "mainGui.fillItem", problems);
+            validateTranslationPane(source, "mainGui.fillItem", problems);
+        }
+        String titleColor = source.getString("mainGui.titleColor", "");
+        if (!titleColor.matches("#[0-9a-fA-F]{6}")) {
+            problems.error("translations.yml mainGui.titleColor must use #RRGGBB notation");
         }
 
         requireTranslationPlaceholders(
@@ -1711,6 +1716,29 @@ public final class ConfigurationManager {
         }
         try {
             requireGuiItem(configuredName, path);
+        } catch (IllegalArgumentException exception) {
+            problems.error("translations.yml " + path + " is not a valid GUI item");
+        }
+    }
+
+    private static void validateTranslationPane(
+            YamlConfiguration source,
+            String path,
+            ValidationAccumulator problems) {
+        Object raw = source.get(path);
+        if (!(raw instanceof String configuredName)) {
+            return;
+        }
+        try {
+            requireGuiItem(configuredName, path);
+            String normalized = configuredName.strip()
+                    .replace(' ', '_')
+                    .replace('-', '_')
+                    .toUpperCase(Locale.ROOT);
+            if (!normalized.equals("GLASS_PANE")
+                    && !normalized.endsWith("_STAINED_GLASS_PANE")) {
+                problems.error("translations.yml " + path + " must be a glass pane item");
+            }
         } catch (IllegalArgumentException exception) {
             problems.error("translations.yml " + path + " is not a valid GUI item");
         }

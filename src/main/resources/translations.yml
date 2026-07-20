@@ -76,9 +76,10 @@ helpCommand:
   - '&7------------------------------------------------'
 
 mainGui:
-  title: 'minimessage:<dark_blue><bold>WalkThePlank</bold>'
+  title: '1MB Walk the Plank'
+  titleColor: '#111827'
   useFillItem: true
-  fillItem: WHITE_STAINED_GLASS_PANE
+  fillItem: LIGHT_BLUE_STAINED_GLASS_PANE
   tutorialItem:
     item: BOOK
     title: 'minimessage:<dark_blue><bold>How to play</bold>'

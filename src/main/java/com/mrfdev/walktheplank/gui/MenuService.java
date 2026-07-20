@@ -294,8 +294,6 @@ public final class MenuService {
     }
 
     private final class ParkourMenu implements InventoryHolder {
-        private static final int SIZE = 27;
-
         private final Player player;
         private final UUID ownerId;
         private final UUID nonce = UUID.randomUUID();
@@ -306,8 +304,11 @@ public final class MenuService {
         private ParkourMenu(Player player) {
             this.player = player;
             ownerId = player.getUniqueId();
-            Component title = messages.translated("mainGui.title", Map.of());
-            inventory = Bukkit.createInventory(this, SIZE, title);
+            ConfigurationSection gui = requireSection("mainGui");
+            Component title = MenuAppearance.readableTitle(
+                    messages.translated("mainGui.title", Map.of()),
+                    gui.getString("titleColor", MenuAppearance.DEFAULT_TITLE_COLOR));
+            inventory = Bukkit.createInventory(this, MainMenuLayout.SIZE, title);
             populate();
         }
 
@@ -349,18 +350,24 @@ public final class MenuService {
         private void populate() {
             ConfigurationSection gui = requireSection("mainGui");
             if (gui.getBoolean("useFillItem", true)) {
-                ItemStack fill = items.createFill(gui.getString("fillItem", "WHITE_STAINED_GLASS_PANE"));
-                for (int slot = 0; slot < SIZE; slot++) {
-                    inventory.setItem(slot, fill);
+                ItemStack fill = items.createFill(MenuAppearance.borderMaterial(
+                        gui.getString("fillItem", MenuAppearance.DEFAULT_BORDER_MATERIAL)));
+                for (int slot : MainMenuLayout.BORDER_SLOTS) {
+                    inventory.setItem(slot, fill.clone());
                 }
             }
 
-            inventory.setItem(10, items.create(requireSection("mainGui.tutorialItem")));
-            setAction(13, items.create(requireSection("mainGui.playItem")), this::play);
+            inventory.setItem(
+                    MainMenuLayout.TUTORIAL_SLOT,
+                    items.create(requireSection("mainGui.tutorialItem")));
+            setAction(
+                    MainMenuLayout.PLAY_SLOT,
+                    items.create(requireSection("mainGui.playItem")),
+                    this::play);
 
             ConfigurationSection scoreboardSection = requireSection("mainGui.scoreboardItem");
             setAction(
-                    16,
+                    MainMenuLayout.SCOREBOARD_SLOT,
                     items.create(scoreboardSection, scoreboardLore(scoreboardSection)),
                     this::showStats);
         }
