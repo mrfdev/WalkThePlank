@@ -1,15 +1,18 @@
 package com.mrfdev.walktheplank.config;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 /**
  * In-memory upgrade for the exact GUI text shipped by the historical live plugin.
  *
  * <p>Operators keep control of genuinely customized translations. Only a complete, known legacy
- * item definition is replaced with the bundled modern definition, and the on-disk file is never
- * rewritten by this compatibility layer.</p>
+ * item definition is replaced with the bundled modern definition. Missing bundled leaves are also
+ * materialized in memory because Bukkit sections inherited from defaults do not reliably resolve
+ * relative child lookups. The on-disk file is never rewritten by this compatibility layer.</p>
  */
 final class GuiTranslationCompatibility {
     private static final String LEGACY_WINDOW_TITLE = "&9&l1MB Walk the Plank game";
@@ -102,6 +105,20 @@ final class GuiTranslationCompatibility {
                     translations,
                     bundledDefaults,
                     "mainGui.scoreboardItem.lore");
+        }
+        materializeMissingDefaults(translations, bundledDefaults);
+    }
+
+    private static void materializeMissingDefaults(
+            YamlConfiguration translations,
+            YamlConfiguration bundledDefaults) {
+        for (Map.Entry<String, Object> entry
+                : bundledDefaults.getValues(true).entrySet()) {
+            if (entry.getValue() instanceof ConfigurationSection
+                    || translations.contains(entry.getKey(), true)) {
+                continue;
+            }
+            translations.set(entry.getKey(), entry.getValue());
         }
     }
 

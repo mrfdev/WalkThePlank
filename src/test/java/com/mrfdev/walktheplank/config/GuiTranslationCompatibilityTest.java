@@ -1,6 +1,7 @@
 package com.mrfdev.walktheplank.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStreamReader;
@@ -34,6 +35,15 @@ final class GuiTranslationCompatibilityTest {
         assertEquals(
                 defaults.getString("mainGui.scoreboardItem.scoreboardRecord"),
                 legacy.getString("mainGui.scoreboardItem.scoreboardRecord"));
+        assertEquals(
+                "PLAYER_HEAD",
+                requireSection(legacy, "mainGui.playerItem").getString("item"));
+        assertEquals(
+                "ARROW",
+                requireSection(legacy, "mainGui.backItem").getString("item"));
+        assertEquals(
+                "BARRIER",
+                requireSection(legacy, "mainGui.closeItem").getString("item"));
         assertTrue(legacy.getStringList("mainGui.tutorialItem.lore").stream()
                 .filter(line -> !line.isEmpty())
                 .allMatch(line -> line.startsWith("minimessage:<!italic>")));
@@ -50,6 +60,27 @@ final class GuiTranslationCompatibilityTest {
 
         assertEquals("&9&lHow to play?", legacy.getString("mainGui.tutorialItem.title"));
         assertEquals(customLore, legacy.getStringList("mainGui.tutorialItem.lore"));
+    }
+
+    @Test
+    void materializesMissingNestedDefaultsWithoutOverwritingCustomLeaves() {
+        YamlConfiguration legacy = legacyTranslations();
+        legacy.set("mainGui.backItem.title", "Custom server menu");
+
+        GuiTranslationCompatibility.upgrade(legacy, bundledDefaults());
+
+        assertEquals(
+                "PLAYER_HEAD",
+                requireSection(legacy, "mainGui.playerItem").getString("item"));
+        assertEquals(
+                "minimessage:<!italic><color:#bde0fe><bold>{{playerName}}'s Stats</bold></color>",
+                requireSection(legacy, "mainGui.playerItem").getString("title"));
+        assertEquals(
+                "ARROW",
+                requireSection(legacy, "mainGui.backItem").getString("item"));
+        assertEquals(
+                "Custom server menu",
+                requireSection(legacy, "mainGui.backItem").getString("title"));
     }
 
     @Test
@@ -139,5 +170,13 @@ final class GuiTranslationCompatibilityTest {
             throw new AssertionError("Could not load bundled translations", exception);
         }
         return defaults;
+    }
+
+    private static org.bukkit.configuration.ConfigurationSection requireSection(
+            YamlConfiguration configuration,
+            String path) {
+        var section = configuration.getConfigurationSection(path);
+        assertNotNull(section);
+        return section;
     }
 }
