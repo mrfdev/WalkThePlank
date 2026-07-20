@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 /** Builds a deterministic SHA-256 fingerprint from an allow-listed, redacted projection. */
@@ -21,6 +22,7 @@ final class SafeConfigFingerprint {
             "particle.show",
             "particle.type",
             "particle.count",
+            "theme.active",
             "runFinishCommands",
             "rewards.onlyOnPersonalBest",
             "queue.enabled",
@@ -63,6 +65,39 @@ final class SafeConfigFingerprint {
         List<String> blocks = source.getStringList("parkourBlocks");
         for (int index = 0; index < blocks.size(); index++) {
             append(projection, "parkourBlocks[" + index + ']', blocks.get(index));
+        }
+
+        ConfigurationSection presets =
+                source.getConfigurationSection("theme-presets");
+        if (presets == null) {
+            append(projection, "theme-presets.type", typeOf(source.get("theme-presets")));
+        } else {
+            List<String> presetNames =
+                    new ArrayList<>(presets.getKeys(false));
+            Collections.sort(presetNames);
+            for (String presetName : presetNames) {
+                String path = "theme-presets." + presetName;
+                List<String> presetBlocks =
+                        source.getStringList(path + ".parkourBlocks");
+                for (int index = 0; index < presetBlocks.size(); index++) {
+                    append(
+                            projection,
+                            path + ".parkourBlocks[" + index + ']',
+                            presetBlocks.get(index));
+                }
+                append(
+                        projection,
+                        path + ".particle.show",
+                        source.get(path + ".particle.show"));
+                append(
+                        projection,
+                        path + ".particle.type",
+                        source.get(path + ".particle.type"));
+                append(
+                        projection,
+                        path + ".particle.count",
+                        source.get(path + ".particle.count"));
+            }
         }
 
         List<String> rewardRoots = source.getStringList("rewards.allowedCommandRoots");

@@ -11,6 +11,7 @@ import org.bukkit.Sound;
 
 public record RuntimeSettings(
         int configVersion,
+        String activeTheme,
         List<Arena> arenas,
         List<Material> parkourBlocks,
         boolean particlesEnabled,
@@ -52,6 +53,7 @@ public record RuntimeSettings(
             PermissionSettings permissions) {
         this(
                 configVersion,
+                "custom",
                 arenas,
                 parkourBlocks,
                 particlesEnabled,
@@ -87,6 +89,7 @@ public record RuntimeSettings(
     }
 
     public RuntimeSettings {
+        activeTheme = Objects.requireNonNull(activeTheme, "activeTheme");
         arenas = List.copyOf(arenas);
         parkourBlocks = List.copyOf(parkourBlocks);
         allowedRewardCommandRoots = Set.copyOf(
@@ -101,6 +104,9 @@ public record RuntimeSettings(
         Objects.requireNonNull(permissions, "permissions");
         if (configVersion != 2) {
             throw new IllegalArgumentException("configVersion must be 2");
+        }
+        if (activeTheme.isBlank()) {
+            throw new IllegalArgumentException("activeTheme must not be blank");
         }
         if (arenas.isEmpty()) {
             throw new IllegalArgumentException("At least one valid arena is required");

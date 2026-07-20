@@ -34,12 +34,17 @@ import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.block.BlockType;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class ConfigurationManager {
     private static final int MAXIMUM_ARENAS = 64;
+    private static final int MAXIMUM_THEME_PRESETS = 32;
+    private static final int MAXIMUM_THEME_BLOCKS = 16;
+    private static final Pattern THEME_NAME =
+            Pattern.compile("[a-z][a-z0-9_-]{0,31}");
     private static final Pattern TRANSLATION_PLACEHOLDER =
             Pattern.compile("\\{\\{([A-Za-z][A-Za-z0-9]*)\\}\\}");
     private static final Set<String> ARENA_ENTRY_KEYS = Set.of(
@@ -151,6 +156,9 @@ public final class ConfigurationManager {
             "configVersion",
             "startPositions",
             "parkourBlocks",
+            "theme",
+            "theme.active",
+            "theme-presets",
             "gameplay",
             "gameplay.fallDistance",
             "gameplay.horizontalRadius",
@@ -536,6 +544,7 @@ public final class ConfigurationManager {
         validatePrimitiveSettings(source, problems);
         validateArenaEntries(source, problems);
         validateParkourBlockEntries(source, problems);
+        validateThemePresetEntries(source, problems);
         validateRewardEntries(source, problems);
         validatePermissionEntries(source, problems);
         validateDatabaseEntries(source, problems, verifyDatabaseStorage);
@@ -633,19 +642,19 @@ public final class ConfigurationManager {
 
     private RuntimeSettings parseRuntimeSettings(YamlConfiguration source) {
         List<Arena> arenas = parseArenas(source);
-        List<Material> blocks = parseParkourBlocks(source);
-        Particle particle = parseParticle(source.getString("particle.type", "TOTEM_OF_UNDYING"));
+        ThemeSettings theme = parseThemeSettings(source);
         List<RewardTier> rewardTiers = parseRewardTiers(source);
 
         PermissionSettings permissions = parsePermissionSettings(source);
 
         RuntimeSettings parsedSettings = new RuntimeSettings(
                 source.getInt("configVersion", 2),
+                theme.name(),
                 arenas,
-                blocks,
-                source.getBoolean("particle.show", true),
-                particle,
-                source.getInt("particle.count", 12),
+                theme.parkourBlocks(),
+                theme.particlesEnabled(),
+                theme.particle(),
+                theme.particleCount(),
                 source.getDouble("gameplay.fallDistance", 6.0),
                 source.getInt("gameplay.horizontalRadius", 6),
                 source.getInt("gameplay.maximumRunSeconds", 1_800),
@@ -842,18 +851,66 @@ public final class ConfigurationManager {
         return location;
     }
 
-    private List<Material> parseParkourBlocks(YamlConfiguration source) {
+    static ThemeSettings parseThemeSettings(YamlConfiguration source) {
+        String active = resolveActiveThemeName(source);
+        if ("custom".equals(active)) {
+            return new ThemeSettings(
+                    active,
+                    parseParkourBlocks(source, "parkourBlocks"),
+                    source.getBoolean("particle.show", true),
+                    parseParticle(source.getString(
+                            "particle.type", "TOTEM_OF_UNDYING")),
+                    source.getInt("particle.count", 12));
+        }
+
+        String path = "theme-presets." + active;
+        return new ThemeSettings(
+                active,
+                parseParkourBlocks(source, path + ".parkourBlocks"),
+                source.getBoolean(path + ".particle.show"),
+                parseParticle(source.getString(path + ".particle.type")),
+                source.getInt(path + ".particle.count"));
+    }
+
+    private static List<Material> parseParkourBlocks(
+            YamlConfiguration source,
+            String path) {
         List<Material> result = new ArrayList<>();
-        for (String name : source.getStringList("parkourBlocks")) {
+        for (String name : source.getStringList(path)) {
             Material material = Material.matchMaterial(name);
             if (!isSafeParkourMaterial(material)) {
                 throw new IllegalArgumentException(
-                        "Unsafe parkour block material '" + name
-                                + "'; use a solid, stable, non-burning, non-stateful full block");
+                        "Unsafe parkour block material '" + name + "' at " + path
+                                + "; use a solid, stable, non-burning, non-stateful full block");
             }
             result.add(material);
         }
         return List.copyOf(result);
+    }
+
+    static String resolveActiveThemeName(YamlConfiguration source) {
+        Objects.requireNonNull(source, "source");
+        String active = normalizeThemeName(
+                source.getString("theme.active", "custom"));
+        if (!"custom".equals(active)
+                && !source.isConfigurationSection("theme-presets." + active)) {
+            throw new IllegalArgumentException(
+                    "theme.active does not name a configured preset: " + active);
+        }
+        return active;
+    }
+
+    static String normalizeThemeName(String configuredName) {
+        if (configuredName == null) {
+            throw new IllegalArgumentException("theme.active must name custom or a preset");
+        }
+        String normalized = configuredName.strip().toLowerCase(Locale.ROOT);
+        if (!"custom".equals(normalized)
+                && !THEME_NAME.matcher(normalized).matches()) {
+            throw new IllegalArgumentException(
+                    "Theme names must match [a-z][a-z0-9_-]{0,31}");
+        }
+        return normalized;
     }
 
     static boolean isSafeParkourMaterial(Material material) {
@@ -963,7 +1020,7 @@ public final class ConfigurationManager {
         return List.copyOf(result);
     }
 
-    private Particle parseParticle(String configuredName) {
+    private static Particle parseParticle(String configuredName) {
         String normalized = configuredName.strip().toUpperCase(Locale.ROOT);
         normalized = switch (normalized) {
             case "TOTEM" -> "TOTEM_OF_UNDYING";
@@ -1023,7 +1080,7 @@ public final class ConfigurationManager {
             problems.warning("configVersion is not declared; treating this as a legacy configuration");
         }
         long unknown = source.getKeys(true).stream()
-                .filter(key -> !KNOWN_CONFIG_KEYS.contains(key))
+                .filter(key -> !isKnownConfigKey(key))
                 .count();
         if (unknown > 0L) {
             if (explicitConfigVersion) {
@@ -1032,6 +1089,29 @@ public final class ConfigurationManager {
                 problems.warning(unknown + " legacy/unknown config key(s) are present and ignored");
             }
         }
+    }
+
+    private static boolean isKnownConfigKey(String key) {
+        if (KNOWN_CONFIG_KEYS.contains(key)) {
+            return true;
+        }
+        String prefix = "theme-presets.";
+        if (!key.startsWith(prefix)) {
+            return false;
+        }
+        String[] parts = key.substring(prefix.length()).split("\\.", -1);
+        if (parts.length == 1) {
+            return !parts[0].isEmpty();
+        }
+        if (parts.length == 2) {
+            return !parts[0].isEmpty()
+                    && ("parkourBlocks".equals(parts[1])
+                            || "particle".equals(parts[1]));
+        }
+        return parts.length == 3
+                && !parts[0].isEmpty()
+                && "particle".equals(parts[1])
+                && Set.of("show", "type", "count").contains(parts[2]);
     }
 
     private void validatePrimitiveSettings(
@@ -1417,19 +1497,126 @@ public final class ConfigurationManager {
     private static void validateParkourBlockEntries(
             YamlConfiguration source,
             ValidationAccumulator problems) {
-        Object rawBlocks = source.get("parkourBlocks");
+        validateParkourBlockEntries(
+                source,
+                "parkourBlocks",
+                "parkourBlocks",
+                problems);
+    }
+
+    private static void validateParkourBlockEntries(
+            YamlConfiguration source,
+            String path,
+            String description,
+            ValidationAccumulator problems) {
+        Object rawBlocks = source.get(path);
         if (!(rawBlocks instanceof List<?> blocks)) {
-            problems.error("parkourBlocks must be a list");
+            problems.error(description + " must be a list");
             return;
         }
         if (blocks.isEmpty()) {
-            problems.error("At least one parkour block is required");
+            problems.error(description + " must contain at least one parkour block");
+        }
+        if (blocks.size() > MAXIMUM_THEME_BLOCKS) {
+            problems.error(description + " must not exceed "
+                    + MAXIMUM_THEME_BLOCKS + " blocks");
         }
         for (int index = 0; index < blocks.size(); index++) {
             Object rawBlock = blocks.get(index);
             if (!(rawBlock instanceof String name) || !isSafeParkourMaterial(Material.matchMaterial(name))) {
-                problems.error("parkourBlocks[" + index + "] is not a safe platform material");
+                problems.error(description + '[' + index
+                        + "] is not a safe platform material");
             }
+        }
+    }
+
+    private void validateThemePresetEntries(
+            YamlConfiguration source,
+            ValidationAccumulator problems) {
+        String active = null;
+        Object rawActive = source.get("theme.active");
+        if (!(rawActive instanceof String configuredActive)
+                || configuredActive.isBlank()) {
+            problems.error("theme.active must name custom or a configured preset");
+        } else {
+            try {
+                active = normalizeThemeName(configuredActive);
+            } catch (IllegalArgumentException exception) {
+                problems.error("theme.active must be custom or match "
+                        + "[a-z][a-z0-9_-]{0,31}");
+            }
+        }
+
+        ConfigurationSection presets =
+                source.getConfigurationSection("theme-presets");
+        if (presets == null) {
+            problems.error("theme-presets must be a mapping");
+            return;
+        }
+        Set<String> presetNames = presets.getKeys(false);
+        if (presetNames.isEmpty()) {
+            problems.error("theme-presets must contain at least one preset");
+        }
+        if (presetNames.size() > MAXIMUM_THEME_PRESETS) {
+            problems.error("theme-presets must not exceed "
+                    + MAXIMUM_THEME_PRESETS + " entries");
+        }
+
+        List<String> sortedNames = presetNames.stream().sorted().toList();
+        for (String presetName : sortedNames) {
+            String normalized;
+            try {
+                normalized = normalizeThemeName(presetName);
+            } catch (IllegalArgumentException exception) {
+                problems.error("theme preset '" + presetName
+                        + "' must match [a-z][a-z0-9_-]{0,31}");
+                continue;
+            }
+            if (!normalized.equals(presetName) || "custom".equals(normalized)) {
+                problems.error("theme preset '" + presetName
+                        + "' must be lowercase and must not use the reserved name custom");
+                continue;
+            }
+
+            String path = "theme-presets." + presetName;
+            if (!source.isConfigurationSection(path)) {
+                problems.error(path + " must be a mapping");
+                continue;
+            }
+            validateParkourBlockEntries(
+                    source,
+                    path + ".parkourBlocks",
+                    path + ".parkourBlocks",
+                    problems);
+            requireBoolean(
+                    source.get(path + ".particle.show"),
+                    path + ".particle.show",
+                    problems);
+            Object rawParticle = source.get(path + ".particle.type");
+            if (!(rawParticle instanceof String particleName)
+                    || particleName.isBlank()) {
+                problems.error(path
+                        + ".particle.type must be a nonblank particle name");
+            } else {
+                try {
+                    parseParticle(particleName);
+                } catch (IllegalArgumentException exception) {
+                    problems.error(path
+                            + ".particle.type does not name a supported untyped particle");
+                }
+            }
+            validateIntegerRange(
+                    source,
+                    path + ".particle.count",
+                    0,
+                    1_000,
+                    problems);
+        }
+
+        if (active != null
+                && !"custom".equals(active)
+                && !presetNames.contains(active)) {
+            problems.error("theme.active does not name a configured preset");
         }
     }
 

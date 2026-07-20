@@ -2,6 +2,48 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.6.0-022] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.6.0-022-j25-26.2.jar`
+
+### Seasonal appearance presets
+
+- Added validated, named appearance presets that atomically select the platform palette, placement particle, visibility, and count without changing scoring, reachability, rewards, or the historical Classic leaderboard.
+- Bundled `default`, `summer`, `halloween`, `winter`, and `valentine` presets use safe full blocks with exact untyped Paper 26.2 particles. Operators can define up to 32 lowercase presets with up to 16 blocks each.
+- Retained `theme.active: custom` as the backward-compatible default. Historical live files continue using their top-level `parkourBlocks` and `particle` values until an operator deliberately selects a preset.
+- Existing UUID-owned particle preferences remain authoritative: `full`, `reduced`, and `off` are applied to the selected preset, so seasonal configuration cannot override player accessibility choices.
+- Configuration validation and reload fail closed for missing presets, unsafe blocks, typed/unsupported particles, invalid counts, malformed names, or unknown preset keys. The safe configuration fingerprint and `/walk debug config` now include the effective theme.
+
+## [2.5.4-021] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.5.4-021-j25-26.2.jar`
+
+### Precise landing sampling
+
+- Changed the Paper movement listener to inspect precise-position changes, including a landing that remains inside one block coordinate, while continuing to ignore orientation-only packets.
+- Added focused sampling regressions for within-block movement and look-only events.
+- A real-player score-9 run confirmed sequential scoring, immediate departed-platform restoration, exact two-platform rotation, milestone/combo feedback, and clean final restoration.
+
+## [2.5.3-020] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.5.3-020-j25-26.2.jar`
+
+### Exact air restoration
+
+- Added a primary-thread restoration strategy that writes captured `AIR`, `CAVE_AIR`, and `VOID_AIR` directly through Paper's block-data API.
+- Retained Structure-based restoration for non-air blocks so tile state, PDC, and unknown metadata remain preserved.
+- Extended failpoint instrumentation and regression coverage for both restoration strategies.
+
+## [2.5.2-019] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.5.2-019-j25-26.2.jar`
+
+### Historical GUI-default inheritance
+
+- Fixed inherited translation defaults so historical live `translations.yml` files materialize the new player-head, back, and close menu sections in memory.
+- Retained operator-customized translations and avoided rewriting the historical file.
+- Added a regression proving a legacy translation file can open the complete six-action menu.
+
 ## [2.5.1-018] — 2026-07-20
 
 Expected artifact: `1MB-WalkThePlank-v2.5.1-018-j25-26.2.jar`

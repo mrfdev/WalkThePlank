@@ -19,6 +19,7 @@ startPositions:
       yaw: 0
       world: world
 
+# Used when theme.active is custom. A preset resolves its own platform palette instead.
 parkourBlocks:
   - EMERALD_BLOCK
 
@@ -52,6 +53,52 @@ particle:
   show: true
   type: TOTEM_OF_UNDYING
   count: 12
+
+# Set this to custom, default, summer, halloween, winter, or valentine and run
+# /walk admin reload. Custom preserves the top-level parkourBlocks and particle values.
+theme:
+  active: custom
+
+# Presets are validated with the same safe-block and untyped-particle policies as custom values.
+# You may add up to 32 lowercase presets using the same structure.
+theme-presets:
+  default:
+    parkourBlocks:
+      - EMERALD_BLOCK
+    particle:
+      show: true
+      type: TOTEM_OF_UNDYING
+      count: 12
+  summer:
+    parkourBlocks:
+      - PINK_CONCRETE
+    particle:
+      show: true
+      type: CHERRY_LEAVES
+      count: 14
+  halloween:
+    parkourBlocks:
+      - JACK_O_LANTERN
+    particle:
+      show: true
+      type: TOTEM_OF_UNDYING
+      count: 12
+  winter:
+    parkourBlocks:
+      - SNOW_BLOCK
+      - WHITE_CONCRETE
+    particle:
+      show: true
+      type: SNOWFLAKE
+      count: 16
+  valentine:
+    parkourBlocks:
+      - PINK_CONCRETE
+      - RED_CONCRETE
+    particle:
+      show: true
+      type: HEART
+      count: 6
 
 # Native, non-command milestone feedback. Each player can independently reduce or disable
 # particles, sounds, and titles without changing scoring.

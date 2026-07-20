@@ -706,6 +706,7 @@ final class DatabaseCommands {
                 sender,
                 "Arenas",
                 Integer.toString(current.arenas().size()));
+        support.sendField(sender, "Theme", current.activeTheme());
         support.sendField(
                 sender, "Blocks", current.parkourBlocks().toString());
         support.sendField(
