@@ -2,6 +2,17 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.4.3-012] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.4.3-012-j25-26.2.jar`
+
+### Durable start activation and settings permission
+
+- Fixed the final run-activation gate rejecting every exact player-recovery record immediately after it was durably published. Pre-write admission still requires no retained recovery record; post-write activation now requires the exact healthy player/run/arena-owned record returned by the durability worker and published by the journal.
+- Replaced the aggregate `POST_DURABILITY_INELIGIBLE` result with stable condition-level rejection codes. Durability-stage refusals now include the exact reason in both the chained audit and the server console without logging player names, locations, filesystem paths, commands, or credentials.
+- Added regression coverage for exact post-durability record ownership, missing/mismatched/unhealthy evidence, and every dynamic activation rejection branch.
+- Removed `infinityparkour.preferences` from the default-true player parent. `/walk settings` remains guarded at Brigadier visibility and execution time and now requires an explicit `infinityparkour.preferences` grant; the operator-default admin parent retains it.
+
 ## [2.4.2-011] — 2026-07-20
 
 Expected artifact: `1MB-WalkThePlank-v2.4.2-011-j25-26.2.jar`

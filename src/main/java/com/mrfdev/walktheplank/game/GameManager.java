@@ -25,6 +25,7 @@ import com.mrfdev.walktheplank.database.Season;
 import com.mrfdev.walktheplank.ops.OperationalContext;
 import com.mrfdev.walktheplank.ops.OperationalMetrics;
 import com.mrfdev.walktheplank.queue.PlayerQueue;
+import com.mrfdev.walktheplank.recovery.PlayerRecoveryActivationPolicy;
 import com.mrfdev.walktheplank.recovery.RestorationCoordinator;
 import com.mrfdev.walktheplank.recovery.PlayerRecoveryJournal;
 import com.mrfdev.walktheplank.recovery.PlayerRecoveryOwnership;
@@ -279,18 +280,8 @@ public final class GameManager {
 
         RunRecord persisted = Objects.requireNonNull(record, "persisted run");
         String cancellation = pending.cancellationReason();
-        if (cancellation == null && !canActivatePendingStart(pending, player)) {
-            cancellation = shuttingDown
-                    ? "SHUTDOWN"
-                    : player == null || !player.isOnline()
-                            ? "PLAYER_OFFLINE"
-                            : player.isDead()
-                                    ? "PLAYER_DEAD"
-                                    : !hasEligibleMovementAttribute(player)
-                                            ? "MOVEMENT_MODIFIED"
-                                            : !player.hasPermission(settings.get().permissions().playGame())
-                                                    ? "PERMISSION_REVOKED"
-                                                    : "INELIGIBLE";
+        if (cancellation == null) {
+            cancellation = pendingStartIneligibility(pending, player, null);
         }
         if (cancellation != null) {
             abortPendingStart(pending, cancellation);
@@ -314,12 +305,11 @@ public final class GameManager {
         if (startEvent.isCancelled() && pending.cancellationReason() == null) {
             pending.cancel("EVENT_CANCELLED");
         }
-        if (!canActivatePendingStart(pending, player)) {
+        String postEventIneligibility = pendingStartIneligibility(pending, player, null);
+        if (postEventIneligibility != null) {
             String abortReason = pending.cancellationReason() != null
                     ? pending.cancellationReason()
-                    : !hasEligibleMovementAttribute(player)
-                            ? "MOVEMENT_MODIFIED"
-                            : "POST_EVENT_INELIGIBLE";
+                    : postEventIneligibility;
             abortPendingStart(pending, abortReason);
             messages.send(player, abortReason.equals("EVENT_CANCELLED")
                     ? "chat.startCancelled"
@@ -423,17 +413,19 @@ public final class GameManager {
             return;
         }
         GameSession session = activation.session();
-        if (failure != null
-                || player == null
-                || !canActivatePendingStart(pending, player)
-                || !session.playerSnapshot().matchesCurrent(player)) {
-            String reason = failure != null
-                    ? "DURABILITY_FAILED"
-                    : player == null || !player.isOnline()
-                            ? "PLAYER_OFFLINE"
-                            : !session.playerSnapshot().matchesCurrent(player)
-                                    ? "PLAYER_STATE_CHANGED"
-                                    : "POST_DURABILITY_INELIGIBLE";
+        ActivationRecords checkedRecords = failure == null ? records : null;
+        String reason = failure != null
+                ? "DURABILITY_FAILED_" + failure.getClass().getSimpleName().toUpperCase(java.util.Locale.ROOT)
+                : checkedRecords == null
+                        ? "DURABILITY_RECORDS_MISSING"
+                        : pendingStartIneligibility(
+                                pending,
+                                player,
+                                checkedRecords.playerRecovery());
+        if (reason == null && !session.playerSnapshot().matchesCurrent(player)) {
+            reason = "PLAYER_STATE_CHANGED";
+        }
+        if (reason != null) {
             abortPendingStart(pending, reason);
             Throwable reported = failure != null
                     ? failure
@@ -443,6 +435,10 @@ public final class GameManager {
                     "run_id", pending.runId(),
                     "stage", "durability_revalidation",
                     "reason", reason));
+            plugin.getLogger().warning(
+                    "Refused pending run " + pending.runId()
+                            + " for arena " + pending.arena().id()
+                            + " during durability revalidation: " + reason);
             if (player != null) {
                 messages.send(player, "chat.startFailed");
             }
@@ -451,7 +447,6 @@ public final class GameManager {
         }
 
         try {
-            ActivationRecords checkedRecords = Objects.requireNonNull(records, "records");
             if (!activation.playerPreparation().claim(checkedRecords.playerRecovery())) {
                 throw new IllegalStateException("Player recovery preparation is stale");
             }
@@ -630,20 +625,42 @@ public final class GameManager {
         return true;
     }
 
-    private boolean canActivatePendingStart(PendingStart pending, Player player) {
+    private String pendingStartIneligibility(
+            PendingStart pending,
+            Player player,
+            PlayerRecoveryRecord durableRecovery) {
+        if (rewardCompletionBarrier.isBlocked(pending.playerId())) {
+            return "REWARD_COMPLETION_BLOCKED";
+        }
+        if (durableRecovery == null) {
+            if (!playerRecovery.canSafelyRecord(pending.playerId())) {
+                return "PLAYER_RECOVERY_NOT_WRITABLE";
+            }
+        } else {
+            PlayerRecoveryActivationPolicy.Decision recoveryDecision =
+                    PlayerRecoveryActivationPolicy.verify(
+                            playerRecovery.health().writesAvailable(),
+                            durableRecovery,
+                            playerRecovery.pending(pending.playerId()),
+                            pending.playerId(),
+                            pending.runId(),
+                            pending.arena().id());
+            if (recoveryDecision != PlayerRecoveryActivationPolicy.Decision.VERIFIED) {
+                return "PLAYER_RECOVERY_" + recoveryDecision.name();
+            }
+        }
         boolean supportedGameMode = player != null
                 && (player.getGameMode() == GameMode.SURVIVAL
                         || player.getGameMode() == GameMode.ADVENTURE);
-        return !rewardCompletionBarrier.isBlocked(pending.playerId())
-                && playerRecovery.canSafelyRecord(pending.playerId())
-                && arenaLeases.owns(pending.arena().id(), pending.arenaLease())
-                && player != null
-                && !player.isDead()
-                && StartActivationPolicy.mayActivate(
+        if (player != null && player.isDead()) {
+            return "PLAYER_DEAD";
+        }
+        StartActivationPolicy.Rejection rejection = StartActivationPolicy.evaluate(
                 shuttingDown,
                 pendingStarts.get(pending.playerId()) == pending,
                 sessions.containsKey(pending.playerId()),
-                !pending.arenaReleased(),
+                !pending.arenaReleased()
+                        && arenaLeases.owns(pending.arena().id(), pending.arenaLease()),
                 pending.cancellationReason() == null,
                 player != null && player.isOnline(),
                 player != null && player.hasPermission(settings.get().permissions().playGame()),
@@ -655,6 +672,9 @@ public final class GameManager {
                         && !player.isRiptiding()
                         && hasEligibleMovementAttribute(player),
                 player != null && hasDisallowedMovementEffect(player));
+        return rejection == StartActivationPolicy.Rejection.NONE
+                ? null
+                : rejection.name();
     }
 
     public boolean end(Player player, SessionEndReason reason) {

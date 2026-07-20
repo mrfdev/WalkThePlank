@@ -21,7 +21,6 @@ permissions:
       infinityparkour.topcmd: true
       infinityparkour.info: true
       infinityparkour.help: true
-      infinityparkour.preferences: true
   infinityparkour.admin:
     description: Grants all WalkThePlank administrative commands.
     default: op
@@ -38,6 +37,7 @@ permissions:
       infinityparkour.admin.export: true
       infinityparkour.admin.reward: true
       infinityparkour.admin.investigate: true
+      infinityparkour.preferences: true
   infinityparkour.opengui:
     description: Open the WalkThePlank menu.
     default: false

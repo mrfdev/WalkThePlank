@@ -1,17 +1,17 @@
 # WalkThePlank future improvements and release status
 
-This is the authoritative future-development TODO and release-status document. It separates what is implemented in source release **v2.4.0 build 008** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
+This is the authoritative future-development TODO and release-status document. It separates what is implemented through source release **v2.4.3 build 012** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
 
 Status labels:
 
-- **Implemented** — present in build-008 source.
+- **Implemented** — present in the current build-012 source.
 - **Implemented; beta verification pending** — present, but the final JAR still needs the named Paper/live-data test.
 - **Partial** — a safe foundation exists, but an important workflow or assurance remains.
 - **Proposed** — not present and must not be advertised as a current feature.
 
 ## Deferred modernization queue
 
-Build 003 remains the historical modernization baseline, build 004 the event-safety release, build 005 the destructive-testing foundation, build 006 the off-main durability release, and build 007 the command/API modernization release. Build 008 adds bounded migration-backup retention, milestones/accessibility, separate Combo/Flawless categories, rate-limited movement anomaly evidence, and a verified audit chain. Every remaining unchecked feature stays deferred so its evidence cannot be confused with this candidate.
+Build 003 remains the historical modernization baseline, build 004 the event-safety release, build 005 the destructive-testing foundation, build 006 the off-main durability release, and build 007 the command/API modernization release. Build 008 added bounded migration-backup retention, milestones/accessibility, separate Combo/Flawless categories, rate-limited movement anomaly evidence, and a verified audit chain. Builds 009–011 addressed the 1MB GUI and two Paper 26.2 real-player compatibility regressions. Build 012 fixes exact post-durability start activation and makes settings access explicitly permissioned. Every remaining unchecked feature stays deferred so its evidence cannot be confused with this candidate.
 
 1. [x] **v2.1.1 build 004 — event-safety and operations implemented; beta acceptance still pending.** External-teleport decisions occur at `HIGHEST` with observation-only `MONITOR` and next-tick verification; GUI sessions bind owner UUID/nonce/generation/exact inventory with one pending action; trusted formatting is parsed separately from literal dynamic components with explicit `minimessage:` opt-in and legacy `&` compatibility; `/walk admin doctor` produces a privacy-safe report with an asynchronous SQLite probe.
 2. [x] **v2.1.2 build 005 — disposable Paper integration and fault-injection harness implemented; final-candidate and real-client evidence pending.** A separate test plugin, Java 25 Class-File API instrumented-copy builder, 24 named failpoints, two-start/PlaceholderAPI/lifecycle/log runner, real-player queue/teleport/GUI/reconnect/exit probes, reflection event contracts, and positive/negative production-isolation checks are present. Development-artifact runs passed the automated two-start profile and the `config.after_runtime_commit` exit-97/recovery profile; repeat them against the clean committed candidate and complete every applicable real-client/hard-kill checklist row before treating this item as release-qualified.
