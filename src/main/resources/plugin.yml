@@ -38,11 +38,15 @@ permissions:
       infinityparkour.admin.reward: true
       infinityparkour.admin.investigate: true
       infinityparkour.preferences: true
+      infinityparkour.queue.join: true
   infinityparkour.opengui:
     description: Open the WalkThePlank menu.
     default: false
   infinityparkour.play:
     description: Start a WalkThePlank run.
+    default: false
+  infinityparkour.queue.join:
+    description: Join or accept a reservation from the optional WalkThePlank queue.
     default: false
   infinityparkour.leavearena:
     description: Leave a WalkThePlank run.

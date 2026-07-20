@@ -12,15 +12,15 @@ intermediate builds from this modernization and are fully superseded.
 
 The Bukkit plugin name intentionally remains `InfinityParkour`. This preserves the existing data directory at `plugins/InfinityParkour/`, so the live `config.yml`, `translations.yml`, and `database.db` can be upgraded in place without renaming player data.
 
-Current source release: **v2.6.0, build 022**
+Current source release: **v2.6.1, build 023**
 
 Expected standalone artifact:
 
 ```text
-1MB-WalkThePlank-v2.6.0-022-j25-26.2.jar
+1MB-WalkThePlank-v2.6.1-023-j25-26.2.jar
 ```
 
-> Real-player testing passed build 013's forward, backward, sprinting, jumping, and repeated-start activation matrix without another player-state refusal or velocity loop. Build 014 made stale cleanup completion idempotent; a follow-up six-run same-arena rehearsal produced no lifecycle failure, quarantine, or blocked start. The operator approved the non-italic pastel treatment of the original three GUI icons. Builds 015–016 proofread the Play instructions and made the tutorial's platform label configuration-aware. Build 017 added the viewer's live personal-stat head plus explicit `/menu` and close controls. Build 018 fixes the premature successor placement found during real-player gameplay: durability remains pipelined, but the world now contains only the player's current platform and one destination. Build 019 fixes historical `translations.yml` compatibility so inherited player-head, back, and close controls are fully materialized in memory and a legacy file cannot make `/walk` fail before the menu opens. Build 020 directly restores captured air through Paper's block-data API; non-air blocks continue using exact Structure snapshots for tile, PDC, and unknown metadata preservation. Live build-020 evidence then exposed the actual remaining transition failure: successful-looking landings within one block coordinate were filtered out before scoring, so cleanup correctly never ran. Build 021 follows Paper's precise-position movement signal, including movement within the same block coordinate, while ignoring orientation-only events; a real-player score-9 run confirmed correct scoring, two-platform rotation, milestone/combo feedback, and clean final restoration. Build 022 adds fail-closed seasonal appearance presets for platform palettes and untyped Paper particles while retaining the current top-level custom settings. Prior machine evidence remains historical, so build 022 needs its own freeze, Paper smoke, synchronization, and client approval.
+> Real-player testing passed build 013's forward, backward, sprinting, jumping, and repeated-start activation matrix without another player-state refusal or velocity loop. Build 014 made stale cleanup completion idempotent; a follow-up six-run same-arena rehearsal produced no lifecycle failure, quarantine, or blocked start. The operator approved the non-italic pastel treatment of the original three GUI icons. Builds 015–016 proofread the Play instructions and made the tutorial's platform label configuration-aware. Build 017 added the viewer's live personal-stat head plus explicit `/menu` and close controls. Build 018 fixes the premature successor placement found during real-player gameplay: durability remains pipelined, but the world now contains only the player's current platform and one destination. Build 019 fixes historical `translations.yml` compatibility so inherited player-head, back, and close controls are fully materialized in memory and a legacy file cannot make `/walk` fail before the menu opens. Build 020 directly restores captured air through Paper's block-data API; non-air blocks continue using exact Structure snapshots for tile, PDC, and unknown metadata preservation. Live build-020 evidence then exposed the actual remaining transition failure: successful-looking landings within one block coordinate were filtered out before scoring, so cleanup correctly never ran. Build 021 follows Paper's precise-position movement signal, including movement within the same block coordinate, while ignoring orientation-only events; a real-player score-9 run confirmed correct scoring, two-platform rotation, milestone/combo feedback, and clean final restoration. Build 022 adds fail-closed seasonal appearance presets; its summer pink-concrete/cherry-leaf presentation passed real-player testing. Build 023 makes FIFO reservation a separate default-off permission: ordinary players wait near the plank and retry, while explicitly granted players may reserve the next arena. Prior machine evidence remains historical, so build 023 needs its own freeze, Paper smoke, synchronization, and client approval.
 
 See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-walktheplank.md](feature-improvements-walktheplank.md) for the authoritative future-development TODO and implemented-versus-remaining status.
 
@@ -87,16 +87,16 @@ Build the deployment artifact with the checked-in Gradle wrapper:
 The deployable file is:
 
 ```text
-build/libs/1MB-WalkThePlank-v2.6.0-022-j25-26.2.jar
+build/libs/1MB-WalkThePlank-v2.6.1-023-j25-26.2.jar
 ```
 
 Do not deploy the `-unshaded.jar`; it does not contain SQLite JDBC. `build` runs the automated tests, creates the shaded artifact, and executes the archive/metadata verification gate. `freezeCandidate` additionally rejects a dirty Git tree. Every candidate embeds the full source commit and strict dirty state in `build-info.properties` and the JAR manifest; `/walk info`, `/walk debug overview`, and startup show the abbreviated source label.
 
-Earlier completed machine evidence is preserved in annotated RC tags and ignored operator release archives, but it does not prove build 022. The exact clean build-022 candidate needs two byte-identical builds, scenario-profile evidence, Paper smoke, live-copy preservation checks, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
+Earlier completed machine evidence is preserved in annotated RC tags and ignored operator release archives, but it does not prove build 023. The exact clean build-023 candidate needs two byte-identical builds, scenario-profile evidence, Paper smoke, live-copy preservation checks, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
 
 | Release property | Value |
 | --- | --- |
-| Filename | `1MB-WalkThePlank-v2.6.0-022-j25-26.2.jar` |
+| Filename | `1MB-WalkThePlank-v2.6.1-023-j25-26.2.jar` |
 | Source identity | Full Git commit plus strict clean/dirty state embedded in the JAR |
 | Final size and SHA-256 | Annotated candidate tag and operator release archive |
 | Automated test result | Must pass with zero failures/errors/skips and strict Java 25 compilation |
@@ -117,7 +117,7 @@ Useful build commands:
 ./gradlew syncTestServer
 ```
 
-`releaseInfo` must print version `2.6.0`, build `022`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 022 into the active plugin directory.
+`releaseInfo` must print version `2.6.1`, build `023`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 023 into the active plugin directory.
 
 ## Install or upgrade
 
@@ -130,7 +130,7 @@ For an existing server:
 3. Back up the old plugin JAR and the complete `plugins/InfinityParkour/` directory as one matched rollback set.
 4. Keep the data directory named `plugins/InfinityParkour/`.
 5. Remove or disable every older InfinityParkour/WalkThePlank JAR. Paper must see only one plugin with the `InfinityParkour` name.
-6. Copy `1MB-WalkThePlank-v2.6.0-022-j25-26.2.jar` into `plugins/`.
+6. Copy `1MB-WalkThePlank-v2.6.1-023-j25-26.2.jar` into `plugins/`.
 7. Start Paper and inspect the complete startup log. A successful live-data start should report 100 preserved Classic scores and, on the first schema-v3 migration only, a verified pre-migration backup path.
 8. Run `/walk info`, `/walk admin validate`, `/walk admin status`, `/walk admin doctor`, `/walk debug all`, and the full beta checklist before allowing players in.
 9. Stop Paper cleanly once and require the clean restoration/disable message before the event rehearsal is accepted.
@@ -154,11 +154,11 @@ The primary command is `/walktheplank`. `/walk`, `/infinityparkour`, and `/infp`
 | Command | Permission | Behavior |
 | --- | --- | --- |
 | `/walk` | `infinityparkour.opengui` | Opens the main menu. Console receives help instead. |
-| `/walk play` | `infinityparkour.play` | Starts a run when an arena is free and queue fairness permits it. |
+| `/walk play` | `infinityparkour.play` | Starts a run when an arena is free. Without queue permission, an occupied arena produces a wait-and-retry message and never enrolls the player. |
 | `/walk queue [status]` | `infinityparkour.play` | Shows queue state; `status` is the default action. |
-| `/walk queue join` | `infinityparkour.play` | Joins the FIFO queue, subject to eligibility and cooldown. |
+| `/walk queue join` | `infinityparkour.queue.join` | Joins the optional FIFO queue, subject to eligibility and cooldown. Hidden and denied without the explicit default-off permission. |
 | `/walk queue leave` | `infinityparkour.play` | Leaves the queue and starts the configured rejoin cooldown. |
-| `/walk queue ready` | `infinityparkour.play` | Accepts an active readiness assignment and starts the reserved run. |
+| `/walk queue ready` | `infinityparkour.queue.join` | Accepts an active readiness assignment and starts the reserved run. Permission revocation removes the reservation. |
 | `/walk leave` | `infinityparkour.leavearena` | Ends the active run safely. An active player can still leave if this permission is revoked mid-run. |
 | `/walk stats [classic]` | `infinityparkour.statscmd` | Shows UUID-linked Classic personal best, rank, population, and top percentage. |
 | `/walk stats combo` | `infinityparkour.statscmd` | Shows the longest within-target jump streak and category rank. |
@@ -284,6 +284,12 @@ The internal repository query also supports exact release and a complete half-op
 
 Console may also use `/walk <online-player>` as an exact-name, permission-checked menu-open convenience.
 
+FIFO reservation is optional and default-off. Ordinary players do not receive
+`infinityparkour.queue.join`: if the plank is occupied, the GUI and `/walk play` tell them
+to wait nearby and try again when the runner finishes. Grant the leaf explicitly only to
+groups that should reserve the next free arena. Queue status and leave remain available
+under the normal play permission so a revoked player can inspect or leave stale state safely.
+
 Examples:
 
 ```text
@@ -323,7 +329,8 @@ Defaults below are declared in `plugin.yml`. Leaf strings may be remapped under 
 | `infinityparkour.player` | Everyone | Parent granting the standard player leaves. |
 | `infinityparkour.admin` | Operators | Parent granting every administrative leaf and acting as the administrative bypass. |
 | `infinityparkour.opengui` | False; player parent grants it | `/walk` GUI. |
-| `infinityparkour.play` | False; player parent grants it | Starting runs and all player queue actions. |
+| `infinityparkour.play` | False; player parent grants it | Starting runs plus queue status/leave. |
+| `infinityparkour.queue.join` | False; explicit grant or admin parent | Join/accept the optional FIFO reservation queue. It is deliberately absent from the standard player parent. |
 | `infinityparkour.leavearena` | False; player parent grants it | `/walk leave`. |
 | `infinityparkour.statscmd` | False; player parent grants it | Personal statistics command/GUI action. |
 | `infinityparkour.topcmd` | False; player parent grants it | All-time and active-season top ten, including GUI lore. |
@@ -433,6 +440,7 @@ The bundled [config.yml](src/main/resources/config.yml) is the authoritative def
 | `gameplay.idleTimeoutSeconds` | No-progress limit, at least 15 and no greater than the run maximum. |
 | `gameplay.onlyReplaceAir` | Prevents generated target blocks from replacing occupied world blocks. The start block is always snapshotted/restored. |
 | `queue.*` | Enablement, 0–600 second join cooldown, 5–300 second readiness, and 2–60 second reminder interval. |
+| `permissions.queueJoin` | Remappable default `infinityparkour.queue.join` leaf for FIFO join/readiness. The static default is false and the standard player parent does not grant it. |
 | `arenaSelection.*` | Selection policy and required configured ID for `PINNED`. A busy pinned arena safely falls back to least-recently-used. |
 | `particle.*` | Optional modern Paper particle and count. |
 | `milestones.*` | Enabled flag, unique scores, native sound/untyped particle, particle count, and 0–60 second feedback cooldown. |
@@ -522,7 +530,7 @@ The backup is made with SQLite `VACUUM INTO` and must pass `PRAGMA quick_check` 
 
 The schema migration runs transactionally and validates required columns, indexes, constraints, and foreign keys. Persistence accepts only vanilla Java last-known names matching `[A-Za-z0-9_]{3,16}` and non-negative scores no larger than Java's integer maximum; the fresh schema also records matching constraints. A database with a newer unsupported schema, malformed nonblank UUID, duplicate nonblank UUID, incompatible table/index definition, unsafe path, or failed backup disables the plugin safely.
 
-Build 008's disposable-copy schema-v3 rehearsal preserved all **100** rows and all **100** UUIDs, score sum **4256**, maximum score **149**, the unchanged Classic top ten, and a valid `PRAGMA quick_check`; its automatic backup passed retention verification and `_resources` remained unchanged. Build 022 has no database-schema change, but repeat the same invariants against its frozen candidate rather than treating older evidence as approval.
+Build 008's disposable-copy schema-v3 rehearsal preserved all **100** rows and all **100** UUIDs, score sum **4256**, maximum score **149**, the unchanged Classic top ten, and a valid `PRAGMA quick_check`; its automatic backup passed retention verification and `_resources` remained unchanged. Build 023 has no database-schema change, but repeat the same invariants against its frozen candidate rather than treating older evidence as approval.
 
 Migration never guesses identity from a username. Blank UUID text is normalized to unresolved `NULL`; malformed or duplicate nonblank UUIDs fail. Unresolved rows can remain visible in rankings, but player-specific lookup cannot claim them and UUID-only export refuses the entire affected snapshot. No CMI database or online API is queried automatically.
 
@@ -648,7 +656,7 @@ The current API intentionally does not expose mutable sessions, direct database 
 
 ## Testing and event approval
 
-The build-022 suite currently passes **283 tests across 69 test classes**, with zero failures, errors, or skips. It covers bundled seasonal-preset selection and exact untyped Paper particle contracts; precise-position landing sampling within the same block coordinate while excluding orientation-only movement; the successor's pending, durable-hidden, exact-consume, stale-callback and abandonment transitions; exact Paper 26.2 build-62 runtime policy; direct AIR/CAVE_AIR/VOID_AIR restoration with Structure preservation for non-air snapshots; critical-state snapshot revalidation; personal-stat percentile calculation; the six-action menu layout; fully materialized inherited menu defaults for historical translation files; configuration-aware platform labels and fail-closed translation allow-lists; recursive non-italic GUI styling; exact legacy/previous-tooltip compatibility; and idempotent stale cleanup completion alongside the existing durable ownership, movement baseline, sprint, GUI, schema, permission, audit, recovery, reward, queue, export, teleport, and reflection-locked event-contract tests. Build 021's real-player score-9 run approved immediate departed-platform disappearance, exact two-platform rotation, sequential scoring, milestone/combo feedback, and clean final restoration. Build 022 still requires client inspection of its seasonal block/particle presets.
+The build-023 suite passes **283 tests across 69 test classes**, with zero failures, errors, or skips. It covers the default-off queue permission hierarchy and collision rules; bundled seasonal-preset selection and exact untyped Paper particle contracts; precise-position landing sampling within the same block coordinate while excluding orientation-only movement; the successor's pending, durable-hidden, exact-consume, stale-callback and abandonment transitions; exact Paper 26.2 build-62 runtime policy; direct AIR/CAVE_AIR/VOID_AIR restoration with Structure preservation for non-air snapshots; critical-state snapshot revalidation; personal-stat percentile calculation; the six-action menu layout; fully materialized inherited menu defaults for historical translation files; configuration-aware platform labels and fail-closed translation allow-lists; recursive non-italic GUI styling; exact legacy/previous-tooltip compatibility; and idempotent stale cleanup completion alongside the existing durable ownership, movement baseline, sprint, GUI, schema, permission, audit, recovery, reward, queue, export, teleport, and reflection-locked event-contract tests. Build 021's real-player score-9 run approved immediate departed-platform disappearance, exact two-platform rotation, sequential scoring, milestone/combo feedback, and clean final restoration. Build 022's summer appearance passed client inspection; build 023 still requires its queue-permission acceptance matrix.
 
 Build 020 carries forward build 008's isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
 
@@ -659,8 +667,8 @@ Build 020 carries forward build 008's isolated destructive-test system. It never
 The test-only outputs are deliberately outside `build/libs/`:
 
 ```text
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.6.0-022.jar
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.6.0-022-Failpoints.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.6.1-023.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.6.1-023-Failpoints.jar
 ```
 
 `verifyReleaseJar` byte-scans the production JAR for scenario packages, commands, manifest/agent markers, canaries, every scenario-property prefix, and all 24 failpoint names. `verifyProductionScenarioIsolation` repeats that negative proof and requires the harness and instrumented copy to trigger positive controls, preventing a broken scan from reporting a false pass. It also builds a second instrumented copy and requires byte-for-byte identity. The runner refuses symlinked destructive roots and writes a bounded per-run nonce marker. Both the property-armed failpoint controller and the scenario plugin require that marker, the exact generated root/working directory/layout/data paths, and the bridge loaded by the instrumented target's own classloader.

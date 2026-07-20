@@ -34,6 +34,7 @@ final class SafeConfigFingerprint {
             "permissions.openGui",
             "permissions.leaveArena",
             "permissions.playGame",
+            "permissions.queueJoin",
             "permissions.reload",
             "permissions.statsCmd",
             "permissions.topCmd",

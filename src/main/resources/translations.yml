@@ -27,6 +27,7 @@ chat:
   allArenasUsed: 'All arenas are in use. Please try again shortly.'
   queueOffer: 'Use &9/walk queue join &7to reserve the next available arena.'
   queueFairness: 'Players are waiting. Join the queue with &9/walk queue join&7.'
+  queueWait: 'The plank is occupied. Wait nearby and try again when the current run ends.'
   queueDisabled: 'The arena queue is currently disabled.'
   queuePaused: 'The arena queue is paused by staff; your position and readiness time are preserved.'
   queueJoined: 'You joined the arena queue at position &f{{position}}&7.'

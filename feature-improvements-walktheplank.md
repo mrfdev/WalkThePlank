@@ -1,17 +1,17 @@
 # WalkThePlank future improvements and release status
 
-This is the authoritative future-development TODO and release-status document. It separates what is implemented through source release **v2.6.0 build 022** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
+This is the authoritative future-development TODO and release-status document. It separates what is implemented through source release **v2.6.1 build 023** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
 
 Status labels:
 
-- **Implemented** — present in the current build-022 source.
+- **Implemented** — present in the current build-023 source.
 - **Implemented; beta verification pending** — present, but the final JAR still needs the named Paper/live-data test.
 - **Partial** — a safe foundation exists, but an important workflow or assurance remains.
 - **Proposed** — not present and must not be advertised as a current feature.
 
 ## Deferred modernization queue
 
-Build 003 remains the historical modernization baseline, build 004 the event-safety release, build 005 the destructive-testing foundation, build 006 the off-main durability release, and build 007 the command/API modernization release. Build 008 added bounded migration-backup retention, milestones/accessibility, separate Combo/Flawless categories, rate-limited movement anomaly evidence, and a verified audit chain. Builds 009–021 addressed the 1MB GUI and Paper 26.2 real-player compatibility regressions, culminating in a successful real-player score-9 run with correct two-platform rotation and cleanup. Build 022 adds validated seasonal appearance presets without changing mechanics or Classic scores. Every remaining unchecked feature stays deferred so its evidence cannot be confused with this candidate.
+Build 003 remains the historical modernization baseline, build 004 the event-safety release, build 005 the destructive-testing foundation, build 006 the off-main durability release, and build 007 the command/API modernization release. Build 008 added bounded migration-backup retention, milestones/accessibility, separate Combo/Flawless categories, rate-limited movement anomaly evidence, and a verified audit chain. Builds 009–021 addressed the 1MB GUI and Paper 26.2 real-player compatibility regressions, culminating in a successful real-player score-9 run with correct two-platform rotation and cleanup. Build 022 added validated seasonal appearance presets without changing mechanics or Classic scores. Build 023 makes FIFO reservation an explicit default-off permission so ordinary players wait near the plank and retry when it becomes free. Every remaining unchecked feature stays deferred so its evidence cannot be confused with this candidate.
 
 1. [x] **v2.1.1 build 004 — event-safety and operations implemented; beta acceptance still pending.** External-teleport decisions occur at `HIGHEST` with observation-only `MONITOR` and next-tick verification; GUI sessions bind owner UUID/nonce/generation/exact inventory with one pending action; trusted formatting is parsed separately from literal dynamic components with explicit `minimessage:` opt-in and legacy `&` compatibility; `/walk admin doctor` produces a privacy-safe report with an asynchronous SQLite probe.
 2. [x] **v2.1.2 build 005 — disposable Paper integration and fault-injection harness implemented; final-candidate and real-client evidence pending.** A separate test plugin, Java 25 Class-File API instrumented-copy builder, 24 named failpoints, two-start/PlaceholderAPI/lifecycle/log runner, real-player queue/teleport/GUI/reconnect/exit probes, reflection event contracts, and positive/negative production-isolation checks are present. Development-artifact runs passed the automated two-start profile and the `config.after_runtime_commit` exit-97/recovery profile; repeat them against the clean committed candidate and complete every applicable real-client/hard-kill checklist row before treating this item as release-qualified.
@@ -46,7 +46,7 @@ Build 008 includes all previous modernization layers documented in [CHANGELOG.md
 | Capability | Status | Notes |
 | --- | --- | --- |
 | Gradle build and wrapper | **Implemented** | Gradle 9.6.1, Shadow 9.5.1, strict Java 25 compilation. |
-| Paper target | **Implemented; final build-022 smoke pending** | Exact compile API is `26.2.build.62-beta`; `api-version: 26.2` and an explicit `ServerBuildInfo` gate reject older lines/builds. Repeat the controlled profile and full candidate smoke against build 62 or newer before approval. |
+| Paper target | **Implemented; final build-023 smoke pending** | Exact compile API is `26.2.build.62-beta`; `api-version: 26.2` and an explicit `ServerBuildInfo` gate reject older lines/builds. Repeat the controlled profile and full candidate smoke against build 62 or newer before approval. |
 | Standalone SQLite JAR | **Implemented** | SQLite JDBC 3.53.2.0 is shaded; MySQL/MariaDB is absent. |
 | Archive-composition gate | **Implemented** | Rejects bundled Paper/Bukkit/PlaceholderAPI/live-database classes or files and remote-database drivers. |
 | Isolated scenario artifacts | **Implemented; final-candidate rerun pending** | The harness is an independent Paper plugin and the Java 25 Class-File API transformer writes a distinct `TEST-ONLY-` copy. Neither is packaged beneath `build/libs/` or allowed to replace the production JAR. Development-artifact isolation and controlled-profile gates passed. |
@@ -93,13 +93,13 @@ Build 008 includes all previous modernization layers documented in [CHANGELOG.md
 | Movement-integrity controls | **Implemented; adversarial client matrix pending** | Flight/glide/riptide, exploit teleports, projectiles, vehicles, effects, speed state, arena bounds, and minimum inter-jump timing are blocked/rechecked. Non-zero server-applied velocity is replaced with zero without cancelling Paper's cause-less event. A detected altered run persists zero score and no category/reward; anomaly evidence is rate-limited and never auto-bans. |
 | Combo and Flawless | **Implemented; gameplay calibration pending** | Separate atomic personal-best categories. Combo is the maximum within-gap streak; Flawless is the final Classic score only if every transition met the target. Classic is unchanged. |
 | Milestones/accessibility | **Implemented; client presentation pending** | Configured native action bar/title/sound/particle feedback with UUID-owned full/reduced/off particles and sound/title toggles. |
-| Seasonal appearance presets | **Implemented; client presentation pending** | `custom`, `default`, `summer`, `halloween`, `winter`, and `valentine` resolve a validated safe-block palette and untyped Paper particle. The choice changes appearance only and respects each player's particle preference. |
+| Seasonal appearance presets | **Implemented; summer client-approved** | `custom`, `default`, `summer`, `halloween`, `winter`, and `valentine` resolve a validated safe-block palette and untyped Paper particle. The summer pink-concrete/cherry-leaf preset passed real-player presentation and post-run Doctor checks. |
 
 ### Capacity, commands, and operator tooling
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| FIFO queue/readiness | **Implemented; multiplayer rehearsal pending** | Join/leave/status/ready, cooldown, expiry/reminders, action-bar state, pause with frozen positions/deadlines, resume, and drain. |
+| FIFO queue/readiness | **Implemented; multiplayer rehearsal pending** | Join/readiness reservation requires the default-off `infinityparkour.queue.join` leaf. Players without it can start whenever an arena is genuinely free but are never auto-enrolled; they wait and retry. Granted players retain leave/status, cooldown, expiry/reminders, action-bar state, pause with frozen positions/deadlines, resume, and drain. |
 | Guarded arena editor | **Implemented; rollback rehearsal pending** | Worker capture/persistence, primary-thread Paper validation, generation CAS, exact token-bound backup, final disk verification, pending-work idle gate, and shutdown reconciliation. |
 | Season administration | **Implemented** | Create/list/activate/close/reopen/archive with separate permission. |
 | Export administration | **Implemented** | Separate permission and audited successful export. |
@@ -198,7 +198,7 @@ Add Classic, Relaxed, and Expert profiles with separate reachability envelopes, 
 
 #### Configured themes
 
-**Block/particle presets implemented in build 022; Paper/client presentation pending.** `custom`, `default`, `summer`, `halloween`, `winter`, and `valentine` select validated safe platform palettes and untyped Paper particles without changing scoring. Additional pirate/tropical/nether/end/rainbow presets and optional theme-specific sounds remain presentation work. A mechanically different theme must become a separate category.
+**Block/particle presets implemented in build 022; summer client presentation approved.** `custom`, `default`, `summer`, `halloween`, `winter`, and `valentine` select validated safe platform palettes and untyped Paper particles without changing scoring. The summer pink-concrete/cherry-leaf combination passed real-player presentation and post-run Doctor checks. Additional pirate/tropical/nether/end/rainbow presets and optional theme-specific sounds remain presentation work. A mechanically different theme must become a separate category.
 
 #### Seeded daily challenge
 
@@ -213,9 +213,6 @@ Persist date, seed, timezone policy, and algorithm version so every player recei
 - Paged all-time/season/category leaderboards with explicit selector labels.
 - Queue/capacity item, current score/idle/elapsed state, best delta, and next-rank target in the GUI.
 - Staff-only health/quarantine/reward-uncertainty views with confirmation screens.
-- Cosmetic personal ghost/trail using bounded target-to-target samples, not full movement packets.
-- Spectator mode that consumes no arena, cannot affect collision, and respects vanished staff.
-- Team relay as a separate score model with disconnect, anti-boosting, and leaderboard rules.
 
 ### P2 — integrations
 
@@ -278,6 +275,12 @@ Unless a future requirement changes with a documented design review, do not add:
 - mutable session/database handles in the Bukkit API;
 - bundled Paper, Bukkit, PlaceholderAPI, CMI, or CMILib classes;
 - compatibility shims for unsupported 1.20.x, 1.21.x, or 26.1.x servers in the current Paper 26.2 artifact.
+- spectator mode;
+- player ghosts or cosmetic movement trails;
+- team-relay gameplay or team leaderboards.
+
+The final three gameplay concepts are permanent owner-directed exclusions and must not be
+reintroduced into the roadmap.
 
 ## Definition of done for any future item
 

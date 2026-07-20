@@ -155,6 +155,8 @@ permissions:
   openGui: infinityparkour.opengui
   leaveArena: infinityparkour.leavearena
   playGame: infinityparkour.play
+  # Optional FIFO reservation. Without this node, players wait and try play again.
+  queueJoin: infinityparkour.queue.join
   reload: infinityparkour.reload
   statsCmd: infinityparkour.statscmd
   topCmd: infinityparkour.topcmd

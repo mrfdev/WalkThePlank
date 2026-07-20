@@ -233,11 +233,17 @@ final class WalkCommandTree {
                                         QueueCommands.PlayerAction.STATUS)));
         for (QueueCommands.PlayerAction action :
                 QueueCommands.PlayerAction.values()) {
-            queue.then(Commands.literal(
-                            action.name().toLowerCase(Locale.ROOT))
-                    .executes(context -> command.execute(
-                            context.getSource(),
-                            sender -> command.queue.player(sender, action))));
+            LiteralArgumentBuilder<CommandSourceStack> actionNode =
+                    Commands.literal(action.name().toLowerCase(Locale.ROOT));
+            if (action == QueueCommands.PlayerAction.JOIN
+                    || action == QueueCommands.PlayerAction.READY) {
+                actionNode.requires(source -> command.playerPermission(
+                        source,
+                        command.support.permissions().queueJoin()));
+            }
+            queue.then(actionNode.executes(context -> command.execute(
+                    context.getSource(),
+                    sender -> command.queue.player(sender, action))));
         }
         return queue;
     }

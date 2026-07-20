@@ -182,8 +182,14 @@ public final class GameManager {
             return false;
         }
         if (freeArenas.isEmpty()) {
-            messages.send(player, "chat.allArenasUsed");
-            if (settings.get().queue().enabled()) {
+            if (settings.get().queue().enabled()
+                    && !player.hasPermission(settings.get().permissions().queueJoin())) {
+                messages.send(player, "chat.queueWait");
+            } else {
+                messages.send(player, "chat.allArenasUsed");
+            }
+            if (settings.get().queue().enabled()
+                    && player.hasPermission(settings.get().permissions().queueJoin())) {
                 messages.send(player, "chat.queueOffer");
             }
             player.closeInventory();
@@ -191,6 +197,13 @@ public final class GameManager {
         }
 
         if (settings.get().queue().enabled() && queue.size() > 0) {
+            if (!player.hasPermission(settings.get().permissions().queueJoin())) {
+                queue.remove(player.getUniqueId(), Instant.now());
+                nextQueueReminder.remove(player.getUniqueId());
+                messages.send(player, "chat.queueWait");
+                refreshQueue();
+                return false;
+            }
             if (queue.isPaused()) {
                 messages.send(player, "chat.queuePaused");
                 return false;
@@ -1777,6 +1790,10 @@ public final class GameManager {
 
     public boolean joinQueue(Player player) {
         Objects.requireNonNull(player, "player");
+        if (!player.hasPermission(settings.get().permissions().queueJoin())) {
+            messages.send(player, "chat.queueWait");
+            return false;
+        }
         if (!settings.get().queue().enabled()) {
             messages.send(player, "chat.queueDisabled");
             return false;
@@ -1824,6 +1841,13 @@ public final class GameManager {
 
     public boolean startReady(Player player) {
         Objects.requireNonNull(player, "player");
+        if (!player.hasPermission(settings.get().permissions().queueJoin())) {
+            queue.remove(player.getUniqueId(), Instant.now());
+            nextQueueReminder.remove(player.getUniqueId());
+            messages.send(player, "chat.queueWait");
+            refreshQueue();
+            return false;
+        }
         if (queue.isPaused()) {
             messages.send(player, "chat.queuePaused");
             return false;
@@ -2547,6 +2571,7 @@ public final class GameManager {
                     return player != null
                             && player.isOnline()
                             && player.hasPermission(settings.get().permissions().playGame())
+                            && player.hasPermission(settings.get().permissions().queueJoin())
                             && canStart(player, false);
                 },
                 now);

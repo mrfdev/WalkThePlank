@@ -8,8 +8,12 @@ import org.junit.jupiter.api.Test;
 final class PermissionSettingsTest {
     @Test
     void acceptsDistinctPlayerAndPrivilegedPermissions() {
-        PermissionSettings settings = settings("infinityparkour.play", "infinityparkour.admin.queue");
+        PermissionSettings settings = settings(
+                "infinityparkour.play",
+                "infinityparkour.queue.join",
+                "infinityparkour.admin.queue");
 
+        assertEquals("infinityparkour.queue.join", settings.queueJoin());
         assertEquals("infinityparkour.admin.queue", settings.adminQueue());
         assertEquals("infinityparkour.admin.season", settings.adminSeason());
         assertEquals("infinityparkour.admin.export", settings.adminExport());
@@ -21,19 +25,33 @@ final class PermissionSettingsTest {
     void rejectsCaseInsensitivePlayerAndPrivilegedPermissionCollision() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> settings("InfinityParkour.Admin.Queue", "infinityparkour.admin.queue"));
+                () -> settings(
+                        "InfinityParkour.Admin.Queue",
+                        "infinityparkour.queue.join",
+                        "infinityparkour.admin.queue"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> settings(
+                        "infinityparkour.play",
+                        "InfinityParkour.Admin.Queue",
+                        "infinityparkour.admin.queue"));
     }
 
-    private static PermissionSettings settings(String playGame, String adminQueue) {
+    private static PermissionSettings settings(
+            String playGame,
+            String queueJoin,
+            String adminQueue) {
         return new PermissionSettings(
                 "infinityparkour.opengui",
                 "infinityparkour.leavearena",
                 playGame,
+                queueJoin,
                 "infinityparkour.reload",
                 "infinityparkour.statscmd",
                 "infinityparkour.topcmd",
                 "infinityparkour.info",
                 "infinityparkour.help",
+                "infinityparkour.preferences",
                 "infinityparkour.admin",
                 "infinityparkour.admin.open",
                 "infinityparkour.admin.debug",

@@ -9,6 +9,7 @@ public record PermissionSettings(
         String openGui,
         String leaveArena,
         String playGame,
+        String queueJoin,
         String reload,
         String stats,
         String top,
@@ -36,6 +37,7 @@ public record PermissionSettings(
             String top,
             String info,
             String help,
+            String preferences,
             String admin,
             String adminOpen,
             String adminDebug,
@@ -52,6 +54,53 @@ public record PermissionSettings(
                 openGui,
                 leaveArena,
                 playGame,
+                "infinityparkour.queue.join",
+                reload,
+                stats,
+                top,
+                info,
+                help,
+                preferences,
+                admin,
+                adminOpen,
+                adminDebug,
+                adminStop,
+                adminRecover,
+                adminValidate,
+                adminArena,
+                adminQueue,
+                adminSeason,
+                adminExport,
+                adminReward,
+                adminInvestigate);
+    }
+
+    public PermissionSettings(
+            String openGui,
+            String leaveArena,
+            String playGame,
+            String reload,
+            String stats,
+            String top,
+            String info,
+            String help,
+            String admin,
+            String adminOpen,
+            String adminDebug,
+            String adminStop,
+            String adminRecover,
+            String adminValidate,
+            String adminArena,
+            String adminQueue,
+            String adminSeason,
+            String adminExport,
+            String adminReward,
+            String adminInvestigate) {
+        this(
+                openGui,
+                leaveArena,
+                playGame,
+                "infinityparkour.queue.join",
                 reload,
                 stats,
                 top,
@@ -76,6 +125,7 @@ public record PermissionSettings(
         openGui = validate(openGui, "openGui");
         leaveArena = validate(leaveArena, "leaveArena");
         playGame = validate(playGame, "playGame");
+        queueJoin = validate(queueJoin, "queueJoin");
         reload = validate(reload, "reload");
         stats = validate(stats, "stats");
         top = validate(top, "top");
@@ -99,6 +149,7 @@ public record PermissionSettings(
         playerPermissions.put("openGui", openGui);
         playerPermissions.put("leaveArena", leaveArena);
         playerPermissions.put("playGame", playGame);
+        playerPermissions.put("queueJoin", queueJoin);
         playerPermissions.put("stats", stats);
         playerPermissions.put("top", top);
         playerPermissions.put("info", info);

@@ -618,6 +618,7 @@ final class DatabaseCommands {
         for (Map.Entry<String, String> entry : Map.ofEntries(
                 Map.entry("open", permissions.openGui()),
                 Map.entry("play", permissions.playGame()),
+                Map.entry("queue.join", permissions.queueJoin()),
                 Map.entry("leave", permissions.leaveArena()),
                 Map.entry("stats", permissions.stats()),
                 Map.entry("top", permissions.top()),

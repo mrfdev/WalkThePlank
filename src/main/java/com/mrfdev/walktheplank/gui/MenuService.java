@@ -420,7 +420,8 @@ public final class MenuService {
             } else if (current.queue().enabled()
                     && (queue.playerPosition() > 0
                             || queue.total() > 0
-                            || games.availableArenas() == 0)) {
+                            || games.availableArenas() == 0)
+                    && clicker.hasPermission(current.permissions().queueJoin())) {
                 games.joinQueue(clicker);
             } else {
                 games.start(clicker);

@@ -2,6 +2,17 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.6.1-023] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.6.1-023-j25-26.2.jar`
+
+### Optional queue reservation
+
+- Added the remappable `infinityparkour.queue.join` player permission for FIFO join and readiness acceptance. It defaults to false, is deliberately absent from `infinityparkour.player`, and remains available through the operator-default admin parent.
+- Players without the leaf can still start normally whenever an arena is free. An occupied arena now produces a wait-and-retry message without automatic enrollment or a queue invitation.
+- Permission checks exist on the Brigadier `join`/`ready` branches, immediately before GUI enrollment, inside authoritative queue operations, and during periodic eligibility refresh. Revocation removes a waiting/readied player while status and leave remain safe.
+- Removed spectator mode, player ghosts/trails, and team relay from the roadmap and recorded them as permanent product non-goals.
+
 ## [2.6.0-022] — 2026-07-20
 
 Expected artifact: `1MB-WalkThePlank-v2.6.0-022-j25-26.2.jar`

@@ -271,7 +271,12 @@ final class PlayerCommands {
         support.addHelp(
                 sender,
                 permissions.playGame(),
-                "/walk queue <join|leave|status|ready>",
+                "/walk queue <status|leave>",
+                "Inspect or leave the optional queue");
+        support.addHelp(
+                sender,
+                permissions.queueJoin(),
+                "/walk queue <join|ready>",
                 "Reserve the next free arena fairly");
         if (sender instanceof Player player
                 && (support.games.isPlaying(player)
