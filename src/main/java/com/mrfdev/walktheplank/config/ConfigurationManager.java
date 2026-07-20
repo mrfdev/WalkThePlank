@@ -1922,11 +1922,12 @@ public final class ConfigurationManager {
         }
     }
 
-    private static Set<String> allowedTranslationPlaceholders(String path) {
+    static Set<String> allowedTranslationPlaceholders(String path) {
         return switch (path) {
             case "scoreboardRecordInChat.record",
                     "mainGui.scoreboardItem.scoreboardRecord" ->
                 Set.of("index", "rank", "playerName", "score");
+            case "mainGui.tutorialItem.lore" -> Set.of("platformBlock");
             case "chat.playerNotFound" -> Set.of("playerName");
             case "chat.noPermissionGui",
                     "chat.noPermissionLeave",

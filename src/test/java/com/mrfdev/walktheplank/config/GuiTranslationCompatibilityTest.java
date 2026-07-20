@@ -7,6 +7,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -49,6 +50,36 @@ final class GuiTranslationCompatibilityTest {
 
         assertEquals("&9&lHow to play?", legacy.getString("mainGui.tutorialItem.title"));
         assertEquals(customLore, legacy.getStringList("mainGui.tutorialItem.lore"));
+    }
+
+    @Test
+    void upgradesThePreviousBundledTutorialToTheDynamicPlatformLabel() {
+        YamlConfiguration previous = bundledDefaults();
+        List<String> previousLore = previous.getStringList("mainGui.tutorialItem.lore")
+                .stream()
+                .map(line -> line.replace(
+                        "Land on the nearest {{platformBlock}}.",
+                        "Land on the nearest glowing platform."))
+                .toList();
+        previous.set("mainGui.tutorialItem.lore", previousLore);
+        YamlConfiguration current = bundledDefaults();
+
+        GuiTranslationCompatibility.upgrade(previous, current);
+
+        assertEquals(
+                current.getStringList("mainGui.tutorialItem.lore"),
+                previous.getStringList("mainGui.tutorialItem.lore"));
+        assertTrue(previous.getStringList("mainGui.tutorialItem.lore")
+                .contains(
+                        "minimessage:<!italic><color:#f2f5f7>Land on the nearest {{platformBlock}}.</color>"));
+    }
+
+    @Test
+    void tutorialValidationAllowsOnlyTheRuntimePlatformLabel() {
+        assertEquals(
+                Set.of("platformBlock"),
+                ConfigurationManager.allowedTranslationPlaceholders(
+                        "mainGui.tutorialItem.lore"));
     }
 
     private static YamlConfiguration legacyTranslations() {

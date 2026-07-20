@@ -12,15 +12,15 @@ intermediate builds from this modernization and are fully superseded.
 
 The Bukkit plugin name intentionally remains `InfinityParkour`. This preserves the existing data directory at `plugins/InfinityParkour/`, so the live `config.yml`, `translations.yml`, and `database.db` can be upgraded in place without renaming player data.
 
-Current source release: **v2.4.6, build 015**
+Current source release: **v2.4.7, build 016**
 
 Expected standalone artifact:
 
 ```text
-1MB-WalkThePlank-v2.4.6-015-j25-26.2.jar
+1MB-WalkThePlank-v2.4.7-016-j25-26.2.jar
 ```
 
-> Real-player testing passed build 013's forward, backward, sprinting, jumping, and repeated-start activation matrix without another player-state refusal or velocity loop. Build 014 made stale cleanup completion idempotent; a follow-up six-run same-arena rehearsal produced no lifecycle failure, quarantine, or blocked start. The operator approved the non-italic pastel treatment of all three GUI icons. Build 015 proofreads the remaining Play tooltip into short instructions for starting, automatic queue placement, ready confirmation, and the correct `/walk leave` exit. Prior machine evidence remains historical, so build 015 still needs its own freeze, Paper smoke, and synchronization.
+> Real-player testing passed build 013's forward, backward, sprinting, jumping, and repeated-start activation matrix without another player-state refusal or velocity loop. Build 014 made stale cleanup completion idempotent; a follow-up six-run same-arena rehearsal produced no lifecycle failure, quarantine, or blocked start. The operator approved the non-italic pastel treatment of all three GUI icons. Build 015 proofread the Play tooltip. Build 016 makes the tutorial name the configured platform material instead of assuming that it glows. Prior machine evidence remains historical, so build 016 needs its own freeze, Paper smoke, and synchronization.
 
 See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-walktheplank.md](feature-improvements-walktheplank.md) for the authoritative future-development TODO and implemented-versus-remaining status.
 
@@ -87,16 +87,16 @@ Build the deployment artifact with the checked-in Gradle wrapper:
 The deployable file is:
 
 ```text
-build/libs/1MB-WalkThePlank-v2.4.6-015-j25-26.2.jar
+build/libs/1MB-WalkThePlank-v2.4.7-016-j25-26.2.jar
 ```
 
 Do not deploy the `-unshaded.jar`; it does not contain SQLite JDBC. `build` runs the automated tests, creates the shaded artifact, and executes the archive/metadata verification gate. `freezeCandidate` additionally rejects a dirty Git tree. Every candidate embeds the full source commit and strict dirty state in `build-info.properties` and the JAR manifest; `/walk info`, `/walk debug overview`, and startup show the abbreviated source label.
 
-Earlier completed machine evidence is preserved in annotated RC tags and ignored operator release archives, but it does not prove build 015. The exact clean build-015 candidate needs two byte-identical builds, scenario-profile evidence, Paper smoke, live-copy preservation checks, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
+Earlier completed machine evidence is preserved in annotated RC tags and ignored operator release archives, but it does not prove build 016. The exact clean build-016 candidate needs two byte-identical builds, scenario-profile evidence, Paper smoke, live-copy preservation checks, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
 
 | Release property | Value |
 | --- | --- |
-| Filename | `1MB-WalkThePlank-v2.4.6-015-j25-26.2.jar` |
+| Filename | `1MB-WalkThePlank-v2.4.7-016-j25-26.2.jar` |
 | Source identity | Full Git commit plus strict clean/dirty state embedded in the JAR |
 | Final size and SHA-256 | Annotated candidate tag and operator release archive |
 | Automated test result | Must pass with zero failures/errors/skips and strict Java 25 compilation |
@@ -117,11 +117,11 @@ Useful build commands:
 ./gradlew syncTestServer
 ```
 
-`releaseInfo` must print version `2.4.6`, build `015`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 015 into the active plugin directory.
+`releaseInfo` must print version `2.4.7`, build `016`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 016 into the active plugin directory.
 
 ## Install or upgrade
 
-> Stop Paper and take an operator-controlled backup before the first build-015 start. The automatic SQLite migration backup is an additional safeguard, not a substitute for a full server/data backup.
+> Stop Paper and take an operator-controlled backup before the first build-016 start. The automatic SQLite migration backup is an additional safeguard, not a substitute for a full server/data backup.
 
 For an existing server:
 
@@ -130,7 +130,7 @@ For an existing server:
 3. Back up the old plugin JAR and the complete `plugins/InfinityParkour/` directory as one matched rollback set.
 4. Keep the data directory named `plugins/InfinityParkour/`.
 5. Remove or disable every older InfinityParkour/WalkThePlank JAR. Paper must see only one plugin with the `InfinityParkour` name.
-6. Copy `1MB-WalkThePlank-v2.4.6-015-j25-26.2.jar` into `plugins/`.
+6. Copy `1MB-WalkThePlank-v2.4.7-016-j25-26.2.jar` into `plugins/`.
 7. Start Paper and inspect the complete startup log. A successful live-data start should report 100 preserved Classic scores and, on the first schema-v3 migration only, a verified pre-migration backup path.
 8. Run `/walk info`, `/walk admin validate`, `/walk admin status`, `/walk admin doctor`, `/walk debug all`, and the full beta checklist before allowing players in.
 9. Stop Paper cleanly once and require the clean restoration/disable message before the event rehearsal is accepted.
@@ -458,11 +458,11 @@ Legacy configuration behavior is deliberate:
 
 Translation strings are trusted operator templates. Existing unmarked values continue to use legacy ampersand formatting, so custom live `translations.yml` files remain backward compatible. Prefix one trusted value with `minimessage:` to opt only that value into MiniMessage; for example, `minimessage:<!italic><color:#bde0fe><bold>WalkThePlank</bold></color>`. Bundled GUI item names and lore use this explicit marker plus the shared 1MB pastel palette: pale blue `#bde0fe`, readable body white `#f2f5f7`, soft value gray `#d8e2dc`, pink `#ffc8dd`/`#ffb3c1`, and action gold `#ffd166`.
 
-The inventory window title has a narrower readability rule: `mainGui.title` supplies text, all of its legacy/MiniMessage styling is removed, and `mainGui.titleColor` applies one validated `#RRGGBB` color. The default is the near-black charcoal `#111827`; use `#000000` for complete black. The 54-slot menu draws `mainGui.fillItem` only on its outer frame and leaves unused inner slots empty. The bundled pane is `LIGHT_BLUE_STAINED_GLASS_PANE`, and the historical `WHITE_STAINED_GLASS_PANE` value is upgraded to light blue in memory. The exact historical tutorial/play/scoreboard wording shown by the old live file likewise upgrades in memory to the proofread pastel defaults, but any genuinely customized item definition is preserved. None of these compatibility upgrades rewrites `translations.yml`; `mainGui.useFillItem: false` still disables the frame.
+The inventory window title has a narrower readability rule: `mainGui.title` supplies text, all of its legacy/MiniMessage styling is removed, and `mainGui.titleColor` applies one validated `#RRGGBB` color. The default is the near-black charcoal `#111827`; use `#000000` for complete black. The 54-slot menu draws `mainGui.fillItem` only on its outer frame and leaves unused inner slots empty. The bundled pane is `LIGHT_BLUE_STAINED_GLASS_PANE`, and the historical `WHITE_STAINED_GLASS_PANE` value is upgraded to light blue in memory. The exact historical and immediately previous bundled tutorial/play/scoreboard wording upgrades in memory to the proofread pastel defaults, but any genuinely customized item definition is preserved. None of these compatibility upgrades rewrites `translations.yml`; `mainGui.useFillItem: false` still disables the frame.
 
 Every GUI display name and every nested lore component is recursively decorated with `italic=false` after parsing and literal placeholder insertion. This is a renderer-level guarantee: legacy `&` text, modern MiniMessage, dynamic leaderboard records, and even a nested configured `<italic>` tag cannot make plugin tooltip text italic.
 
-Runtime `{{placeholders}}`—including player and season names, database values, permission nodes, and counts—are replaced with literal Adventure components only after the trusted template is parsed. Replacement text cannot introduce legacy colors, MiniMessage tags, click/hover events, or other template behavior. Do not add `minimessage:` to an untrusted dynamic value; the marker belongs only on an operator-controlled template.
+Runtime `{{placeholders}}`—including player and season names, database values, permission nodes, counts, and the tutorial's `{{platformBlock}}` label—are replaced literally only after the trusted template is parsed. `{{platformBlock}}` follows the current `parkourBlocks` setting: one to three distinct materials are named in readable lowercase English, while longer lists use the bounded label “configured platform.” Replacement text cannot introduce legacy colors, MiniMessage tags, click/hover events, or other template behavior. Do not add `minimessage:` to an untrusted dynamic value; the marker belongs only on an operator-controlled template.
 
 Reward commands are trusted console authority. They must be single-line, at most 2048 characters, and use a safe command root. When rewards are enabled, unavailable roots fail configuration validation. Matching ranges may overlap deliberately; validation warns because commands from every matching tier will be combined. An inclusive interval sweep rejects any configuration in which a possible score would combine more than the durable ledger limit of 100 non-empty steps.
 
@@ -496,7 +496,7 @@ The backup is made with SQLite `VACUUM INTO` and must pass `PRAGMA quick_check` 
 
 The schema migration runs transactionally and validates required columns, indexes, constraints, and foreign keys. Persistence accepts only vanilla Java last-known names matching `[A-Za-z0-9_]{3,16}` and non-negative scores no larger than Java's integer maximum; the fresh schema also records matching constraints. A database with a newer unsupported schema, malformed nonblank UUID, duplicate nonblank UUID, incompatible table/index definition, unsafe path, or failed backup disables the plugin safely.
 
-Build 008's disposable-copy schema-v3 rehearsal preserved all **100** rows and all **100** UUIDs, score sum **4256**, maximum score **149**, the unchanged Classic top ten, and a valid `PRAGMA quick_check`; its automatic backup passed retention verification and `_resources` remained unchanged. Build 015 has no database-schema change, but repeat the same invariants against its frozen candidate rather than treating older evidence as approval.
+Build 008's disposable-copy schema-v3 rehearsal preserved all **100** rows and all **100** UUIDs, score sum **4256**, maximum score **149**, the unchanged Classic top ten, and a valid `PRAGMA quick_check`; its automatic backup passed retention verification and `_resources` remained unchanged. Build 016 has no database-schema change, but repeat the same invariants against its frozen candidate rather than treating older evidence as approval.
 
 Migration never guesses identity from a username. Blank UUID text is normalized to unresolved `NULL`; malformed or duplicate nonblank UUIDs fail. Unresolved rows can remain visible in rankings, but player-specific lookup cannot claim them and UUID-only export refuses the entire affected snapshot. No CMI database or online API is queried automatically.
 
@@ -622,9 +622,9 @@ The current API intentionally does not expose mutable sessions, direct database 
 
 ## Testing and event approval
 
-The build-015 suite currently passes **267 tests across 64 test classes**, with zero failures, errors, or skips. It covers exact Paper 26.2 build-62 runtime policy, critical-state snapshot revalidation, recursive non-italic GUI styling, exact legacy-tooltip compatibility, and idempotent stale cleanup completion alongside the existing durable ownership, movement baseline, sprint, GUI, schema, permission, audit, recovery, reward, queue, export, teleport, and reflection-locked event-contract tests. The operator approved all three tooltip designs, and six rapid same-arena build-014 client runs completed with only the expected bounded cleanup messages. A scored rapid-run rehearsal against the final frozen candidate remains in the server checklist.
+The build-016 suite currently passes **270 tests across 64 test classes**, with zero failures, errors, or skips. It covers exact Paper 26.2 build-62 runtime policy, critical-state snapshot revalidation, configuration-aware platform labels and their fail-closed translation allow-list, recursive non-italic GUI styling, exact legacy/previous-tooltip compatibility, and idempotent stale cleanup completion alongside the existing durable ownership, movement baseline, sprint, GUI, schema, permission, audit, recovery, reward, queue, export, teleport, and reflection-locked event-contract tests. The operator approved all three tooltip designs, and six rapid same-arena build-014 client runs completed with only the expected bounded cleanup messages. A scored rapid-run rehearsal against the final frozen candidate remains in the server checklist.
 
-Build 015 carries forward build 008's isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
+Build 016 carries forward build 008's isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
 
 ```bash
 ./gradlew scenarioArtifacts verifyProductionScenarioIsolation
@@ -633,8 +633,8 @@ Build 015 carries forward build 008's isolated destructive-test system. It never
 The test-only outputs are deliberately outside `build/libs/`:
 
 ```text
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.4.6-015.jar
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.4.6-015-Failpoints.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.4.7-016.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.4.7-016-Failpoints.jar
 ```
 
 `verifyReleaseJar` byte-scans the production JAR for scenario packages, commands, manifest/agent markers, canaries, every scenario-property prefix, and all 24 failpoint names. `verifyProductionScenarioIsolation` repeats that negative proof and requires the harness and instrumented copy to trigger positive controls, preventing a broken scan from reporting a false pass. It also builds a second instrumented copy and requires byte-for-byte identity. The runner refuses symlinked destructive roots and writes a bounded per-run nonce marker. Both the property-armed failpoint controller and the scenario plugin require that marker, the exact generated root/working directory/layout/data paths, and the bridge loaded by the instrumented target's own classloader.

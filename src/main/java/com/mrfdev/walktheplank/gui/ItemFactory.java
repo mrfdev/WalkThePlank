@@ -4,6 +4,7 @@ import com.mrfdev.walktheplank.text.MessageService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.logging.Logger;
 import net.kyori.adventure.text.Component;
@@ -23,21 +24,36 @@ public final class ItemFactory {
     }
 
     public ItemStack create(ConfigurationSection section) {
-        return create(section, null);
+        return create(section, Map.of(), null);
     }
 
     public ItemStack create(ConfigurationSection section, List<Component> loreOverride) {
+        return create(section, Map.of(), loreOverride);
+    }
+
+    public ItemStack create(
+            ConfigurationSection section,
+            Map<String, ?> literalReplacements) {
+        return create(section, literalReplacements, null);
+    }
+
+    private ItemStack create(
+            ConfigurationSection section,
+            Map<String, ?> literalReplacements,
+            List<Component> loreOverride) {
         Objects.requireNonNull(section, "section");
+        Objects.requireNonNull(literalReplacements, "literalReplacements");
         Material material = resolveMaterial(section.getString("item", "BARRIER"));
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         meta.displayName(MenuAppearance.nonItalic(
-                messages.deserialize(section.getString("title", ""))));
+                messages.render(section.getString("title", ""), literalReplacements)));
 
         if (loreOverride == null) {
             List<Component> lore = new ArrayList<>();
             for (String line : section.getStringList("lore")) {
-                lore.add(MenuAppearance.nonItalic(messages.deserialize(line)));
+                lore.add(MenuAppearance.nonItalic(
+                        messages.render(line, literalReplacements)));
             }
             meta.lore(lore);
         } else {

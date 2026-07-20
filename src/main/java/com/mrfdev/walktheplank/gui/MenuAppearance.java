@@ -1,11 +1,13 @@
 package com.mrfdev.walktheplank.gui;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.Material;
 
 final class MenuAppearance {
     static final String DEFAULT_TITLE = "1MB Walk the Plank";
@@ -58,5 +60,29 @@ final class MenuAppearance {
             throw new IllegalArgumentException("GUI border material must be a glass pane item");
         }
         return normalized;
+    }
+
+    static String platformBlockLabel(List<Material> configuredMaterials) {
+        List<String> names = Objects.requireNonNull(
+                        configuredMaterials, "configuredMaterials")
+                .stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .map(MenuAppearance::readableMaterialName)
+                .toList();
+        return switch (names.size()) {
+            case 0 -> "platform";
+            case 1 -> names.getFirst();
+            case 2 -> names.get(0) + " or " + names.get(1);
+            case 3 -> names.get(0) + ", " + names.get(1) + ", or " + names.get(2);
+            default -> "configured platform";
+        };
+    }
+
+    private static String readableMaterialName(Material material) {
+        String name = material.name()
+                .toLowerCase(Locale.ROOT)
+                .replace('_', ' ');
+        return "jack o lantern".equals(name) ? "jack o'lantern" : name;
     }
 }

@@ -22,6 +22,17 @@ final class GuiTranslationCompatibility {
             "&b-- no elytra, pearls, potions, etc --",
             "&f To start playing, click",
             "&f on the &bDiamond Boots&f.");
+    private static final String MODERN_TUTORIAL_TITLE =
+            "minimessage:<!italic><color:#bde0fe><bold>How to Play</bold></color>";
+    private static final List<String> PREVIOUS_MODERN_TUTORIAL_LORE = List.of(
+            "minimessage:<!italic><color:#f2f5f7>Land on the nearest glowing platform.</color>",
+            "minimessage:<!italic><color:#f2f5f7>Each successful landing earns one point.</color>",
+            "minimessage:<!italic><color:#d8e2dc>A new platform appears after every jump.</color>",
+            "",
+            "minimessage:<!italic><color:#ffc8dd>Fair play:</color> <color:#d8e2dc>no elytra, pearls,</color>",
+            "minimessage:<!italic><color:#d8e2dc>movement potions, or outside help.</color>",
+            "",
+            "minimessage:<!italic><color:#ffd166>Click the diamond boots to begin.</color>");
     private static final String LEGACY_PLAY_TITLE = "&9&lPlay";
     private static final List<String> LEGACY_PLAY_LORE = List.of(
             "&7 Once you click play the game ",
@@ -52,10 +63,15 @@ final class GuiTranslationCompatibility {
             copyString(translations, bundledDefaults, "mainGui.title");
         }
         if (matchesItem(
-                translations,
-                "mainGui.tutorialItem",
-                LEGACY_TUTORIAL_TITLE,
-                LEGACY_TUTORIAL_LORE)) {
+                        translations,
+                        "mainGui.tutorialItem",
+                        LEGACY_TUTORIAL_TITLE,
+                        LEGACY_TUTORIAL_LORE)
+                || matchesItem(
+                        translations,
+                        "mainGui.tutorialItem",
+                        MODERN_TUTORIAL_TITLE,
+                        PREVIOUS_MODERN_TUTORIAL_LORE)) {
             copyString(translations, bundledDefaults, "mainGui.tutorialItem.title");
             copyStringList(translations, bundledDefaults, "mainGui.tutorialItem.lore");
         }

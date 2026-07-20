@@ -349,6 +349,7 @@ public final class MenuService {
 
         private void populate() {
             ConfigurationSection gui = requireSection("mainGui");
+            RuntimeSettings current = settings.get();
             if (gui.getBoolean("useFillItem", true)) {
                 ItemStack fill = items.createFill(MenuAppearance.borderMaterial(
                         gui.getString("fillItem", MenuAppearance.DEFAULT_BORDER_MATERIAL)));
@@ -359,7 +360,12 @@ public final class MenuService {
 
             inventory.setItem(
                     MainMenuLayout.TUTORIAL_SLOT,
-                    items.create(requireSection("mainGui.tutorialItem")));
+                    items.create(
+                            requireSection("mainGui.tutorialItem"),
+                            Map.of(
+                                    "platformBlock",
+                                    MenuAppearance.platformBlockLabel(
+                                            current.parkourBlocks()))));
             setAction(
                     MainMenuLayout.PLAY_SLOT,
                     items.create(requireSection("mainGui.playItem")),

@@ -2,6 +2,18 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.4.7-016] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.4.7-016-j25-26.2.jar`
+
+### Configuration-aware tutorial
+
+- Replaced “glowing platform” with the literal `{{platformBlock}}` GUI token. The tutorial now names the configured parkour material, such as “jack o'lantern” or “emerald block,” instead of assuming that every target glows.
+- One to three distinct configured materials receive a bounded natural-language label; longer lists use “configured platform” so an operator cannot create an excessively wide tooltip.
+- The material label is inserted after trusted MiniMessage parsing, retaining the plugin's formatting-injection boundary and recursive non-italic styling.
+- Translation validation explicitly allows only `{{platformBlock}}` in tutorial lore and continues to reject unsupported or malformed tokens.
+- The exact build-014/015 bundled tutorial is upgraded in memory to the dynamic text, alongside the original historical live translation. Genuinely customized operator lore remains authoritative and no translation file is rewritten.
+
 ## [2.4.6-015] — 2026-07-20
 
 Expected artifact: `1MB-WalkThePlank-v2.4.6-015-j25-26.2.jar`

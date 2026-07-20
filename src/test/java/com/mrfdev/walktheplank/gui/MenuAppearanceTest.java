@@ -9,6 +9,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.Material;
 import org.junit.jupiter.api.Test;
 
 final class MenuAppearanceTest {
@@ -70,6 +71,40 @@ final class MenuAppearanceTest {
         assertEquals(
                 "Name nested deep",
                 PlainTextComponentSerializer.plainText().serialize(styled));
+    }
+
+    @Test
+    void describesConfiguredPlatformMaterialsInReadableEnglish() {
+        assertEquals(
+                "emerald block",
+                MenuAppearance.platformBlockLabel(List.of(Material.EMERALD_BLOCK)));
+        assertEquals(
+                "jack o'lantern",
+                MenuAppearance.platformBlockLabel(List.of(Material.JACK_O_LANTERN)));
+        assertEquals(
+                "emerald block or diamond block",
+                MenuAppearance.platformBlockLabel(List.of(
+                        Material.EMERALD_BLOCK,
+                        Material.DIAMOND_BLOCK)));
+        assertEquals(
+                "emerald block, diamond block, or gold block",
+                MenuAppearance.platformBlockLabel(List.of(
+                        Material.EMERALD_BLOCK,
+                        Material.DIAMOND_BLOCK,
+                        Material.GOLD_BLOCK)));
+        assertEquals(
+                "emerald block",
+                MenuAppearance.platformBlockLabel(List.of(
+                        Material.EMERALD_BLOCK,
+                        Material.EMERALD_BLOCK)));
+        assertEquals("platform", MenuAppearance.platformBlockLabel(List.of()));
+        assertEquals(
+                "configured platform",
+                MenuAppearance.platformBlockLabel(List.of(
+                        Material.EMERALD_BLOCK,
+                        Material.DIAMOND_BLOCK,
+                        Material.GOLD_BLOCK,
+                        Material.IRON_BLOCK)));
     }
 
     private static void assertNoItalics(Component component) {

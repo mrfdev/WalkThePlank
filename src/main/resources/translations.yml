@@ -85,7 +85,7 @@ mainGui:
     title: 'minimessage:<!italic><color:#bde0fe><bold>How to Play</bold></color>'
     glow: false
     lore:
-      - 'minimessage:<!italic><color:#f2f5f7>Land on the nearest glowing platform.</color>'
+      - 'minimessage:<!italic><color:#f2f5f7>Land on the nearest {{platformBlock}}.</color>'
       - 'minimessage:<!italic><color:#f2f5f7>Each successful landing earns one point.</color>'
       - 'minimessage:<!italic><color:#d8e2dc>A new platform appears after every jump.</color>'
       - ''
