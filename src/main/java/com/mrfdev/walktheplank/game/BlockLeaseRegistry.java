@@ -34,6 +34,27 @@ final class BlockLeaseRegistry {
                 Objects.requireNonNull(lease, "lease"));
     }
 
+    /**
+     * Completes an asynchronous cleanup without allowing an old callback to affect a newer owner.
+     *
+     * <p>The exact lease may already have been removed by session-wide settlement before the
+     * main-thread completion callback drains. Both that case and a newer exact owner are safe,
+     * idempotent stale completions rather than lifecycle failures.</p>
+     */
+    synchronized CompletionRelease completeRelease(BlockKey key, BlockLease lease) {
+        BlockKey checkedKey = Objects.requireNonNull(key, "key");
+        BlockLease checkedLease = Objects.requireNonNull(lease, "lease");
+        BlockLease current = owners.get(checkedKey);
+        if (current == null) {
+            return CompletionRelease.ALREADY_RELEASED;
+        }
+        if (!current.equals(checkedLease)) {
+            return CompletionRelease.NEWER_OWNER_PRESERVED;
+        }
+        owners.remove(checkedKey);
+        return CompletionRelease.RELEASED;
+    }
+
     synchronized boolean isReserved(BlockKey key) {
         return owners.containsKey(Objects.requireNonNull(key, "key"));
     }
@@ -48,6 +69,12 @@ final class BlockLeaseRegistry {
         owners.entrySet().removeIf(entry -> entry.getValue().runId().equals(runId)
                 && entry.getValue().sessionGeneration() == sessionGeneration);
         return before - owners.size();
+    }
+
+    enum CompletionRelease {
+        RELEASED,
+        ALREADY_RELEASED,
+        NEWER_OWNER_PRESERVED
     }
 
     record BlockLease(UUID runId, long sessionGeneration, long platformGeneration) {

@@ -31,16 +31,19 @@ public final class ItemFactory {
         Material material = resolveMaterial(section.getString("item", "BARRIER"));
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
-        meta.displayName(messages.deserialize(section.getString("title", "")));
+        meta.displayName(MenuAppearance.nonItalic(
+                messages.deserialize(section.getString("title", ""))));
 
         if (loreOverride == null) {
             List<Component> lore = new ArrayList<>();
             for (String line : section.getStringList("lore")) {
-                lore.add(messages.deserialize(line));
+                lore.add(MenuAppearance.nonItalic(messages.deserialize(line)));
             }
             meta.lore(lore);
         } else {
-            meta.lore(List.copyOf(loreOverride));
+            meta.lore(loreOverride.stream()
+                    .map(MenuAppearance::nonItalic)
+                    .toList());
         }
 
         meta.setEnchantmentGlintOverride(section.getBoolean("glow", false));
@@ -52,7 +55,7 @@ public final class ItemFactory {
     public ItemStack createFill(String materialName) {
         ItemStack item = new ItemStack(resolveMaterial(materialName));
         ItemMeta meta = item.getItemMeta();
-        meta.displayName(Component.empty());
+        meta.displayName(MenuAppearance.nonItalic(Component.empty()));
         meta.setHideTooltip(true);
         item.setItemMeta(meta);
         return item;

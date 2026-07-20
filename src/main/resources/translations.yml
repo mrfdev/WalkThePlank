@@ -82,31 +82,37 @@ mainGui:
   fillItem: LIGHT_BLUE_STAINED_GLASS_PANE
   tutorialItem:
     item: BOOK
-    title: 'minimessage:<dark_blue><bold>How to play</bold>'
+    title: 'minimessage:<!italic><color:#bde0fe><bold>How to Play</bold></color>'
     glow: false
     lore:
-      - '&7Jump to the next generated block.'
-      - '&7Each landing adds one point.'
-      - '&7Do not use flight or movement effects.'
+      - 'minimessage:<!italic><color:#f2f5f7>Land on the nearest glowing platform.</color>'
+      - 'minimessage:<!italic><color:#f2f5f7>Each successful landing earns one point.</color>'
+      - 'minimessage:<!italic><color:#d8e2dc>A new platform appears after every jump.</color>'
       - ''
-      - '&fClick the diamond boots to start.'
+      - 'minimessage:<!italic><color:#ffc8dd>Fair play:</color> <color:#d8e2dc>no elytra, pearls,</color>'
+      - 'minimessage:<!italic><color:#d8e2dc>movement potions, or outside help.</color>'
+      - ''
+      - 'minimessage:<!italic><color:#ffd166>Click the diamond boots to begin.</color>'
   playItem:
     item: DIAMOND_BOOTS
-    title: 'minimessage:<dark_blue><bold>Play</bold>'
+    title: 'minimessage:<!italic><color:#bde0fe><bold>Play</bold></color>'
     glow: true
     lore:
-      - '&7Start a new endless parkour run.'
-      - '&7If arenas are busy, click to join the fair queue.'
-      - '&7Click again when your readiness prompt appears.'
-      - '&7Use &c/walk leave &7to finish safely.'
+      - 'minimessage:<!italic><color:#f2f5f7>Begin an endless parkour run.</color>'
+      - 'minimessage:<!italic><color:#d8e2dc>Busy arenas place you in a fair queue.</color>'
+      - 'minimessage:<!italic><color:#d8e2dc>Confirm when the ready prompt appears.</color>'
+      - ''
+      - 'minimessage:<!italic><color:#ffc8dd>Safe exit:</color> <color:#ffd166>/walk leave</color>'
+      - ''
+      - 'minimessage:<!italic><color:#ffd166>Click to play.</color>'
   scoreboardItem:
     item: OAK_SIGN
-    title: 'minimessage:<dark_blue><bold>Top 10</bold>'
+    title: 'minimessage:<!italic><color:#bde0fe><bold>Top 10</bold></color>'
     glow: false
-    scoreboardRecord: '&f{{rank}}. &9{{playerName}} &7({{score}})'
+    scoreboardRecord: 'minimessage:<!italic><color:#d8e2dc>{{rank}}.</color> <color:#bde0fe>{{playerName}}</color> <color:#d8e2dc>•</color> <color:#ffd166>{{score}} points</color>'
     noPermissionLore:
-      - '&cRequires {{permissionName}}'
+      - 'minimessage:<!italic><color:#ffb3c1>Requires:</color> <color:#d8e2dc>{{permissionName}}</color>'
     lore:
       - '{{scoreboard}}'
       - ''
-      - '&fClick to see your position.'
+      - 'minimessage:<!italic><color:#ffd166>Click to view your position.</color>'

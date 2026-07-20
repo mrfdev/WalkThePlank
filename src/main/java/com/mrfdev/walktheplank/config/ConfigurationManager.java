@@ -507,6 +507,9 @@ public final class ConfigurationManager {
             return null;
         }
         loaded.setDefaults(defaults);
+        if ("translations.yml".equals(resourceName)) {
+            GuiTranslationCompatibility.upgrade(loaded, defaults);
+        }
         return loaded;
     }
 

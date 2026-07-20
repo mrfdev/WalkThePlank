@@ -2,6 +2,18 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.4.5-014] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.4.5-014-j25-26.2.jar`
+
+### Modern 1MB tooltips and idempotent cleanup
+
+- Rewrote the bundled tutorial, play, and top-ten tooltips with concise proofread wording and the shared readable 1MB pastel palette: pale blue names, white/soft-gray body copy, pink warnings and labels, and gold click actions.
+- GUI display names and every nested lore component now force Adventure `TextDecoration.ITALIC` off after template parsing and literal placeholder replacement. Legacy text, MiniMessage, leaderboard rows, and an explicitly italic nested component cannot reintroduce Minecraft's old default tooltip italics.
+- Added a narrow in-memory compatibility upgrade for the exact tutorial/play/scoreboard definitions and window title shipped in the historical live `translations.yml`. It adopts the modern bundled text without modifying the file; any genuinely customized item definition remains authoritative.
+- Real-player build-013 testing completed five consecutive starts—including forward/backward/sprinting/jumping—with no `PLAYER_STATE_*` refusal and no velocity loop. One initial non-zero velocity was zeroed once as designed.
+- The same test exposed two stale block-cleanup callbacks after a later run acquired the coordinate. Cleanup completion is now idempotent: an already released lease is accepted and a newer exact owner is preserved without a false lifecycle failure or mutation.
+
 ## [2.4.4-013] — 2026-07-20
 
 Expected artifact: `1MB-WalkThePlank-v2.4.4-013-j25-26.2.jar`

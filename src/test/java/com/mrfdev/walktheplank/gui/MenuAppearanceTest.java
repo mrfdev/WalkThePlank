@@ -7,6 +7,7 @@ import java.util.List;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.junit.jupiter.api.Test;
 
@@ -52,5 +53,29 @@ final class MenuAppearanceTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> MenuAppearance.borderMaterial("STONE"));
+    }
+
+    @Test
+    void removesItalicsFromEveryTooltipComponentBranch() {
+        Component configured = Component.text("Name")
+                .decoration(TextDecoration.ITALIC, true)
+                .append(Component.text(" nested")
+                        .decoration(TextDecoration.ITALIC, true)
+                        .append(Component.text(" deep")
+                                .decoration(TextDecoration.ITALIC, true)));
+
+        Component styled = MenuAppearance.nonItalic(configured);
+
+        assertNoItalics(styled);
+        assertEquals(
+                "Name nested deep",
+                PlainTextComponentSerializer.plainText().serialize(styled));
+    }
+
+    private static void assertNoItalics(Component component) {
+        assertEquals(
+                TextDecoration.State.FALSE,
+                component.decoration(TextDecoration.ITALIC));
+        component.children().forEach(MenuAppearanceTest::assertNoItalics);
     }
 }

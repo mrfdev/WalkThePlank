@@ -584,8 +584,8 @@ final class GameSession {
             Objects.requireNonNull(leases, "leases");
         }
 
-        boolean release() {
-            return leases.release(key, lease);
+        BlockLeaseRegistry.CompletionRelease release() {
+            return leases.completeRelease(key, lease);
         }
     }
 

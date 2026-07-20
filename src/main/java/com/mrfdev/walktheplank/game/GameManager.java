@@ -1283,14 +1283,7 @@ public final class GameManager {
             }
             return;
         }
-        if (!cleanup.release()) {
-            recordLifecycleFailure(
-                    "restoration.lease_release_failed",
-                    session.player().getUniqueId(),
-                    session.arena().id(),
-                    new IllegalStateException("A newer owner replaced a completed block lease"));
-            return;
-        }
+        cleanup.release();
         refreshJournalProtection();
         settleQuarantinedSession(session);
     }

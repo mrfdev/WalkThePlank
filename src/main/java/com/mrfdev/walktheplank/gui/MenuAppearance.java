@@ -4,6 +4,7 @@ import java.util.Locale;
 import java.util.Objects;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
 final class MenuAppearance {
@@ -23,6 +24,18 @@ final class MenuAppearance {
             plainTitle = DEFAULT_TITLE;
         }
         return Component.text(plainTitle, parseHexColor(configuredColor));
+    }
+
+    /**
+     * Item text inherits Minecraft's italic tooltip default unless every styled branch opts out.
+     * Clear it recursively so a configured nested MiniMessage tag cannot reintroduce italics.
+     */
+    static Component nonItalic(Component configuredText) {
+        Component text = Objects.requireNonNull(configuredText, "configuredText");
+        return text.children(text.children().stream()
+                        .map(MenuAppearance::nonItalic)
+                        .toList())
+                .decoration(TextDecoration.ITALIC, false);
     }
 
     static TextColor parseHexColor(String configuredColor) {
