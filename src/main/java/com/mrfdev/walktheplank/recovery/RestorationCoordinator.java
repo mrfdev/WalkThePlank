@@ -436,6 +436,28 @@ public final class RestorationCoordinator {
     }
 
     private void restoreExpectedWorld(RestorationRecord record, Block block) throws IOException {
+        BlockData originalData = parse(record.originalState());
+        if (RestorationWriteStrategy.forState(record.originalState())
+                == RestorationWriteStrategy.DIRECT_BLOCK_DATA) {
+            /*
+             * A one-block Structure restore reaches the correct server-side AIR state on Paper
+             * 26.2, but can leave the old platform rendered client-side until another block or
+             * chunk update arrives. AIR has no tile/PDC payload, so use the supported direct API
+             * to publish the real block transition immediately.
+             */
+            block.setBlockData(originalData, false);
+        } else {
+            restoreStructureSnapshot(record, block);
+        }
+
+        CapturedBlock restored = capture(block);
+        if (!record.originalState().equals(restored.state())
+                || !record.originalFingerprint().equals(restored.fingerprint())) {
+            throw new IOException("Restored block failed exact snapshot verification for " + describe(record));
+        }
+    }
+
+    private void restoreStructureSnapshot(RestorationRecord record, Block block) throws IOException {
         Structure structure = structures.loadStructure(new ByteArrayInputStream(record.originalStructure()));
         if (structure == null) {
             throw new IOException("Paper returned no structure for journal record " + record.journalId());
@@ -452,12 +474,6 @@ public final class RestorationCoordinator {
                 0,
                 1.0F,
                 new Random(0L));
-
-        CapturedBlock restored = capture(block);
-        if (!record.originalState().equals(restored.state())
-                || !record.originalFingerprint().equals(restored.fingerprint())) {
-            throw new IOException("Restored block failed exact snapshot verification for " + describe(record));
-        }
     }
 
     private RestorationOutcome completeAlreadyRestored(RestorationRecord record) throws IOException {

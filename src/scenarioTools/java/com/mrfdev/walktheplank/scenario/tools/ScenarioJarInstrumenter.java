@@ -318,12 +318,9 @@ public final class ScenarioJarInstrumenter {
                     1,
                     1,
                     Injection.hit("block.after_place")),
-            afterCall(
+            beforeReturn(
                     "com/mrfdev/walktheplank/recovery/RestorationCoordinator",
                     "restoreExpectedWorld",
-                    "org/bukkit/structure/Structure",
-                    "place",
-                    1,
                     1,
                     Injection.hit("block.after_restore")),
             afterCall(
