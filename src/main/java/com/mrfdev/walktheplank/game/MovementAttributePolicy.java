@@ -2,11 +2,13 @@ package com.mrfdev.walktheplank.game;
 
 import java.util.Collection;
 import java.util.Objects;
+import org.bukkit.attribute.AttributeModifier;
 
 /** Pure admission rule for movement-speed attribute state used by a parkour runner. */
 final class MovementAttributePolicy {
     private static final String SPRINTING_KEY = "minecraft:sprinting";
-    private static final String ADD_SCALAR_OPERATION = "ADD_SCALAR";
+    private static final AttributeModifier.Operation SPRINT_OPERATION =
+            AttributeModifier.Operation.MULTIPLY_SCALAR_1;
     private static final double MINIMUM_SPRINT_AMOUNT = 0.299D;
     private static final double MAXIMUM_SPRINT_AMOUNT = 0.301D;
 
@@ -44,13 +46,16 @@ final class MovementAttributePolicy {
         double amount = modifier.amount();
         return sprinting
                 && SPRINTING_KEY.equals(modifier.key())
-                && ADD_SCALAR_OPERATION.equals(modifier.operation())
+                && SPRINT_OPERATION == modifier.operation()
                 && Double.isFinite(amount)
                 && amount >= MINIMUM_SPRINT_AMOUNT
                 && amount <= MAXIMUM_SPRINT_AMOUNT;
     }
 
-    record ModifierState(String key, String operation, double amount) {
+    record ModifierState(
+            String key,
+            AttributeModifier.Operation operation,
+            double amount) {
         ModifierState {
             Objects.requireNonNull(key, "key");
             Objects.requireNonNull(operation, "operation");

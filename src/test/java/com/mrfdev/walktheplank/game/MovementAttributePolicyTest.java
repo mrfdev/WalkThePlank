@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import org.bukkit.attribute.AttributeModifier;
 import org.junit.jupiter.api.Test;
 
 final class MovementAttributePolicyTest {
@@ -15,7 +16,7 @@ final class MovementAttributePolicyTest {
         MovementAttributePolicy.ModifierState sprint = modifier(
                 "minecraft:sprinting",
                 0.30000001192092896D,
-                "ADD_SCALAR");
+                AttributeModifier.Operation.MULTIPLY_SCALAR_1);
 
         assertAll(
                 () -> assertTrue(MovementAttributePolicy.isEligible(
@@ -42,27 +43,44 @@ final class MovementAttributePolicyTest {
     }
 
     @Test
+    void requiresThePlayerSpecificDefaultRatherThanTheGlobalAttributeDefault() {
+        double globalMovementSpeedDefault = 0.7D;
+
+        assertAll(
+                () -> assertTrue(MovementAttributePolicy.isEligible(
+                        DEFAULT_MOVEMENT_SPEED,
+                        DEFAULT_MOVEMENT_SPEED,
+                        List.of(),
+                        false)),
+                () -> assertFalse(MovementAttributePolicy.isEligible(
+                        DEFAULT_MOVEMENT_SPEED,
+                        globalMovementSpeedDefault,
+                        List.of(),
+                        false)));
+    }
+
+    @Test
     void rejectsCustomEffectAndMalformedSprintModifiers() {
         MovementAttributePolicy.ModifierState customItem = modifier(
                 "walktheplank-test:speed_boots",
                 0.2D,
-                "ADD_SCALAR");
+                AttributeModifier.Operation.ADD_SCALAR);
         MovementAttributePolicy.ModifierState effect = modifier(
                 "minecraft:effect.speed",
                 0.2D,
-                "ADD_SCALAR");
+                AttributeModifier.Operation.ADD_SCALAR);
         MovementAttributePolicy.ModifierState sprint = modifier(
                 "minecraft:sprinting",
                 0.30000001192092896D,
-                "ADD_SCALAR");
+                AttributeModifier.Operation.MULTIPLY_SCALAR_1);
         MovementAttributePolicy.ModifierState wrongSprintAmount = modifier(
                 "minecraft:sprinting",
                 1.0D,
-                "ADD_SCALAR");
+                AttributeModifier.Operation.MULTIPLY_SCALAR_1);
         MovementAttributePolicy.ModifierState wrongSprintOperation = modifier(
                 "minecraft:sprinting",
                 0.3D,
-                "ADD_NUMBER");
+                AttributeModifier.Operation.ADD_SCALAR);
 
         assertAll(
                 () -> assertFalse(eligible(customItem, false)),
@@ -90,7 +108,7 @@ final class MovementAttributePolicyTest {
     private static MovementAttributePolicy.ModifierState modifier(
             String key,
             double amount,
-            String operation) {
+            AttributeModifier.Operation operation) {
         return new MovementAttributePolicy.ModifierState(key, operation, amount);
     }
 }

@@ -3458,18 +3458,20 @@ public final class GameManager {
 
     private static boolean hasEligibleMovementAttribute(Player player) {
         AttributeInstance movementSpeed = player.getAttribute(Attribute.MOVEMENT_SPEED);
-        if (movementSpeed == null) {
+        AttributeInstance defaultMovementSpeed =
+                player.getType().getDefaultAttributes().getAttribute(Attribute.MOVEMENT_SPEED);
+        if (movementSpeed == null || defaultMovementSpeed == null) {
             return false;
         }
         List<MovementAttributePolicy.ModifierState> modifiers = movementSpeed.getModifiers().stream()
                 .map(modifier -> new MovementAttributePolicy.ModifierState(
                         modifier.getKey().toString(),
-                        modifier.getOperation().name(),
+                        modifier.getOperation(),
                         modifier.getAmount()))
                 .toList();
         return MovementAttributePolicy.isEligible(
                 movementSpeed.getBaseValue(),
-                Attribute.MOVEMENT_SPEED.getDefaultValue(),
+                defaultMovementSpeed.getBaseValue(),
                 modifiers,
                 player.isSprinting());
     }

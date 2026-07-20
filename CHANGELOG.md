@@ -2,6 +2,17 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.4.2-011] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.4.2-011-j25-26.2.jar`
+
+### Paper 26.2 movement admission
+
+- Fixed a Paper 26.2 admission regression that compared a player's normal `MOVEMENT_SPEED` base with the attribute registry's global default. Paper documents that registry value as non-contextual; admission now reads the unmodifiable player-type defaults through `EntityType#getDefaultAttributes`.
+- Corrected the exact vanilla sprint modifier shape to Paper's `MULTIPLY_SCALAR_1` representation of Minecraft's `ADD_MULTIPLIED_TOTAL`, so legitimate sprinting remains eligible while custom movement modifiers still fail closed.
+- Added regression coverage for the player-specific baseline, the incorrect global baseline, legitimate vanilla sprinting, and malformed/custom modifiers.
+- Build 010 remains the GUI compatibility release. Real-player Paper 26.2 testing exposed this admission issue before event approval, so build 011 supersedes it for staging.
+
 ## [2.4.1-010] — 2026-07-20
 
 Expected artifact: `1MB-WalkThePlank-v2.4.1-010-j25-26.2.jar`
