@@ -98,13 +98,14 @@ mainGui:
     title: 'minimessage:<!italic><color:#bde0fe><bold>Play</bold></color>'
     glow: true
     lore:
-      - 'minimessage:<!italic><color:#f2f5f7>Begin an endless parkour run.</color>'
-      - 'minimessage:<!italic><color:#d8e2dc>Busy arenas place you in a fair queue.</color>'
-      - 'minimessage:<!italic><color:#d8e2dc>Confirm when the ready prompt appears.</color>'
+      - 'minimessage:<!italic><color:#f2f5f7>Start an endless parkour run.</color>'
+      - 'minimessage:<!italic><color:#d8e2dc>If all arenas are busy, you will join</color>'
+      - 'minimessage:<!italic><color:#d8e2dc>the queue automatically.</color>'
+      - 'minimessage:<!italic><color:#b7f7c4>Click again when your turn is ready.</color>'
       - ''
-      - 'minimessage:<!italic><color:#ffc8dd>Safe exit:</color> <color:#ffd166>/walk leave</color>'
+      - 'minimessage:<!italic><color:#ffc8dd>Leave safely at any time:</color> <color:#ffd166>/walk leave</color>'
       - ''
-      - 'minimessage:<!italic><color:#ffd166>Click to play.</color>'
+      - 'minimessage:<!italic><color:#ffd166>Click to begin.</color>'
   scoreboardItem:
     item: OAK_SIGN
     title: 'minimessage:<!italic><color:#bde0fe><bold>Top 10</bold></color>'

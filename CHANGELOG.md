@@ -2,6 +2,17 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.4.6-015] — 2026-07-20
+
+Expected artifact: `1MB-WalkThePlank-v2.4.6-015-j25-26.2.jar`
+
+### Play-tooltip proofreading
+
+- Replaced the final legacy-sounding Play description with concise instructions: start an endless run, join the queue automatically when all arenas are busy, click again when the turn is ready, and leave safely with `/walk leave`.
+- Split the queue explanation into readable tooltip-width lines, highlighted the ready instruction in pastel green, retained the pink/gold exit treatment, and changed the final action from “Click to play” to the clearer “Click to begin.”
+- The recursive non-italic renderer and exact in-memory legacy GUI upgrade from build 014 remain unchanged, so the corrected text appears for the historical live file without rewriting it.
+- The operator approved the visual treatment of all three menu icons. Six rapid same-arena build-014 client runs also completed with only the expected bounded cleanup messages and no lifecycle failure, quarantine, or blocked next start.
+
 ## [2.4.5-014] — 2026-07-20
 
 Expected artifact: `1MB-WalkThePlank-v2.4.5-014-j25-26.2.jar`
