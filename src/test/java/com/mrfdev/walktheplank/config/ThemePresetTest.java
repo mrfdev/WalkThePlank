@@ -1,6 +1,7 @@
 package com.mrfdev.walktheplank.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.InputStream;
@@ -20,6 +21,17 @@ final class ThemePresetTest {
                         java.util.List.of("EMERALD_BLOCK"),
                         Particle.TOTEM_OF_UNDYING,
                         12),
+                "valentine",
+                new ExpectedTheme(
+                        java.util.List.of("PINK_CONCRETE", "RED_CONCRETE"),
+                        Particle.HEART,
+                        6),
+                "easter",
+                new ExpectedTheme(
+                        java.util.List.of(
+                                "LIGHT_BLUE_CONCRETE", "YELLOW_CONCRETE", "PINK_CONCRETE"),
+                        Particle.HAPPY_VILLAGER,
+                        10),
                 "summer",
                 new ExpectedTheme(
                         java.util.List.of("PINK_CONCRETE"),
@@ -30,16 +42,27 @@ final class ThemePresetTest {
                         java.util.List.of("JACK_O_LANTERN"),
                         Particle.TOTEM_OF_UNDYING,
                         12),
-                "winter",
+                "thanksgiving",
+                new ExpectedTheme(
+                        java.util.List.of(
+                                "ORANGE_CONCRETE", "BROWN_CONCRETE", "YELLOW_CONCRETE"),
+                        Particle.COMPOSTER,
+                        12),
+                "christmas",
                 new ExpectedTheme(
                         java.util.List.of("SNOW_BLOCK", "WHITE_CONCRETE"),
                         Particle.SNOWFLAKE,
                         16),
-                "valentine",
+                "anniversary",
                 new ExpectedTheme(
-                        java.util.List.of("PINK_CONCRETE", "RED_CONCRETE"),
-                        Particle.HEART,
-                        6));
+                        java.util.List.of("GOLD_BLOCK", "DIAMOND_BLOCK"),
+                        Particle.TOTEM_OF_UNDYING,
+                        18));
+
+        assertEquals(
+                expected.keySet(),
+                source.getConfigurationSection("theme-presets").getKeys(false));
+        assertFalse(source.getBoolean("event.enabled"));
 
         for (Map.Entry<String, ExpectedTheme> entry : expected.entrySet()) {
             source.set("theme.active", entry.getKey());
@@ -57,6 +80,12 @@ final class ThemePresetTest {
             assertEquals(
                     entry.getValue().count(),
                     source.getInt(path + ".particle.count"));
+            for (ThemeSoundCue cue : ThemeSoundCue.values()) {
+                String cuePath = path + ".sounds." + cue.configKey();
+                assertEquals(true, source.getBoolean(cuePath + ".enabled"));
+                assertEquals("default", source.getString(cuePath + ".provider"));
+                assertEquals(0.8D, source.getDouble(cuePath + ".volume"));
+            }
         }
     }
 

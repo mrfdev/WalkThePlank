@@ -14,6 +14,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 final class SafeConfigFingerprint {
     private static final List<String> SCALAR_PATHS = List.of(
             "configVersion",
+            "event.enabled",
             "gameplay.fallDistance",
             "gameplay.horizontalRadius",
             "gameplay.maximumRunSeconds",
@@ -67,6 +68,7 @@ final class SafeConfigFingerprint {
         for (int index = 0; index < blocks.size(); index++) {
             append(projection, "parkourBlocks[" + index + ']', blocks.get(index));
         }
+        appendSounds(projection, source, "sounds");
 
         ConfigurationSection presets =
                 source.getConfigurationSection("theme-presets");
@@ -98,6 +100,7 @@ final class SafeConfigFingerprint {
                         projection,
                         path + ".particle.count",
                         source.get(path + ".particle.count"));
+                appendSounds(projection, source, path + ".sounds");
             }
         }
 
@@ -163,6 +166,18 @@ final class SafeConfigFingerprint {
             append(projection, "known-key", key);
         }
         return digest(projection.toString());
+    }
+
+    private static void appendSounds(
+            StringBuilder projection,
+            YamlConfiguration source,
+            String path) {
+        for (ThemeSoundCue cue : ThemeSoundCue.values()) {
+            String cuePath = path + '.' + cue.configKey();
+            for (String field : List.of("enabled", "provider", "sound", "volume", "pitch")) {
+                append(projection, cuePath + '.' + field, source.get(cuePath + '.' + field));
+            }
+        }
     }
 
     private static void appendLocation(StringBuilder target, String path, Map<?, ?> values) {

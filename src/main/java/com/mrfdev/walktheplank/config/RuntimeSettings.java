@@ -11,12 +11,14 @@ import org.bukkit.Sound;
 
 public record RuntimeSettings(
         int configVersion,
+        boolean eventEnabled,
         String activeTheme,
         List<Arena> arenas,
         List<Material> parkourBlocks,
         boolean particlesEnabled,
         Particle particle,
         int particleCount,
+        ThemeSounds themeSounds,
         double fallDistance,
         int horizontalRadius,
         int maximumRunSeconds,
@@ -53,12 +55,14 @@ public record RuntimeSettings(
             PermissionSettings permissions) {
         this(
                 configVersion,
+                true,
                 "custom",
                 arenas,
                 parkourBlocks,
                 particlesEnabled,
                 particle,
                 particleCount,
+                ConfigurationManager.defaultThemeSounds(),
                 fallDistance,
                 horizontalRadius,
                 maximumRunSeconds,
@@ -101,6 +105,7 @@ public record RuntimeSettings(
         Objects.requireNonNull(combo, "combo");
         Objects.requireNonNull(antiCheat, "antiCheat");
         Objects.requireNonNull(particle, "particle");
+        Objects.requireNonNull(themeSounds, "themeSounds");
         Objects.requireNonNull(permissions, "permissions");
         if (configVersion != 2) {
             throw new IllegalArgumentException("configVersion must be 2");

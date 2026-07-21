@@ -52,6 +52,9 @@ public final class InfinityParkourExpansion extends PlaceholderExpansion {
         if (normalized.equals("version")) {
             return getVersion();
         }
+        if (normalized.equals("event_enabled")) {
+            return Boolean.toString(games.isEventEnabled());
+        }
         if (normalized.equals("total_players")) {
             return Integer.toString(scores.snapshot().totalEntries());
         }

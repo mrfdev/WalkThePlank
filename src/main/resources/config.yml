@@ -1,6 +1,11 @@
 # Explicit schema for validate-only tooling. Missing values in older files inherit this default.
 configVersion: 2
 
+# Keeps the plugin loaded for diagnostics, statistics, and configuration while preventing all
+# new runs and queue reservations outside an event. Change to true, then /walk admin reload.
+event:
+  enabled: false
+
 # Each entry is an independent arena. The start is the center of the generated course.
 startPositions:
   - id: main
@@ -54,8 +59,49 @@ particle:
   type: TOTEM_OF_UNDYING
   count: 12
 
-# Set this to custom, default, summer, halloween, winter, or valentine and run
-# /walk admin reload. Custom preserves the top-level parkourBlocks and particle values.
+# Used only by the backward-compatible custom theme. Every cue can use Paper directly
+# (provider: default) or CMI's sound command (provider: cmi). Volume is a 0.0-1.0 fraction;
+# 0.8 means 80%. Vanilla pitch is 1.0. Set enabled to false to silence one cue.
+sounds:
+  start:
+    enabled: true
+    provider: default
+    sound: minecraft:block.note_block.pling
+    volume: 0.8
+    pitch: 1.0
+  landing:
+    enabled: true
+    provider: default
+    sound: minecraft:entity.experience_orb.pickup
+    volume: 0.8
+    pitch: 1.0
+  milestone:
+    enabled: true
+    provider: default
+    sound: minecraft:entity.player.levelup
+    volume: 0.8
+    pitch: 1.0
+  combo:
+    enabled: true
+    provider: default
+    sound: minecraft:block.note_block.chime
+    volume: 0.8
+    pitch: 1.0
+  finish:
+    enabled: true
+    provider: default
+    sound: minecraft:ui.toast.challenge_complete
+    volume: 0.8
+    pitch: 1.0
+  failure:
+    enabled: true
+    provider: default
+    sound: minecraft:entity.item.break
+    volume: 0.8
+    pitch: 1.0
+
+# Set this to custom or one of the exact eight bundled event presets and run
+# /walk admin reload. Custom preserves the top-level parkourBlocks, particle, and sound values.
 theme:
   active: custom
 
@@ -69,28 +115,13 @@ theme-presets:
       show: true
       type: TOTEM_OF_UNDYING
       count: 12
-  summer:
-    parkourBlocks:
-      - PINK_CONCRETE
-    particle:
-      show: true
-      type: CHERRY_LEAVES
-      count: 14
-  halloween:
-    parkourBlocks:
-      - JACK_O_LANTERN
-    particle:
-      show: true
-      type: TOTEM_OF_UNDYING
-      count: 12
-  winter:
-    parkourBlocks:
-      - SNOW_BLOCK
-      - WHITE_CONCRETE
-    particle:
-      show: true
-      type: SNOWFLAKE
-      count: 16
+    sounds:
+      start: {enabled: true, provider: default, sound: 'minecraft:block.note_block.pling', volume: 0.8, pitch: 1.0}
+      landing: {enabled: true, provider: default, sound: 'minecraft:entity.experience_orb.pickup', volume: 0.8, pitch: 1.0}
+      milestone: {enabled: true, provider: default, sound: 'minecraft:entity.player.levelup', volume: 0.8, pitch: 1.0}
+      combo: {enabled: true, provider: default, sound: 'minecraft:block.note_block.chime', volume: 0.8, pitch: 1.0}
+      finish: {enabled: true, provider: default, sound: 'minecraft:ui.toast.challenge_complete', volume: 0.8, pitch: 1.0}
+      failure: {enabled: true, provider: default, sound: 'minecraft:entity.item.break', volume: 0.8, pitch: 1.0}
   valentine:
     parkourBlocks:
       - PINK_CONCRETE
@@ -99,6 +130,103 @@ theme-presets:
       show: true
       type: HEART
       count: 6
+    sounds:
+      start: {enabled: true, provider: default, sound: 'minecraft:block.amethyst_block.chime', volume: 0.8, pitch: 1.0}
+      landing: {enabled: true, provider: default, sound: 'minecraft:entity.experience_orb.pickup', volume: 0.8, pitch: 1.2}
+      milestone: {enabled: true, provider: default, sound: 'minecraft:entity.player.levelup', volume: 0.8, pitch: 1.0}
+      combo: {enabled: true, provider: default, sound: 'minecraft:block.note_block.chime', volume: 0.8, pitch: 1.2}
+      finish: {enabled: true, provider: default, sound: 'minecraft:ui.toast.challenge_complete', volume: 0.8, pitch: 1.0}
+      failure: {enabled: true, provider: default, sound: 'minecraft:entity.item.break', volume: 0.8, pitch: 0.8}
+  easter:
+    parkourBlocks:
+      - LIGHT_BLUE_CONCRETE
+      - YELLOW_CONCRETE
+      - PINK_CONCRETE
+    particle:
+      show: true
+      type: HAPPY_VILLAGER
+      count: 10
+    sounds:
+      start: {enabled: true, provider: default, sound: 'minecraft:entity.rabbit.jump', volume: 0.8, pitch: 1.0}
+      landing: {enabled: true, provider: default, sound: 'minecraft:entity.chicken.egg', volume: 0.8, pitch: 1.0}
+      milestone: {enabled: true, provider: default, sound: 'minecraft:entity.player.levelup', volume: 0.8, pitch: 1.0}
+      combo: {enabled: true, provider: default, sound: 'minecraft:entity.rabbit.jump', volume: 0.8, pitch: 1.3}
+      finish: {enabled: true, provider: default, sound: 'minecraft:ui.toast.challenge_complete', volume: 0.8, pitch: 1.0}
+      failure: {enabled: true, provider: default, sound: 'minecraft:entity.item.break', volume: 0.8, pitch: 1.0}
+  summer:
+    parkourBlocks:
+      - PINK_CONCRETE
+    particle:
+      show: true
+      type: CHERRY_LEAVES
+      count: 14
+    sounds:
+      start: {enabled: true, provider: default, sound: 'minecraft:block.cherry_leaves.step', volume: 0.8, pitch: 1.0}
+      landing: {enabled: true, provider: default, sound: 'minecraft:block.cherry_leaves.place', volume: 0.8, pitch: 1.0}
+      milestone: {enabled: true, provider: default, sound: 'minecraft:entity.player.levelup', volume: 0.8, pitch: 1.0}
+      combo: {enabled: true, provider: default, sound: 'minecraft:block.note_block.flute', volume: 0.8, pitch: 1.0}
+      finish: {enabled: true, provider: default, sound: 'minecraft:ui.toast.challenge_complete', volume: 0.8, pitch: 1.0}
+      failure: {enabled: true, provider: default, sound: 'minecraft:entity.item.break', volume: 0.8, pitch: 1.0}
+  halloween:
+    parkourBlocks:
+      - JACK_O_LANTERN
+    particle:
+      show: true
+      type: TOTEM_OF_UNDYING
+      count: 12
+    sounds:
+      start: {enabled: true, provider: default, sound: 'minecraft:entity.bat.ambient', volume: 0.8, pitch: 1.0}
+      landing: {enabled: true, provider: default, sound: 'minecraft:block.note_block.basedrum', volume: 0.8, pitch: 1.0}
+      milestone: {enabled: true, provider: default, sound: 'minecraft:entity.player.levelup', volume: 0.8, pitch: 1.0}
+      combo: {enabled: true, provider: default, sound: 'minecraft:block.note_block.didgeridoo', volume: 0.8, pitch: 1.0}
+      finish: {enabled: true, provider: default, sound: 'minecraft:entity.witch.celebrate', volume: 0.8, pitch: 1.0}
+      failure: {enabled: true, provider: default, sound: 'minecraft:entity.item.break', volume: 0.8, pitch: 1.0}
+  thanksgiving:
+    parkourBlocks:
+      - ORANGE_CONCRETE
+      - BROWN_CONCRETE
+      - YELLOW_CONCRETE
+    particle:
+      show: true
+      type: COMPOSTER
+      count: 12
+    sounds:
+      start: {enabled: true, provider: default, sound: 'minecraft:entity.villager.celebrate', volume: 0.8, pitch: 1.0}
+      landing: {enabled: true, provider: default, sound: 'minecraft:block.note_block.banjo', volume: 0.8, pitch: 1.0}
+      milestone: {enabled: true, provider: default, sound: 'minecraft:entity.player.levelup', volume: 0.8, pitch: 1.0}
+      combo: {enabled: true, provider: default, sound: 'minecraft:block.note_block.harp', volume: 0.8, pitch: 1.0}
+      finish: {enabled: true, provider: default, sound: 'minecraft:ui.toast.challenge_complete', volume: 0.8, pitch: 1.0}
+      failure: {enabled: true, provider: default, sound: 'minecraft:entity.item.break', volume: 0.8, pitch: 1.0}
+  christmas:
+    parkourBlocks:
+      - SNOW_BLOCK
+      - WHITE_CONCRETE
+    particle:
+      show: true
+      type: SNOWFLAKE
+      count: 16
+    sounds:
+      start: {enabled: true, provider: default, sound: 'minecraft:block.note_block.bell', volume: 0.8, pitch: 1.0}
+      landing: {enabled: true, provider: default, sound: 'minecraft:entity.experience_orb.pickup', volume: 0.8, pitch: 1.0}
+      milestone: {enabled: true, provider: default, sound: 'minecraft:entity.player.levelup', volume: 0.8, pitch: 1.0}
+      combo: {enabled: true, provider: default, sound: 'minecraft:block.amethyst_block.chime', volume: 0.8, pitch: 1.0}
+      finish: {enabled: true, provider: default, sound: 'minecraft:ui.toast.challenge_complete', volume: 0.8, pitch: 1.0}
+      failure: {enabled: true, provider: default, sound: 'minecraft:block.glass.break', volume: 0.8, pitch: 1.0}
+  anniversary:
+    parkourBlocks:
+      - GOLD_BLOCK
+      - DIAMOND_BLOCK
+    particle:
+      show: true
+      type: TOTEM_OF_UNDYING
+      count: 18
+    sounds:
+      start: {enabled: true, provider: default, sound: 'minecraft:entity.firework_rocket.launch', volume: 0.8, pitch: 1.0}
+      landing: {enabled: true, provider: default, sound: 'minecraft:entity.experience_orb.pickup', volume: 0.8, pitch: 1.0}
+      milestone: {enabled: true, provider: default, sound: 'minecraft:entity.player.levelup', volume: 0.8, pitch: 1.0}
+      combo: {enabled: true, provider: default, sound: 'minecraft:entity.firework_rocket.twinkle', volume: 0.8, pitch: 1.0}
+      finish: {enabled: true, provider: default, sound: 'minecraft:ui.toast.challenge_complete', volume: 0.8, pitch: 1.0}
+      failure: {enabled: true, provider: default, sound: 'minecraft:entity.item.break', volume: 0.8, pitch: 1.0}
 
 # Native, non-command milestone feedback. Each player can independently reduce or disable
 # particles, sounds, and titles without changing scoring.

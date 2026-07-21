@@ -6,6 +6,9 @@ import com.mrfdev.walktheplank.api.event.WalkRewardPlanEvent;
 import com.mrfdev.walktheplank.api.event.WalkRunEndEvent;
 import com.mrfdev.walktheplank.api.event.WalkRunStartEvent;
 import com.mrfdev.walktheplank.config.RuntimeSettings;
+import com.mrfdev.walktheplank.config.ThemeSound;
+import com.mrfdev.walktheplank.config.ThemeSoundCue;
+import com.mrfdev.walktheplank.config.ThemeSoundProvider;
 import com.mrfdev.walktheplank.database.CompletedRunResult;
 import com.mrfdev.walktheplank.database.CompletedRunWithRewardPlanResult;
 import com.mrfdev.walktheplank.database.RewardPlanBeginResult;
@@ -109,6 +112,7 @@ public final class GameManager {
             new HashSet<>();
     private final Map<UUID, PendingExternalTeleport> pendingExternalTeleports = new HashMap<>();
     private final Map<AnomalyKey, AnomalyWindow> anomalyWindows = new HashMap<>();
+    private final Set<String> reportedSoundFailures = new HashSet<>();
     private final Set<UUID> playerRecoveryLookups = ConcurrentHashMap.newKeySet();
     private final List<Arena> freeArenas = new ArrayList<>();
     private final RewardCompletionBarrier rewardCompletionBarrier = new RewardCompletionBarrier();
@@ -483,6 +487,7 @@ public final class GameManager {
                     "run_id", persisted.id(),
                     "season_id", persisted.seasonId().map(UUID::toString).orElse("")));
             messages.send(player, "chat.arenaStart");
+            playThemeSound(player, ThemeSoundCue.START);
         } catch (RuntimeException | LinkageError activationFailure) {
             sessions.remove(player.getUniqueId(), session);
             pendingStarts.remove(player.getUniqueId(), pending);
@@ -568,6 +573,13 @@ public final class GameManager {
         if (shuttingDown) {
             return false;
         }
+        if (!settings.get().eventEnabled()) {
+            if (sendMessages) {
+                messages.send(player, "chat.eventDisabled");
+                player.closeInventory();
+            }
+            return false;
+        }
         if (!player.hasPermission(settings.get().permissions().playGame())) {
             if (sendMessages) {
                 messages.send(player, "chat.noPermissionPlay", Map.of(
@@ -646,6 +658,9 @@ public final class GameManager {
             PendingStart pending,
             Player player,
             PlayerRecoveryRecord durableRecovery) {
+        if (!settings.get().eventEnabled()) {
+            return "EVENT_DISABLED";
+        }
         if (rewardCompletionBarrier.isBlocked(pending.playerId())) {
             return "REWARD_COMPLETION_BLOCKED";
         }
@@ -823,6 +838,7 @@ public final class GameManager {
                         messageFailure);
             }
         }
+        playEndSound(player, reason);
 
         try {
             persistResult(session, reason, score, categoryScores);
@@ -1189,7 +1205,10 @@ public final class GameManager {
                     "WalkJumpEvent listener failed; the active run will continue",
                     eventFailure);
         }
-        showMilestoneFeedback(player, session, result);
+        boolean milestone = showMilestoneFeedback(player, session, result);
+        if (!milestone) {
+            playThemeSound(player, ThemeSoundPolicy.landing(false, result.combo()));
+        }
         try {
             List<String> scoreMessages = messages.rawList("chat.scoreMsgs");
             String template = scoreMessages.isEmpty()
@@ -1675,6 +1694,10 @@ public final class GameManager {
         return publishedGameState.sessions().size();
     }
 
+    public boolean isEventEnabled() {
+        return settings.get().eventEnabled();
+    }
+
     public int availableArenas() {
         return publishedGameState.availableArenas();
     }
@@ -1790,6 +1813,10 @@ public final class GameManager {
 
     public boolean joinQueue(Player player) {
         Objects.requireNonNull(player, "player");
+        if (!settings.get().eventEnabled()) {
+            messages.send(player, "chat.eventDisabled");
+            return false;
+        }
         if (!player.hasPermission(settings.get().permissions().queueJoin())) {
             messages.send(player, "chat.queueWait");
             return false;
@@ -1841,6 +1868,13 @@ public final class GameManager {
 
     public boolean startReady(Player player) {
         Objects.requireNonNull(player, "player");
+        if (!settings.get().eventEnabled()) {
+            queue.remove(player.getUniqueId(), Instant.now());
+            nextQueueReminder.remove(player.getUniqueId());
+            messages.send(player, "chat.eventDisabled");
+            refreshQueue();
+            return false;
+        }
         if (!player.hasPermission(settings.get().permissions().queueJoin())) {
             queue.remove(player.getUniqueId(), Instant.now());
             nextQueueReminder.remove(player.getUniqueId());
@@ -2559,6 +2593,14 @@ public final class GameManager {
     }
 
     private void refreshQueue() {
+        if (!settings.get().eventEnabled()) {
+            if (queue.size() > 0) {
+                drainQueue();
+            } else {
+                publishGameState();
+            }
+            return;
+        }
         if (!settings.get().queue().enabled() || shuttingDown) {
             publishGameState();
             return;
@@ -3483,16 +3525,16 @@ public final class GameManager {
         anomalyWindows.keySet().removeIf(key -> key.playerId().equals(playerId));
     }
 
-    private void showMilestoneFeedback(
+    private boolean showMilestoneFeedback(
             Player player,
             GameSession session,
             GameSession.AdvanceResult result) {
         if (sessions.get(player.getUniqueId()) != session) {
-            return;
+            return false;
         }
         long nowNanos = System.nanoTime();
         if (!session.claimMilestoneFeedback(result.score(), nowNanos)) {
-            return;
+            return false;
         }
         var milestone = settings.get().milestones();
         var preferences = scoreRepository.preferences(player.getUniqueId());
@@ -3515,7 +3557,7 @@ public final class GameManager {
                             Duration.ofMillis(400))));
         }
         if (preferences.soundsEnabled()) {
-            player.playSound(player.getLocation(), milestone.sound(), 0.8F, 1.1F);
+            playThemeSound(player, ThemeSoundCue.MILESTONE, true);
         }
         int count = preferences.particles().apply(milestone.particleCount());
         if (count > 0) {
@@ -3528,6 +3570,72 @@ public final class GameManager {
                     0.5,
                     0.02);
         }
+        return true;
+    }
+
+    private void playEndSound(Player player, SessionEndReason reason) {
+        ThemeSoundPolicy.ending(reason).ifPresent(cue -> playThemeSound(player, cue));
+    }
+
+    private void playThemeSound(Player player, ThemeSoundCue cue) {
+        boolean enabled;
+        try {
+            enabled = scoreRepository.preferences(player.getUniqueId()).soundsEnabled();
+        } catch (RuntimeException | LinkageError failure) {
+            reportSoundFailureOnce("preferences", failure);
+            return;
+        }
+        playThemeSound(player, cue, enabled);
+    }
+
+    private void playThemeSound(Player player, ThemeSoundCue cue, boolean playerEnabled) {
+        if (!playerEnabled || !player.isOnline()) {
+            return;
+        }
+        ThemeSound configured = settings.get().themeSounds().get(cue);
+        if (!configured.enabled()) {
+            return;
+        }
+        try {
+            if (configured.provider() == ThemeSoundProvider.DEFAULT) {
+                player.playSound(
+                        player.getLocation(),
+                        configured.nativeSound().orElseThrow(),
+                        configured.volume(),
+                        configured.pitch());
+                return;
+            }
+            if (!plugin.getServer().getPluginManager().isPluginEnabled("CMI")
+                    || plugin.getServer().getPluginCommand("cmi") == null) {
+                reportSoundFailureOnce(
+                        "cmi-unavailable",
+                        new IllegalStateException(
+                                "A theme sound selected CMI, but CMI is unavailable"));
+                return;
+            }
+            String command = "cmi sound " + configured.configuredSound()
+                    + " -p:" + Float.toString(configured.pitch())
+                    + " -v:" + Float.toString(configured.volume())
+                    + ' ' + player.getName() + " -s";
+            if (!plugin.getServer().dispatchCommand(
+                    plugin.getServer().getConsoleSender(), command)) {
+                reportSoundFailureOnce(
+                        "cmi-dispatch-" + cue.configKey(),
+                        new IllegalStateException("CMI rejected a configured theme sound cue"));
+            }
+        } catch (RuntimeException | LinkageError failure) {
+            reportSoundFailureOnce(configured.provider() + "-" + cue.configKey(), failure);
+        }
+    }
+
+    private void reportSoundFailureOnce(String key, Throwable failure) {
+        if (!reportedSoundFailures.add(key)) {
+            return;
+        }
+        plugin.getLogger().log(
+                Level.WARNING,
+                "Could not play one or more configured theme sounds; gameplay continues",
+                failure);
     }
 
     private static boolean hasEligibleMovementAttribute(Player player) {
@@ -3708,8 +3816,10 @@ public final class GameManager {
                     session.startedAt(),
                     session.elapsedDuration(nowNanos)));
         }
+        RuntimeSettings currentSettings = settings.get();
+        boolean eventEnabled = currentSettings.eventEnabled();
         QueueStatus globalQueue = new QueueStatus(
-                settings.get().queue().enabled(),
+                eventEnabled && currentSettings.queue().enabled(),
                 queue.isPaused(),
                 queue.size(),
                 queue.waitingCount(),
@@ -3731,8 +3841,8 @@ public final class GameManager {
                 Map.copyOf(active),
                 globalQueue,
                 Map.copyOf(playerQueues),
-                freeArenas.size(),
-                settings.get().arenas().size(),
+                eventEnabled ? freeArenas.size() : 0,
+                currentSettings.arenas().size(),
                 unresolvedArenaIds().size());
     }
 

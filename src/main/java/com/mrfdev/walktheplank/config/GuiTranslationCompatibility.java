@@ -42,6 +42,17 @@ final class GuiTranslationCompatibility {
             "&7 will start and you can play.",
             "&7 To leave, or finish your game,",
             "&7 simply go back /home");
+    private static final String MODERN_PLAY_TITLE =
+            "minimessage:<!italic><color:#bde0fe><bold>Play</bold></color>";
+    private static final List<String> PREVIOUS_MODERN_PLAY_LORE = List.of(
+            "minimessage:<!italic><color:#f2f5f7>Start an endless parkour run.</color>",
+            "minimessage:<!italic><color:#d8e2dc>If all arenas are busy, you will join</color>",
+            "minimessage:<!italic><color:#d8e2dc>the queue automatically.</color>",
+            "minimessage:<!italic><color:#b7f7c4>Click again when your turn is ready.</color>",
+            "",
+            "minimessage:<!italic><color:#ffc8dd>Leave safely at any time:</color> <color:#ffd166>/walk leave</color>",
+            "",
+            "minimessage:<!italic><color:#ffd166>Click to begin.</color>");
     private static final String LEGACY_SCOREBOARD_TITLE = "&9&lScoreboard";
     private static final String LEGACY_SCOREBOARD_RECORD =
             "&f{{index}}. &9{{playerName}} &7({{score}})";
@@ -82,7 +93,12 @@ final class GuiTranslationCompatibility {
                 translations,
                 "mainGui.playItem",
                 LEGACY_PLAY_TITLE,
-                LEGACY_PLAY_LORE)) {
+                LEGACY_PLAY_LORE)
+                || matchesItem(
+                        translations,
+                        "mainGui.playItem",
+                        MODERN_PLAY_TITLE,
+                        PREVIOUS_MODERN_PLAY_LORE)) {
             copyString(translations, bundledDefaults, "mainGui.playItem.title");
             copyStringList(translations, bundledDefaults, "mainGui.playItem.lore");
         }

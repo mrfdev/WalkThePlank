@@ -12,15 +12,15 @@ intermediate builds from this modernization and are fully superseded.
 
 The Bukkit plugin name intentionally remains `InfinityParkour`. This preserves the existing data directory at `plugins/InfinityParkour/`, so the live `config.yml`, `translations.yml`, and `database.db` can be upgraded in place without renaming player data.
 
-Current source release: **v2.6.1, build 023**
+Current source release: **v2.7.0, build 024**
 
 Expected standalone artifact:
 
 ```text
-1MB-WalkThePlank-v2.6.1-023-j25-26.2.jar
+1MB-WalkThePlank-v2.7.0-024-j25-26.2.jar
 ```
 
-> Real-player testing passed build 013's forward, backward, sprinting, jumping, and repeated-start activation matrix without another player-state refusal or velocity loop. Build 014 made stale cleanup completion idempotent; a follow-up six-run same-arena rehearsal produced no lifecycle failure, quarantine, or blocked start. The operator approved the non-italic pastel treatment of the original three GUI icons. Builds 015–016 proofread the Play instructions and made the tutorial's platform label configuration-aware. Build 017 added the viewer's live personal-stat head plus explicit `/menu` and close controls. Build 018 fixes the premature successor placement found during real-player gameplay: durability remains pipelined, but the world now contains only the player's current platform and one destination. Build 019 fixes historical `translations.yml` compatibility so inherited player-head, back, and close controls are fully materialized in memory and a legacy file cannot make `/walk` fail before the menu opens. Build 020 directly restores captured air through Paper's block-data API; non-air blocks continue using exact Structure snapshots for tile, PDC, and unknown metadata preservation. Live build-020 evidence then exposed the actual remaining transition failure: successful-looking landings within one block coordinate were filtered out before scoring, so cleanup correctly never ran. Build 021 follows Paper's precise-position movement signal, including movement within the same block coordinate, while ignoring orientation-only events; a real-player score-9 run confirmed correct scoring, two-platform rotation, milestone/combo feedback, and clean final restoration. Build 022 adds fail-closed seasonal appearance presets; its summer pink-concrete/cherry-leaf presentation passed real-player testing. Build 023 makes FIFO reservation a separate default-off permission: ordinary players wait near the plank and retry, while explicitly granted players may reserve the next arena. Prior machine evidence remains historical, so build 023 needs its own freeze, Paper smoke, synchronization, and client approval.
+> Real-player testing through build 022 confirmed normal movement, sequential scoring, exact two-platform rotation, cleanup, the modern GUI, and the summer appearance. Build 023 made FIFO reservation a separate default-off permission. Build 024 adds the exact eight-event theme roster, six per-theme sound cues, optional safe CMI sound delivery, and the fail-closed `event.enabled` participation switch. Prior machine evidence remains historical, so build 024 needs its own freeze, Paper smoke, synchronization, sound review, and client approval.
 
 See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-walktheplank.md](feature-improvements-walktheplank.md) for the authoritative future-development TODO and implemented-versus-remaining status.
 
@@ -30,7 +30,8 @@ See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-w
 - Multiple independently configured arenas, one active runner per arena, and `RANDOM`, `ROUND_ROBIN`, `LEAST_RECENTLY_USED`, or `PINNED` arena selection.
 - A fair FIFO queue with explicit join/leave/status/ready actions, readiness expiry, reminders, a join cooldown, and staff pause/resume/drain controls.
 - Maximum-run and no-progress timeouts so abandoned sessions cannot permanently consume an arena.
-- Configurable start and optional exit positions, platform palette, horizontal radius, fall distance, particles, queue timing, rewards, and permissions. Named `default`, `summer`, `halloween`, `winter`, and `valentine` appearance presets can atomically select a safe block palette and particle, while `custom` retains the explicit top-level values.
+- Configurable start and optional exit positions, platform palette, horizontal radius, fall distance, particles, queue timing, rewards, and permissions. The exact bundled event roster is `default`, `valentine`, `easter`, `summer`, `halloween`, `thanksgiving`, `christmas`, and `anniversary`; each atomically selects a safe block palette, particle, and six sound cues. `custom` remains a compatibility mode for historical top-level values, not another event preset.
+- A fail-closed `event.enabled` switch keeps diagnostics, configuration, statistics, and leaderboards loaded while refusing new runs and queue reservations outside an event. No schedule or automatic activation is included.
 - Player-state capture and restoration for return location, health, food, saturation, exhaustion, walk speed, flight, and collision state; arena admission clears residual velocity and applies the normal walk speed for the run, and controlled cleanup leaves velocity and fall distance at zero rather than restoring their pre-run values.
 - Cleanup for normal leaves, falls, teleports, timeouts, quits, deaths, game-mode changes, reloads, errors, and shutdown.
 - External active-run teleports are decided at `HIGHEST`; `MONITOR` only observes the final cancellation/destination state, and cleanup commits only after a next-tick run/attempt/world/destination verification.
@@ -44,7 +45,8 @@ See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-w
 - A typed-holder 54-slot GUI with a readable near-black title, the standard 1MB light-blue outer frame, an open center, centered tutorial/play/statistics actions, a bottom-left viewer head with live personal stats, and adjacent bottom-right `/menu`/close controls. Item names and every nested lore component are forced non-italic and use the shared readable 1MB pastel palette. The exact historical live GUI text upgrades to these bundled defaults in memory, while genuinely customized operator text is preserved. Click/drag cancellation, a bounded menu-open cooldown, owner UUID, random nonce, monotonic generation, exact inventory identity, duplicate suppression, one pending action, and execution-time permission/state validation harden every menu session.
 - UUID-owned all-time personal bests with competition ranking, last-known-name refresh, and a live top ten.
 - Separate Combo and Flawless personal-best categories. Combo is the longest configured time-target streak; Flawless records the final Classic score only when every transition meets that target. Neither category changes or multiplies Classic.
-- Configurable native milestones using Adventure action bars/titles and Paper sounds/particles, with UUID-owned full/reduced/off particles and independent sound/title preferences through `/walk settings`.
+- Theme-specific start, landing, milestone, combo, finish, and failure sounds. Each cue independently supports direct Paper playback or the optional CMI sound command, enablement, 0–100% volume, and 0.5–2.0 pitch; defaults use 80% volume and vanilla pitch. Milestone cues take precedence over combo cues, combo cues occur on non-milestone multiples of five, and sounds never override a player's UUID-owned sound preference.
+- Configurable native milestones using Adventure action bars/titles and Paper particles, with UUID-owned full/reduced/off particles and independent sound/title preferences through `/walk settings`.
 - Explicit event seasons with planned, active, closed, and archived lifecycle states. Starting a run captures the active season, so closing a season does not silently redirect an already-started result.
 - Durable run history containing run UUID, player UUID, last-known name, arena, start/end, score or interruption state, end reason, release, season, and reward-plan association. The newest 10,000 prunable terminal rows are retained in addition to every active or unresolved row.
 - Permission-separated staff run investigation by exact UUID, status, arena, or season, with bounded redacted output and linked reward-plan state.
@@ -72,7 +74,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-w
 
 The plugin declares `api-version: 26.2`. It is not intended to load on Paper/Minecraft 1.20.x, 1.21.x, or 26.1.x.
 
-PlaceholderAPI is the only optional Java/API integration. `plugin.yml` also soft-depends on `CMI`, `UltimateFireworks`, and `PyroWelcomesPro` solely as startup-order hints because enabled reward-root validation is synchronous and the live configuration may call their console commands. WalkThePlank does not link to or shade their APIs, and the JAR does not require them when its configured `finishCommands` do not use them. `CMILib`, `Vault`, and `PyroLib` are neither WalkThePlank dependencies nor soft dependencies; any relationship they have to a reward provider is that provider's responsibility. The hooks diagnostic reports presence for operator convenience. Every configured command root must also be explicitly present in `rewards.allowedCommandRoots`, and every referenced kit/effect still needs a cold-start and in-game rehearsal; “plugin present” is not proof that external reward content exists or behaves correctly. The newest inspected local Paper 26.2 compatibility profile has CMI **9.8.8.5** and CMILib **1.5.9.9**; record the versions actually installed in the final WalkThePlank staging profile.
+PlaceholderAPI is the only optional linked Java/API integration. `plugin.yml` also soft-depends on `CMI`, `UltimateFireworks`, and `PyroWelcomesPro` as startup-order hints because enabled reward-root validation is synchronous and the live configuration may call their console commands. CMI can additionally deliver a deliberately configured theme cue through its public `/cmi sound` command; this bridge validates the sound token plus volume/pitch and never links to CMI or CMILib classes. WalkThePlank does not shade those providers and does not require CMI while all sound cues use `provider: default` and rewards do not call it. `CMILib`, `Vault`, and `PyroLib` are neither WalkThePlank dependencies nor soft dependencies. The hooks diagnostic reports presence for operator convenience. Every configured reward command root must also be explicitly present in `rewards.allowedCommandRoots`, and every external reward or CMI sound still needs a cold-start and in-game rehearsal; “plugin present” is not proof that external content behaves correctly. The newest inspected local Paper 26.2 compatibility profile has CMI **9.8.8.5** and CMILib **1.5.9.9**; record the versions actually installed in the final WalkThePlank staging profile.
 
 The plugin does not read CMI's database and does not contact an online profile API. The supplied live leaderboard already contains UUIDs for its 100 rows, so no CMI lookup is needed for that data. A genuinely username-only legacy row remains visible but unresolved until an explicit offline migration process assigns a verified UUID.
 
@@ -87,16 +89,16 @@ Build the deployment artifact with the checked-in Gradle wrapper:
 The deployable file is:
 
 ```text
-build/libs/1MB-WalkThePlank-v2.6.1-023-j25-26.2.jar
+build/libs/1MB-WalkThePlank-v2.7.0-024-j25-26.2.jar
 ```
 
 Do not deploy the `-unshaded.jar`; it does not contain SQLite JDBC. `build` runs the automated tests, creates the shaded artifact, and executes the archive/metadata verification gate. `freezeCandidate` additionally rejects a dirty Git tree. Every candidate embeds the full source commit and strict dirty state in `build-info.properties` and the JAR manifest; `/walk info`, `/walk debug overview`, and startup show the abbreviated source label.
 
-Earlier completed machine evidence is preserved in annotated RC tags and ignored operator release archives, but it does not prove build 023. The exact clean build-023 candidate needs two byte-identical builds, scenario-profile evidence, Paper smoke, live-copy preservation checks, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
+Earlier completed machine evidence is preserved in annotated RC tags and ignored operator release archives, but it does not prove build 024. The exact clean build-024 candidate needs two byte-identical builds, scenario-profile evidence, Paper smoke, live-copy preservation checks, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
 
 | Release property | Value |
 | --- | --- |
-| Filename | `1MB-WalkThePlank-v2.6.1-023-j25-26.2.jar` |
+| Filename | `1MB-WalkThePlank-v2.7.0-024-j25-26.2.jar` |
 | Source identity | Full Git commit plus strict clean/dirty state embedded in the JAR |
 | Final size and SHA-256 | Annotated candidate tag and operator release archive |
 | Automated test result | Must pass with zero failures/errors/skips and strict Java 25 compilation |
@@ -117,7 +119,7 @@ Useful build commands:
 ./gradlew syncTestServer
 ```
 
-`releaseInfo` must print version `2.6.1`, build `023`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 023 into the active plugin directory.
+`releaseInfo` must print version `2.7.0`, build `024`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 024 into the active plugin directory.
 
 ## Install or upgrade
 
@@ -130,7 +132,7 @@ For an existing server:
 3. Back up the old plugin JAR and the complete `plugins/InfinityParkour/` directory as one matched rollback set.
 4. Keep the data directory named `plugins/InfinityParkour/`.
 5. Remove or disable every older InfinityParkour/WalkThePlank JAR. Paper must see only one plugin with the `InfinityParkour` name.
-6. Copy `1MB-WalkThePlank-v2.6.1-023-j25-26.2.jar` into `plugins/`.
+6. Copy `1MB-WalkThePlank-v2.7.0-024-j25-26.2.jar` into `plugins/`.
 7. Start Paper and inspect the complete startup log. A successful live-data start should report 100 preserved Classic scores and, on the first schema-v3 migration only, a verified pre-migration backup path.
 8. Run `/walk info`, `/walk admin validate`, `/walk admin status`, `/walk admin doctor`, `/walk debug all`, and the full beta checklist before allowing players in.
 9. Stop Paper cleanly once and require the clean restoration/disable message before the event rehearsal is accepted.
@@ -389,6 +391,7 @@ The built-in expansion identifier remains `infinityparkour`. No eCloud expansion
 | Placeholder | Value |
 | --- | --- |
 | `%infinityparkour_version%` | Installed Bukkit plugin version. |
+| `%infinityparkour_event_enabled%` | `true` only while new event participation is globally open. |
 | `%infinityparkour_total_players%` | All-time leaderboard row count, including unresolved visible legacy rows. |
 | `%infinityparkour_season_total_players%` | Active-season row count, or `0`. |
 | `%infinityparkour_active_season_id%` | Active season UUID, or empty. |
@@ -430,10 +433,13 @@ The bundled [config.yml](src/main/resources/config.yml) is the authoritative def
 | Section/key | Purpose |
 | --- | --- |
 | `configVersion` | Must be `2` when explicitly declared. Version 2 enables strict unknown-key rejection. |
+| `event.enabled` | Global participation switch. Defaults to `false`; when false, the plugin remains loaded but refuses new runs and queue reservations and publishes zero available arenas. Set true and reload to open an event. |
 | `startPositions` | Independent arena definitions with safe IDs, start locations, and optional exits. Starts, safety volumes, world bounds, headroom, and overlaps are validated. Custom exits additionally require collidable non-hazardous support, two passable non-liquid blocks, and placement outside every protected arena volume. |
 | `parkourBlocks` | Non-empty safe platform palette used by `theme.active: custom`. Air, gravity, flammable, unstable, dangerous, non-item, unsuitable, and known stateful/workstation block families are rejected. The live `JACK_O_LANTERN` and legacy `STONE` choices remain eligible. |
-| `theme.active` | `custom` uses the top-level palette/particle. Any other value selects an exact lowercase entry from `theme-presets`. |
-| `theme-presets.*` | Up to 32 lowercase named presets. Each has 1–16 safe `parkourBlocks` plus `particle.show`, an untyped Paper `particle.type`, and a 0–1000 `particle.count`. Bundled presets are `default`, `summer`, `halloween`, `winter`, and `valentine`. |
+| `theme.active` | `custom` uses the top-level palette, particle, and sound profile. Any other value selects an exact lowercase entry from `theme-presets`. |
+| `sounds.*` | Backward-compatible `custom` sound profile containing `start`, `landing`, `milestone`, `combo`, `finish`, and `failure`. |
+| `theme-presets.*` | Up to 32 lowercase named presets. Each has 1–16 safe `parkourBlocks`, a validated untyped particle, and may define a complete six-cue sound profile. A historical/operator preset without `sounds` inherits the validated top-level profile. The exact bundled roster is `default`, `valentine`, `easter`, `summer`, `halloween`, `thanksgiving`, `christmas`, and `anniversary`. |
+| `*.sounds.<cue>` | `enabled`, `provider: default|cmi`, a nonblank `sound`, `volume` from 0.0–1.0, and `pitch` from 0.5–2.0. `default` resolves a Paper sound registry key; `cmi` accepts only a bounded token and requires enabled CMI at playback. |
 | `gameplay.fallDistance` | Run-ending drop, from 6 through 64 blocks. |
 | `gameplay.horizontalRadius` | Generation radius, from 3 through 64 blocks. |
 | `gameplay.maximumRunSeconds` | Absolute run limit, 30–86,400 seconds. |
@@ -443,7 +449,7 @@ The bundled [config.yml](src/main/resources/config.yml) is the authoritative def
 | `permissions.queueJoin` | Remappable default `infinityparkour.queue.join` leaf for FIFO join/readiness. The static default is false and the standard player parent does not grant it. |
 | `arenaSelection.*` | Selection policy and required configured ID for `PINNED`. A busy pinned arena safely falls back to least-recently-used. |
 | `particle.*` | Optional modern Paper particle and count. |
-| `milestones.*` | Enabled flag, unique scores, native sound/untyped particle, particle count, and 0–60 second feedback cooldown. |
+| `milestones.*` | Enabled flag, unique scores, untyped particle, particle count, and 0–60 second feedback cooldown. An explicitly configured historical `milestones.sound` is retained as the custom profile's milestone fallback when no explicit top-level milestone cue exists. |
 | `categories.combo.*` | Separate-category enablement and a 1–60 second maximum gap. Classic is never modified. |
 | `antiCheat.*` | Conservative projectile/riptide/exploit-teleport blocking, 0–2000 ms minimum jump interval, and 0–600 second per-kind audit cooldown. Violations never auto-ban. |
 | `runFinishCommands` | Master switch for trusted console reward commands. |
@@ -461,6 +467,9 @@ Switching themes changes only appearance for new runs. Edit one value, validate,
 ```yaml
 theme:
   active: summer
+
+event:
+  enabled: true
 ```
 
 ```text
@@ -473,12 +482,31 @@ The bundled choices are:
 | Preset | Platform palette | Placement particle |
 | --- | --- | --- |
 | `default` | `EMERALD_BLOCK` | `TOTEM_OF_UNDYING` |
+| `valentine` | `PINK_CONCRETE`, `RED_CONCRETE` | `HEART` |
+| `easter` | `LIGHT_BLUE_CONCRETE`, `YELLOW_CONCRETE`, `PINK_CONCRETE` | `HAPPY_VILLAGER` |
 | `summer` | `PINK_CONCRETE` | `CHERRY_LEAVES` |
 | `halloween` | `JACK_O_LANTERN` | `TOTEM_OF_UNDYING` |
-| `winter` | `SNOW_BLOCK`, `WHITE_CONCRETE` | `SNOWFLAKE` |
-| `valentine` | `PINK_CONCRETE`, `RED_CONCRETE` | `HEART` |
+| `thanksgiving` | `ORANGE_CONCRETE`, `BROWN_CONCRETE`, `YELLOW_CONCRETE` | `COMPOSTER` |
+| `christmas` | `SNOW_BLOCK`, `WHITE_CONCRETE` | `SNOWFLAKE` |
+| `anniversary` | `GOLD_BLOCK`, `DIAMOND_BLOCK` | `TOTEM_OF_UNDYING` |
 
-Particles are sent only to the runner when a platform appears. The player's existing `/walk settings particles full|reduced|off` preference is applied after the preset count, so a theme cannot override accessibility preferences. `custom` remains backward compatible with historical files and uses the top-level `parkourBlocks` and `particle` sections.
+Particles and sounds are sent only to the runner. The player's existing `/walk settings particles full|reduced|off` and `/walk settings sounds on|off` preferences remain authoritative, so a theme cannot override accessibility choices. Exactly one landing-family sound is selected per jump: milestone first, otherwise combo on a multiple-of-five streak, otherwise landing. `finish` means an explicit `/walk leave`; falling, timing out, movement disqualification, or a course error uses `failure`. Administrative cleanup, reload, shutdown, quit, death, and external teleport cleanup stay quiet. `custom` remains backward compatible with historical files and uses the top-level `parkourBlocks`, `particle`, and `sounds` sections.
+
+Example CMI cue (CMI is optional and direct Paper sounds remain the bundled default):
+
+```yaml
+theme-presets:
+  summer:
+    sounds:
+      start:
+        enabled: true
+        provider: cmi
+        sound: ENTITY_PLAYER_LEVELUP
+        volume: 0.8
+        pitch: 1.0
+```
+
+There is deliberately no event scheduler. Operators choose the theme and set `event.enabled: true`, validate/reload, announce the event, then set it false and reload when the event closes.
 
 Legacy configuration behavior is deliberate:
 
@@ -656,7 +684,7 @@ The current API intentionally does not expose mutable sessions, direct database 
 
 ## Testing and event approval
 
-The build-023 suite passes **283 tests across 69 test classes**, with zero failures, errors, or skips. It covers the default-off queue permission hierarchy and collision rules; bundled seasonal-preset selection and exact untyped Paper particle contracts; precise-position landing sampling within the same block coordinate while excluding orientation-only movement; the successor's pending, durable-hidden, exact-consume, stale-callback and abandonment transitions; exact Paper 26.2 build-62 runtime policy; direct AIR/CAVE_AIR/VOID_AIR restoration with Structure preservation for non-air snapshots; critical-state snapshot revalidation; personal-stat percentile calculation; the six-action menu layout; fully materialized inherited menu defaults for historical translation files; configuration-aware platform labels and fail-closed translation allow-lists; recursive non-italic GUI styling; exact legacy/previous-tooltip compatibility; and idempotent stale cleanup completion alongside the existing durable ownership, movement baseline, sprint, GUI, schema, permission, audit, recovery, reward, queue, export, teleport, and reflection-locked event-contract tests. Build 021's real-player score-9 run approved immediate departed-platform disappearance, exact two-platform rotation, sequential scoring, milestone/combo feedback, and clean final restoration. Build 022's summer appearance passed client inspection; build 023 still requires its queue-permission acceptance matrix.
+The build-024 suite passes **290 tests across 71 test classes**, with zero failures, errors, or skips. It adds exact-roster, legacy-profile inheritance, sound-profile safety, CMI token-injection, volume/pitch-bound, and non-stacking cue-policy coverage to the existing queue permission, seasonal appearance, precise landing, two-platform durability, Paper runtime, restoration, GUI, migration, permission, audit, recovery, reward, queue, export, teleport, and reflection-locked event-contract suites. Earlier real-player testing approved sequential scoring, cleanup, the six-action GUI, and summer appearance; build 024 still requires its global-switch and eight-theme sound acceptance matrix.
 
 Build 020 carries forward build 008's isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
 
@@ -667,8 +695,8 @@ Build 020 carries forward build 008's isolated destructive-test system. It never
 The test-only outputs are deliberately outside `build/libs/`:
 
 ```text
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.6.1-023.jar
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.6.1-023-Failpoints.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.7.0-024.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.7.0-024-Failpoints.jar
 ```
 
 `verifyReleaseJar` byte-scans the production JAR for scenario packages, commands, manifest/agent markers, canaries, every scenario-property prefix, and all 24 failpoint names. `verifyProductionScenarioIsolation` repeats that negative proof and requires the harness and instrumented copy to trigger positive controls, preventing a broken scan from reporting a false pass. It also builds a second instrumented copy and requires byte-for-byte identity. The runner refuses symlinked destructive roots and writes a bounded per-run nonce marker. Both the property-armed failpoint controller and the scenario plugin require that marker, the exact generated root/working directory/layout/data paths, and the bridge loaded by the instrumented target's own classloader.

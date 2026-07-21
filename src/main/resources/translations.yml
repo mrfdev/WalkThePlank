@@ -57,6 +57,7 @@ chat:
   sessionFailed: 'The course could not generate another safe jump, so your run was ended.'
   runIntegrityFailed: 'Your run ended because its movement state could not be verified. No score was recorded.'
   runTimedOut: 'Your run ended because its maximum or idle time was reached.'
+  eventDisabled: 'WalkThePlank is not open for an event right now.'
   menuUnavailable: 'The server menu is currently unavailable.'
   scoreMsgs:
     - 'Nice jump! Score: &f{{score}}'
@@ -101,9 +102,8 @@ mainGui:
     glow: true
     lore:
       - 'minimessage:<!italic><color:#f2f5f7>Start an endless parkour run.</color>'
-      - 'minimessage:<!italic><color:#d8e2dc>If all arenas are busy, you will join</color>'
-      - 'minimessage:<!italic><color:#d8e2dc>the queue automatically.</color>'
-      - 'minimessage:<!italic><color:#b7f7c4>Click again when your turn is ready.</color>'
+      - 'minimessage:<!italic><color:#d8e2dc>If the plank is occupied, wait nearby.</color>'
+      - 'minimessage:<!italic><color:#b7f7c4>Try again when the current run ends.</color>'
       - ''
       - 'minimessage:<!italic><color:#ffc8dd>Leave safely at any time:</color> <color:#ffd166>/walk leave</color>'
       - ''

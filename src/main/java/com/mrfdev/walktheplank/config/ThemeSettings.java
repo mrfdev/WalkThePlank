@@ -11,11 +11,13 @@ public record ThemeSettings(
         List<Material> parkourBlocks,
         boolean particlesEnabled,
         Particle particle,
-        int particleCount) {
+        int particleCount,
+        ThemeSounds sounds) {
     public ThemeSettings {
         name = Objects.requireNonNull(name, "name");
         parkourBlocks = List.copyOf(parkourBlocks);
         Objects.requireNonNull(particle, "particle");
+        Objects.requireNonNull(sounds, "sounds");
         if (name.isBlank()) {
             throw new IllegalArgumentException("theme name must not be blank");
         }

@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.LinkedHashSet;
 import java.util.HashSet;
 import java.util.List;
@@ -45,6 +46,8 @@ public final class ConfigurationManager {
     private static final int MAXIMUM_THEME_BLOCKS = 16;
     private static final Pattern THEME_NAME =
             Pattern.compile("[a-z][a-z0-9_-]{0,31}");
+    private static final Pattern CMI_SOUND_TOKEN =
+            Pattern.compile("[A-Za-z0-9_.:-]{1,128}");
     private static final Pattern TRANSLATION_PLACEHOLDER =
             Pattern.compile("\\{\\{([A-Za-z][A-Za-z0-9]*)\\}\\}");
     private static final Set<String> ARENA_ENTRY_KEYS = Set.of(
@@ -114,6 +117,7 @@ public final class ConfigurationManager {
             "chat.sessionFailed",
             "chat.runIntegrityFailed",
             "chat.runTimedOut",
+            "chat.eventDisabled",
             "chat.menuUnavailable",
             "mainGui.title",
             "mainGui.titleColor",
@@ -155,6 +159,8 @@ public final class ConfigurationManager {
             "mainGui.closeItem.glow");
     private static final Set<String> KNOWN_CONFIG_KEYS = Set.of(
             "configVersion",
+            "event",
+            "event.enabled",
             "startPositions",
             "parkourBlocks",
             "theme",
@@ -170,6 +176,7 @@ public final class ConfigurationManager {
             "particle.show",
             "particle.type",
             "particle.count",
+            "sounds",
             "runFinishCommands",
             "rewards",
             "rewards.onlyOnPersonalBest",
@@ -651,12 +658,14 @@ public final class ConfigurationManager {
 
         RuntimeSettings parsedSettings = new RuntimeSettings(
                 source.getInt("configVersion", 2),
+                source.getBoolean("event.enabled", false),
                 theme.name(),
                 arenas,
                 theme.parkourBlocks(),
                 theme.particlesEnabled(),
                 theme.particle(),
                 theme.particleCount(),
+                theme.sounds(),
                 source.getDouble("gameplay.fallDistance", 6.0),
                 source.getInt("gameplay.horizontalRadius", 6),
                 source.getInt("gameplay.maximumRunSeconds", 1_800),
@@ -865,7 +874,8 @@ public final class ConfigurationManager {
                     source.getBoolean("particle.show", true),
                     parseParticle(source.getString(
                             "particle.type", "TOTEM_OF_UNDYING")),
-                    source.getInt("particle.count", 12));
+                    source.getInt("particle.count", 12),
+                    parseThemeSounds(source, "sounds"));
         }
 
         String path = "theme-presets." + active;
@@ -874,7 +884,87 @@ public final class ConfigurationManager {
                 parseParkourBlocks(source, path + ".parkourBlocks"),
                 source.getBoolean(path + ".particle.show"),
                 parseParticle(source.getString(path + ".particle.type")),
-                source.getInt(path + ".particle.count"));
+                source.getInt(path + ".particle.count"),
+                parseThemeSounds(source, path + ".sounds"));
+    }
+
+    static ThemeSounds parseThemeSounds(YamlConfiguration source, String path) {
+        Objects.requireNonNull(source, "source");
+        Objects.requireNonNull(path, "path");
+        if (!"sounds".equals(path) && !source.isConfigurationSection(path)) {
+            return parseThemeSounds(source, "sounds");
+        }
+        EnumMap<ThemeSoundCue, ThemeSound> sounds = new EnumMap<>(ThemeSoundCue.class);
+        for (ThemeSoundCue cue : ThemeSoundCue.values()) {
+            String cuePath = path + '.' + cue.configKey();
+            boolean enabled = source.getBoolean(cuePath + ".enabled", true);
+            ThemeSoundProvider provider = ThemeSoundProvider.parse(
+                    source.getString(cuePath + ".provider", "default"));
+            String configuredSound = source.getString(
+                    cuePath + ".sound",
+                    defaultSoundName(cue));
+            float volume = (float) source.getDouble(cuePath + ".volume", 0.8D);
+            float pitch = (float) source.getDouble(cuePath + ".pitch", 1.0D);
+            Optional<Sound> nativeSound;
+            if (provider == ThemeSoundProvider.DEFAULT) {
+                nativeSound = Optional.of(parseSound(configuredSound));
+            } else {
+                if (configuredSound == null
+                        || !CMI_SOUND_TOKEN.matcher(configuredSound).matches()) {
+                    throw new IllegalArgumentException(
+                            cuePath + ".sound must be a safe CMI sound token");
+                }
+                nativeSound = Optional.empty();
+            }
+            sounds.put(cue, new ThemeSound(
+                    enabled,
+                    provider,
+                    configuredSound,
+                    nativeSound,
+                    volume,
+                    pitch));
+        }
+        if ("sounds".equals(path)
+                && !source.contains("sounds.milestone.sound", true)
+                && source.contains("milestones.sound", true)) {
+            String legacyMilestone = source.getString("milestones.sound");
+            Sound nativeSound = parseSound(legacyMilestone);
+            ThemeSound inherited = sounds.get(ThemeSoundCue.MILESTONE);
+            sounds.put(ThemeSoundCue.MILESTONE, new ThemeSound(
+                    inherited.enabled(),
+                    ThemeSoundProvider.DEFAULT,
+                    legacyMilestone,
+                    Optional.of(nativeSound),
+                    inherited.volume(),
+                    inherited.pitch()));
+        }
+        return new ThemeSounds(sounds);
+    }
+
+    static ThemeSounds defaultThemeSounds() {
+        EnumMap<ThemeSoundCue, ThemeSound> sounds = new EnumMap<>(ThemeSoundCue.class);
+        for (ThemeSoundCue cue : ThemeSoundCue.values()) {
+            Sound nativeSound = parseSound(defaultSoundName(cue));
+            sounds.put(cue, new ThemeSound(
+                    true,
+                    ThemeSoundProvider.DEFAULT,
+                    defaultSoundName(cue),
+                    Optional.of(nativeSound),
+                    0.8F,
+                    1.0F));
+        }
+        return new ThemeSounds(sounds);
+    }
+
+    private static String defaultSoundName(ThemeSoundCue cue) {
+        return switch (cue) {
+            case START -> "minecraft:block.note_block.pling";
+            case LANDING -> "minecraft:entity.experience_orb.pickup";
+            case MILESTONE -> "minecraft:entity.player.levelup";
+            case COMBO -> "minecraft:block.note_block.chime";
+            case FINISH -> "minecraft:ui.toast.challenge_complete";
+            case FAILURE -> "minecraft:entity.item.break";
+        };
     }
 
     private static List<Material> parseParkourBlocks(
@@ -1100,6 +1190,9 @@ public final class ConfigurationManager {
         if (KNOWN_CONFIG_KEYS.contains(key)) {
             return true;
         }
+        if (isSoundConfigKey(key, "sounds.")) {
+            return true;
+        }
         String prefix = "theme-presets.";
         if (!key.startsWith(prefix)) {
             return false;
@@ -1111,12 +1204,39 @@ public final class ConfigurationManager {
         if (parts.length == 2) {
             return !parts[0].isEmpty()
                     && ("parkourBlocks".equals(parts[1])
-                            || "particle".equals(parts[1]));
+                            || "particle".equals(parts[1])
+                            || "sounds".equals(parts[1]));
         }
-        return parts.length == 3
+        if (parts.length == 3) {
+            return !parts[0].isEmpty()
+                    && ("particle".equals(parts[1])
+                            && Set.of("show", "type", "count").contains(parts[2])
+                            || "sounds".equals(parts[1])
+                            && isSoundCue(parts[2]));
+        }
+        return parts.length == 4
                 && !parts[0].isEmpty()
-                && "particle".equals(parts[1])
-                && Set.of("show", "type", "count").contains(parts[2]);
+                && "sounds".equals(parts[1])
+                && isSoundCue(parts[2])
+                && Set.of("enabled", "provider", "sound", "volume", "pitch")
+                        .contains(parts[3]);
+    }
+
+    private static boolean isSoundConfigKey(String key, String prefix) {
+        if (!key.startsWith(prefix)) {
+            return false;
+        }
+        String[] parts = key.substring(prefix.length()).split("\\.", -1);
+        return parts.length == 1 && isSoundCue(parts[0])
+                || parts.length == 2
+                && isSoundCue(parts[0])
+                && Set.of("enabled", "provider", "sound", "volume", "pitch")
+                        .contains(parts[1]);
+    }
+
+    private static boolean isSoundCue(String name) {
+        return Arrays.stream(ThemeSoundCue.values())
+                .anyMatch(cue -> cue.configKey().equals(name));
     }
 
     private void validatePrimitiveSettings(
@@ -1149,6 +1269,7 @@ public final class ConfigurationManager {
             problems.error("particle.count must be between 0 and 1000");
         }
         for (String path : List.of(
+                "event.enabled",
                 "gameplay.onlyReplaceAir",
                 "particle.show",
                 "runFinishCommands",
@@ -1162,6 +1283,7 @@ public final class ConfigurationManager {
                 "antiCheat.blockExploitTeleports")) {
             requireBoolean(source.get(path), path, problems);
         }
+        validateThemeSoundEntries(source, "sounds", problems);
         Object rawMilestoneScores = source.get("milestones.scores");
         if (!(rawMilestoneScores instanceof List<?> scores)) {
             problems.error("milestones.scores must be a list");
@@ -1616,12 +1738,68 @@ public final class ConfigurationManager {
                     0,
                     1_000,
                     problems);
+            validateThemeSoundEntries(source, path + ".sounds", problems);
         }
 
         if (active != null
                 && !"custom".equals(active)
                 && !presetNames.contains(active)) {
             problems.error("theme.active does not name a configured preset");
+        }
+    }
+
+    private static void validateThemeSoundEntries(
+            YamlConfiguration source,
+            String path,
+            ValidationAccumulator problems) {
+        Object rawProfile = source.get(path);
+        if (rawProfile == null && !"sounds".equals(path)) {
+            return;
+        }
+        if (!(rawProfile instanceof ConfigurationSection)) {
+            problems.error(path + " must be a mapping");
+            return;
+        }
+        for (ThemeSoundCue cue : ThemeSoundCue.values()) {
+            String cuePath = path + '.' + cue.configKey();
+            Object rawCue = source.get(cuePath);
+            if (!(rawCue instanceof ConfigurationSection)) {
+                problems.error(cuePath + " must be a mapping");
+                continue;
+            }
+            requireBoolean(source.get(cuePath + ".enabled"), cuePath + ".enabled", problems);
+            ThemeSoundProvider provider = null;
+            Object rawProvider = source.get(cuePath + ".provider");
+            if (!(rawProvider instanceof String configuredProvider)) {
+                problems.error(cuePath + ".provider must be default or cmi");
+            } else {
+                try {
+                    provider = ThemeSoundProvider.parse(configuredProvider);
+                } catch (IllegalArgumentException exception) {
+                    problems.error(cuePath + ".provider must be default or cmi");
+                }
+            }
+            Object rawSound = source.get(cuePath + ".sound");
+            if (!(rawSound instanceof String configuredSound) || configuredSound.isBlank()) {
+                problems.error(cuePath + ".sound must be a nonblank sound name");
+            } else if (provider == ThemeSoundProvider.DEFAULT) {
+                try {
+                    parseSound(configuredSound);
+                } catch (IllegalArgumentException exception) {
+                    problems.error(cuePath + ".sound does not name a supported Paper sound");
+                }
+            } else if (provider == ThemeSoundProvider.CMI
+                    && !CMI_SOUND_TOKEN.matcher(configuredSound).matches()) {
+                problems.error(cuePath + ".sound must be a safe CMI sound token");
+            }
+            Double volume = scalarNumber(source, cuePath + ".volume", problems);
+            if (volume != null && (volume < 0.0D || volume > 1.0D)) {
+                problems.error(cuePath + ".volume must be between 0.0 and 1.0");
+            }
+            Double pitch = scalarNumber(source, cuePath + ".pitch", problems);
+            if (pitch != null && (pitch < 0.5D || pitch > 2.0D)) {
+                problems.error(cuePath + ".pitch must be between 0.5 and 2.0");
+            }
         }
     }
 

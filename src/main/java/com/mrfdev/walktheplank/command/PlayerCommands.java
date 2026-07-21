@@ -409,6 +409,10 @@ final class PlayerCommands {
         if (!support.requirePermission(sender, support.permissions().openGui())) {
             return;
         }
+        if (!support.games.isEventEnabled()) {
+            support.messages.send(player, "chat.eventDisabled");
+            return;
+        }
         support.menus.open(player);
     }
 }

@@ -144,13 +144,16 @@ public final class WalkThePlankPlugin extends JavaPlugin {
                     "Verified pre-migration database backup: " + path));
             operations.audit("plugin.enable", null, null, java.util.Map.of(
                     "scores", scores.snapshot().totalEntries(),
+                    "event_enabled", configuration.runtimeSettings().eventEnabled(),
+                    "theme", configuration.runtimeSettings().activeTheme(),
                     "pending_restorations", games.pendingRestorations(),
                     "pending_player_recoveries", games.pendingPlayerRecoveries()));
             enableCompleted = true;
             getLogger().info("1MB-WalkThePlank " + buildInfo.releaseLabel()
                     + " (" + buildInfo.sourceLabel() + ") enabled with "
                     + scores.snapshot().totalEntries() + " preserved scores on "
-                    + paperRuntime.runtimeLabel());
+                    + paperRuntime.runtimeLabel() + "; event participation is "
+                    + (configuration.runtimeSettings().eventEnabled() ? "open" : "closed"));
         } catch (Exception | LinkageError exception) {
             enableCompleted = false;
             if (operations != null) {

@@ -2,6 +2,20 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.7.0-024] — 2026-07-21
+
+Expected artifact: `1MB-WalkThePlank-v2.7.0-024-j25-26.2.jar`
+
+### Event roster, sound profiles, and global participation switch
+
+- Replaced the bundled appearance roster with the exact approved presets: `default`, `valentine`, `easter`, `summer`, `halloween`, `thanksgiving`, `christmas`, and `anniversary`. The reserved `custom` name remains only as a backward-compatible top-level configuration mode; historical/operator presets without a sound section inherit the validated top-level profile.
+- Added configurable `start`, `landing`, `milestone`, `combo`, `finish`, and `failure` sounds to every preset and the custom mode. Each cue supports enablement, direct Paper or optional CMI delivery, validated sound identity, 0.0–1.0 volume, and 0.5–2.0 pitch; bundled values use 0.8 volume and vanilla 1.0 pitch. An explicitly configured historical `milestones.sound` remains the custom milestone fallback when no explicit new cue exists.
+- Preserved UUID-owned accessibility: sounds do not play when the runner disabled them. Landing-family cues never stack; milestone takes precedence, non-milestone combo multiples of five use the combo cue, and other successful jumps use landing.
+- Added `event.enabled`, defaulting false. While closed, the plugin stays loaded for administration, diagnostics, statistics, and leaderboards but refuses new runs/readiness/queue joins, drains retained queue state on reload, and publishes zero available arenas.
+- Corrected the Play tooltip so ordinary players are told to wait nearby and retry instead of being promised automatic queue enrollment. The exact previous modern tooltip upgrades in memory without overwriting operator files.
+- Added `%infinityparkour_event_enabled%`, safe diagnostics for the event and sound providers, strict sound-shape/range/injection validation, safe-config fingerprint coverage, and focused tests.
+- Automatic theme scheduling remains deliberately out of scope. Momentum, quests, and community plank goals remain deferred rather than being mixed into this event-safety release.
+
 ## [2.6.1-023] — 2026-07-20
 
 Expected artifact: `1MB-WalkThePlank-v2.6.1-023-j25-26.2.jar`

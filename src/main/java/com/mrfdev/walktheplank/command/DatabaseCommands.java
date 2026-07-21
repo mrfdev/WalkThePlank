@@ -660,7 +660,9 @@ final class DatabaseCommands {
                 support.placeholderRegistered.getAsBoolean()
                         ? "active"
                         : "inactive");
-        support.sendLine(sender, "&f%infinityparkour_version%");
+        support.sendLine(
+                sender,
+                "&f%infinityparkour_version% &7| event_enabled");
         support.sendLine(
                 sender,
                 "&f%infinityparkour_score% &7| rank | percentile | "
@@ -705,6 +707,10 @@ final class DatabaseCommands {
         support.sendHeader(sender, "Diagnostics: safe config");
         support.sendField(
                 sender,
+                "Event participation",
+                current.eventEnabled() ? "enabled" : "disabled");
+        support.sendField(
+                sender,
                 "Arenas",
                 Integer.toString(current.arenas().size()));
         support.sendField(sender, "Theme", current.activeTheme());
@@ -733,6 +739,16 @@ final class DatabaseCommands {
                         ? current.particle() + " x"
                                 + current.particleCount()
                         : "disabled");
+        support.sendField(
+                sender,
+                "Theme sounds",
+                current.themeSounds().cues().values().stream()
+                        .filter(com.mrfdev.walktheplank.config.ThemeSound::enabled)
+                        .map(sound -> sound.provider().name().toLowerCase(java.util.Locale.ROOT))
+                        .distinct()
+                        .sorted()
+                        .toList()
+                        + ", volume/pitch validated");
         support.sendField(
                 sender,
                 "Rewards",
