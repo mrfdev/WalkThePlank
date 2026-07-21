@@ -1,6 +1,6 @@
-# WalkThePlank v2.7.0-024 beta and event checklist
+# WalkThePlank v2.8.0-025 beta and event checklist
 
-This is the mandatory human/server acceptance plan for `1MB-WalkThePlank-v2.7.0-024-j25-26.2.jar`.
+This is the mandatory human/server acceptance plan for `1MB-WalkThePlank-v2.8.0-025-j25-26.2.jar`.
 
 Do not treat implemented code, a successful Gradle build, or a previous release's smoke test as production approval. The candidate is approved only after this checklist is completed against the exact frozen JAR, a production-like Paper 26.2 server, a disposable copy of the live data, and the intended external reward providers.
 
@@ -12,9 +12,9 @@ Fill this table from the final clean build. Do not copy values from any prior ca
 
 | Property | Candidate value |
 | --- | --- |
-| Semantic version/build | `2.7.0-024` |
-| Expected filename | `1MB-WalkThePlank-v2.7.0-024-j25-26.2.jar` |
-| Git commit | Full clean commit embedded in the final JAR; record in a new annotated build-024 RC tag and operator release archive |
+| Semantic version/build | `2.8.0-025` |
+| Expected filename | `1MB-WalkThePlank-v2.8.0-025-j25-26.2.jar` |
+| Git commit | Full clean commit embedded in the final JAR; record in a new annotated build-025 RC tag and operator release archive |
 | Build timestamp | Not embedded; record externally with the candidate evidence |
 | File size | Record in annotated candidate tag and operator release archive |
 | SHA-256 | Record in annotated candidate tag and operator release archive |
@@ -22,9 +22,9 @@ Fill this table from the final clean build. Do not copy values from any prior ca
 | Paper version/build | Require Paper 26.2 build 62 beta or newer; API `26.2.build.62-beta` |
 | Automated test result/count | 290 tests across 71 classes; zero failures, errors, or skips before clean-commit freeze |
 | `verifyReleaseJar` result | Require PASS on two clean builds with byte-identical outputs |
-| Test-server sync result | Require staged SHA-256 to match and only build 024 to be active |
+| Test-server sync result | Require staged SHA-256 to match and only build 025 to be active |
 
-Build 010 completed its controlled scenarios, reproducibility/freeze, standalone/full-stack Paper smoke, live-copy schema-v3 preservation, and test-server synchronization and is tagged `v2.4.1-010-rc.1`. Builds 011–020 corrected the Paper 26.2 movement baseline, durable activation ownership, GUI compatibility, two-platform pipeline, and restoration behavior. Build 021 samples Paper's precise-position movement signal, including within-block landing movement, while still ignoring orientation-only events. A real-player score-9 run confirmed correct sequential scoring, immediate departed-platform restoration, exact two-platform rotation, milestone/combo feedback, and final cleanup. Build 022 adds validated seasonal appearance presets while keeping `custom` backward compatible; its summer appearance passed real-player testing. Build 023 makes FIFO reservation a separate default-off permission. Build 024 adds the exact eight-event roster, sound profiles, and manual global participation switch. Repeat every automated candidate gate and the new switch/sound matrix against the final clean build-024 artifact.
+Build 010 completed its controlled scenarios, reproducibility/freeze, standalone/full-stack Paper smoke, live-copy schema-v3 preservation, and test-server synchronization and is tagged `v2.4.1-010-rc.1`. Builds 011–022 culminated in a successful real-player score-9 run and approved summer appearance. Build 023 made FIFO reservation a separate default-off permission; build 024 added the event roster, sounds, and manual participation switch. Build 025 adds the paged leaderboard browser and live menu status. Repeat every automated candidate gate plus the GUI and switch/sound matrices against the final clean build-025 artifact.
 
 ## Known build-003 migration evidence
 
@@ -32,7 +32,7 @@ Build 010's persistent live-copy smoke preserved 100 rows, 100 UUIDs, score sum 
 
 ## 1. Source and release integrity
 
-- [x] Confirm `gradle.properties` says version `2.7.0`, build `024`, Java `25`, Paper `26.2`, and exact Paper API `26.2.build.62-beta`.
+- [x] Confirm `gradle.properties` says version `2.8.0`, build `025`, Java `25`, Paper `26.2`, and exact Paper API `26.2.build.62-beta`.
 - [x] Confirm the wrapper/build dependencies remain Gradle 9.6.1, Shadow 9.5.1, PlaceholderAPI 2.12.3, SQLite JDBC 3.53.2.0, and JUnit 6.1.2 unless a newer version has been deliberately reviewed and recorded.
 - [x] Confirm `plugin.yml` retains Bukkit name `InfinityParkour`, `api-version: 26.2`, and main class `com.mrfdev.walktheplank.WalkThePlankPlugin`.
 - [x] Confirm the production plugin uses `JavaPlugin#getLifecycleManager` with `LifecycleEvents.COMMANDS`, keeps `plugin.yml` rather than adding `paper-plugin.yml`, and contains no legacy `PluginCommand` executor/tab-completer registration.
@@ -41,13 +41,13 @@ Build 010's persistent live-copy smoke preserved 100 rows, 100 UUIDs, score sum 
 - [ ] Record a clean `git status`, require the embedded full commit to match `HEAD`, and record the annotated RC tag.
 - [ ] Run `./gradlew clean freezeCandidate` with Java 25.
 - [ ] Require zero plugin compiler warnings. The build fails if `-Xlint:all -Werror` finds a warning.
-- [x] Record the candidate test result and count: 290 tests across 71 classes; zero failures, errors, or skips. Repeat after the clean-commit freeze.
+- [x] Record the candidate test result and count: 295 tests across 73 classes; zero failures, errors, or skips. Repeat after the clean-commit freeze.
 - [ ] Run `./gradlew releaseInfo` and require the exact version/build/filename.
 - [ ] Run `./gradlew verifyReleaseJar` and record success.
 - [ ] Confirm the shaded JAR includes `org/sqlite/JDBC.class` and `META-INF/services/java.sql.Driver`.
 - [ ] Confirm the shaded JAR contains no `com/mysql/`, `org/mariadb/`, `org/bukkit/`, `io/papermc/paper/`, or `me/clip/placeholderapi/` classes.
 - [ ] Confirm the JAR contains no `.db` or `.sqlite` file and no `_resources` or server directory.
-- [ ] Confirm embedded `plugin.yml`, `build-info.properties`, and manifest all identify v2.7.0 build 024, Java 25, Paper 26.2 build 62 minimum, and the exact artifact name.
+- [ ] Confirm embedded `plugin.yml`, `build-info.properties`, and manifest all identify v2.8.0 build 025, Java 25, Paper 26.2 build 62 minimum, and the exact artifact name.
 - [ ] Record final size, SHA-256, source commit, runtime, test result, and smoke evidence in the annotated RC tag and operator archive.
 - [ ] Copy the JAR by checksum and prove the staged copy is byte-identical.
 - [ ] Confirm only one InfinityParkour/WalkThePlank JAR is active. Move every prior build to `plugins-disabled/walktheplank/`.
@@ -62,11 +62,11 @@ The scenario system is release tooling, not a production feature. Never copy eit
 - [ ] Require these two test-only files beneath `build/scenario-artifacts/`:
 
   ```text
-  TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.7.0-024.jar
-  TEST-ONLY-1MB-WalkThePlank-v2.7.0-024-Failpoints.jar
+  TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.8.0-025.jar
+  TEST-ONLY-1MB-WalkThePlank-v2.8.0-025-Failpoints.jar
   ```
 
-- [ ] Require the production file to remain `build/libs/1MB-WalkThePlank-v2.7.0-024-j25-26.2.jar`; prove the instrumented file has a different path and checksum and did not replace it.
+- [ ] Require the production file to remain `build/libs/1MB-WalkThePlank-v2.8.0-025-j25-26.2.jar`; prove the instrumented file has a different path and checksum and did not replace it.
 - [ ] Run `./gradlew verifyReleaseJar` separately and require the production JAR to contain no `com/mrfdev/walktheplank/scenario/` class, `WalkThePlank-Test-Artifact`/`WalkThePlank-Test-Canary` manifest attribute, scenario command, failpoint system-property prefix, scenario canary, Java agent entry point, or any of the 24 failpoint identifiers.
 - [ ] Require positive controls: the harness must be detected as test-only, the instrumented copy must contain the injected bridge/canary and all 24 identifiers, and the isolation task must reject a deliberately scanned test artifact as production-safe.
 - [ ] Inspect the scenario harness archive. Require an independent `plugin.yml` named `WalkThePlank-ScenarioHarness`, hard dependency on `InfinityParkour`, classes only under `com/mrfdev/walktheplank/scenario/harness/`, and no shaded WalkThePlank, SQLite, Paper/Bukkit, or PlaceholderAPI classes.
@@ -223,7 +223,7 @@ LIMIT 10;
 ## 5. Paper startup and dependency matrix
 
 - [ ] Start with Java 25 and Paper 26.2 build 62 beta or newer.
-- [ ] Require `InfinityParkour v2.7.0-024` to enable once with 100 preserved scores.
+- [ ] Require `InfinityParkour v2.8.0-025` to enable once with 100 preserved scores.
 - [ ] Attempt startup on Paper 26.2 build 61 and on a 26.1.x runtime in disposable profiles. Require WalkThePlank to refuse enable before opening its data directory, with one bounded target-versus-runtime diagnostic.
 - [ ] Require no WalkThePlank exception, deprecated-method warning, task rejection, linkage error, or unexpected startup/shutdown warning. The JVM's JOML `sun.misc.Unsafe` warning is emitted by Paper's `joml-1.10.8.jar`, not this plugin.
 - [ ] Break configuration or journal initialization in a disposable profile and require startup to abort. The disable audit says `startup_completed:false` and `clean:false`; the log explicitly refuses a clean-restoration claim.
@@ -284,7 +284,7 @@ LIMIT 10;
 
 ## 7. GUI and inventory abuse
 
-- [ ] Open the real GUI and confirm all 54 slots: readable near-black `#111827` title text; light-blue stained-glass panes on 23 outer-frame slots; centered tutorial/play/Top 10 actions at 20/22/24; the viewer's textured head at 45; `/menu` arrow at 52; close barrier at 53; and 25 unused inner slots left empty.
+- [ ] Open the real main GUI and confirm all 54 slots: readable near-black `#111827` title text; light-blue stained-glass panes on 23 outer-frame slots; centered tutorial/play/Leaderboards actions at 20/22/24; live status clock at 31; viewer head at 45; `/menu` arrow at 52; close barrier at 53; and 24 unused inner slots left empty.
 - [x] Inspect tutorial, play, and Top 10 tooltips. The operator approved the visual treatment of all three icons on 2026-07-20: proofread wording, pale-blue names, readable white/soft-gray body text, pink warning/label text, gold click actions, and no italic text.
 - [ ] With the live `JACK_O_LANTERN` setting, require the tutorial to say “jack o'lantern” rather than “glowing platform.” In a disposable reload, change the sole `parkourBlocks` entry to `EMERALD_BLOCK` and require “emerald block”; then restore the live setting.
 - [ ] Inspect the viewer head with a recorded score. Require the correct skin, literal player name, Classic best, rank/total and percentile from one current snapshot, plus no italics. Click it and require the same permission-checked output as `/walk stats`, then revoke `infinityparkour.statscmd` while the menu remains open and require execution-time denial with no stats action.
@@ -294,6 +294,12 @@ LIMIT 10;
 - [ ] Load the exact historical live tutorial/play/scoreboard definitions. Require the bundled modern text to replace them only in memory without rewriting the file. Change one item definition deliberately and require that genuinely customized item to remain byte-for-byte authoritative.
 - [ ] Confirm legacy `{{index}}` lore renders positions 1 through 10 while `{{rank}}` retains competition rank.
 - [ ] Confirm top lore is permission-gated and does not leak entries to a player lacking `topcmd`.
+- [ ] Click Leaderboards with `infinityparkour.topcmd`. Require a full-height light-blue frame, at most 28 records in slots 10–16/19–25/28–34/37–43, authoritative competition ranks, and a near-black title naming the selected board and clamped page/page-count.
+- [ ] Browse Classic beyond page one and back. Require all 100 imported rows in order with no duplicate/omission, previous/next only when applicable, and no SQLite/profile/network lookup warning on the server thread.
+- [ ] Select Classic, active Season, Combo, and Flawless at slots 48–51. Require explicit labels, one glowing selected control, page reset to one, correct independent cached scores, unchanged Classic data, and a non-clickable “No Active Season” item when no season is active.
+- [ ] Test an empty category and a page request that became stale after a score/season publication. Require one bounded empty state or a safely clamped valid page, never an empty phantom page, exception, stale action, or format injection from a player/season name.
+- [ ] Revoke `infinityparkour.topcmd` after clicking but before the scheduled action. Require execution-time denial, closure, and no leaderboard data disclosure. Reopen, navigate rapidly, then close/reload/change world; require the old nonce/generation/inventory actions to do nothing.
+- [ ] Inspect the status clock while the event is closed/open, arena free/occupied, queue disabled/empty/waiting/paused/ready, not playing/playing, and with/without a Classic score. Require correct capacity, score/combo, elapsed/idle time, points-to-beat/new-best pace, and next-rank target; no raw placeholder may remain.
 - [ ] Rename an ordinary chest/anvil to the same visible title and confirm it cannot trigger plugin actions.
 - [ ] While the real GUI is open, test normal click, shift-click, number key, double-click/collect, hotbar swap, offhand swap, drop, creative click, and clicks in both top and player inventory. No item may enter or leave the plugin inventory.
 - [ ] Drag across only bottom slots and across any top slot; require top-inventory mutation to be cancelled and no duplication/loss.
@@ -542,7 +548,7 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 - [ ] Invoke doctor immediately before reload/disable and force a probe failure on a disposable database. Require a bounded privacy-safe result or contained cancellation, with no raw exception, rejected-task leak, shutdown hang, repair attempt, or database replacement.
 - [ ] Start and stop with no players, active runs, pending starts, queued/ready players, and quarantined records.
 - [ ] Clean shutdown must close menus, cancel starts, drain queue, restore sessions, retry quarantine, unregister API/PlaceholderAPI, and drain accepted database work for up to 15 seconds.
-- [ ] Require `WalkThePlank disabled; arena blocks and player state were restored` and no pending recovery/operations/database-write timeout in both build-024 controlled/console-smoke profiles.
+- [ ] Require `WalkThePlank disabled; arena blocks and player state were restored` and no pending recovery/operations/database-write timeout in both build-025 controlled/console-smoke profiles.
 - [ ] End an ordinary zero-score run by falling. If asynchronous cleanup briefly retains the arena, require only the bounded informational reservation/settled messages—never a false `SEVERE` quarantine message—and require the arena to become available once.
 - [x] Start and end at least five rapid consecutive runs in the same arena. Six build-014 client runs completed on 2026-07-20 with only the expected reservation/settled information, no lifecycle failure, no quarantine, and no blocked next run. `BlockLeaseRegistryTest` separately locks the delayed stale-completion case and proves that it preserves a newer exact owner without world mutation or duplicate release.
 - [ ] Repeat the rapid-run cleanup rehearsal with at least one scored run against the final frozen candidate.
@@ -555,11 +561,11 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 ## 17. Test-server synchronization and regression pass
 
 - [ ] Run `./gradlew syncTestServer` only after source/build/migration gates pass.
-- [ ] Confirm build 024 is active and all older WalkThePlank/InfinityParkour JARs—including both `TEST-ONLY-` artifacts—are disabled/absent.
+- [ ] Confirm build 025 is active and all older WalkThePlank/InfinityParkour JARs—including both `TEST-ONLY-` artifacts—are disabled/absent.
 - [ ] Confirm copied live data belongs to the test server, not `_resources`.
 - [ ] Restart the synchronized server from a clean stop and repeat startup/info/validate/health/doctor/top/GUI/gameplay/queue/season/export/reward/recovery/disable smoke.
 - [ ] Search the full `latest.log` for `InfinityParkour`, `WalkThePlank`, `WARN`, `ERROR`, `SEVERE`, `Exception`, `deprecated`, and task rejection; classify every match.
-- [ ] Re-run `PRAGMA quick_check` and the 100-row/top-ten comparison after build-024 console smoke: 100 UUID rows, score sum 4256, maximum 149, unchanged top ten, `quick_check=ok`.
+- [ ] Re-run `PRAGMA quick_check` and the 100-row/top-ten comparison after build-025 console smoke: 100 UUID rows, score sum 4256, maximum 149, unchanged top ten, `quick_check=ok`.
 - [ ] Re-hash the staged JAR and compare it with the candidate record.
 
 ## 18. Rollback rehearsal
@@ -568,7 +574,7 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 - [ ] Restore the exact previous JAR and matched pre-deployment data folder together.
 - [ ] Start the previous supported environment and verify the all-time leaderboard/top ten.
 - [ ] Confirm the production runbook warns that database rollback discards later event scores and never reconciles by username.
-- [ ] Confirm pending build-024 restoration/player-recovery records are resolved or preserved before starting an older plugin that cannot read them.
+- [ ] Confirm pending build-025 restoration/player-recovery records are resolved or preserved before starting an older plugin that cannot read them.
 - [ ] Record rollback duration, responsible operator, file locations, and communication plan.
 
 ## 19. Go/no-go sign-off

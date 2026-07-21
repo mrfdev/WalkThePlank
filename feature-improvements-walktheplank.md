@@ -1,17 +1,17 @@
 # WalkThePlank future improvements and release status
 
-This is the authoritative future-development TODO and release-status document. It separates what is implemented through source release **v2.7.0 build 024** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
+This is the authoritative future-development TODO and release-status document. It separates what is implemented through source release **v2.8.0 build 025** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
 
 Status labels:
 
-- **Implemented** — present in the current build-024 source.
+- **Implemented** — present in the current build-025 source.
 - **Implemented; beta verification pending** — present, but the final JAR still needs the named Paper/live-data test.
 - **Partial** — a safe foundation exists, but an important workflow or assurance remains.
 - **Proposed** — not present and must not be advertised as a current feature.
 
 ## Deferred modernization queue
 
-Build 003 remains the historical modernization baseline, build 004 the event-safety release, build 005 the destructive-testing foundation, build 006 the off-main durability release, and build 007 the command/API modernization release. Build 008 added bounded migration-backup retention, milestones/accessibility, separate Combo/Flawless categories, rate-limited movement anomaly evidence, and a verified audit chain. Builds 009–021 addressed the 1MB GUI and Paper 26.2 real-player compatibility regressions, culminating in a successful real-player score-9 run with correct two-platform rotation and cleanup. Build 022 added validated seasonal appearance presets without changing mechanics or Classic scores. Build 023 makes FIFO reservation an explicit default-off permission. Build 024 adds the exact eight-event roster, per-theme sound cues, and a fail-closed manual event switch without automatic scheduling. Every remaining unchecked feature stays deferred so its evidence cannot be confused with this candidate.
+Build 003 remains the historical modernization baseline, build 004 the event-safety release, build 005 the destructive-testing foundation, build 006 the off-main durability release, and build 007 the command/API modernization release. Build 008 added bounded migration-backup retention, milestones/accessibility, separate Combo/Flawless categories, rate-limited movement anomaly evidence, and a verified audit chain. Builds 009–021 addressed the 1MB GUI and Paper 26.2 real-player compatibility regressions, culminating in a successful real-player score-9 run with correct two-platform rotation and cleanup. Build 022 added validated seasonal appearance presets without changing mechanics or Classic scores. Build 023 makes FIFO reservation an explicit default-off permission. Build 024 adds the event roster, sounds, and manual switch. Build 025 adds the paged leaderboard browser and live GUI status. Every remaining unchecked feature stays deferred so its evidence cannot be confused with this candidate.
 
 1. [x] **v2.1.1 build 004 — event-safety and operations implemented; beta acceptance still pending.** External-teleport decisions occur at `HIGHEST` with observation-only `MONITOR` and next-tick verification; GUI sessions bind owner UUID/nonce/generation/exact inventory with one pending action; trusted formatting is parsed separately from literal dynamic components with explicit `minimessage:` opt-in and legacy `&` compatibility; `/walk admin doctor` produces a privacy-safe report with an asynchronous SQLite probe.
 2. [x] **v2.1.2 build 005 — disposable Paper integration and fault-injection harness implemented; final-candidate and real-client evidence pending.** A separate test plugin, Java 25 Class-File API instrumented-copy builder, 24 named failpoints, two-start/PlaceholderAPI/lifecycle/log runner, real-player queue/teleport/GUI/reconnect/exit probes, reflection event contracts, and positive/negative production-isolation checks are present. Development-artifact runs passed the automated two-start profile and the `config.after_runtime_commit` exit-97/recovery profile; repeat them against the clean committed candidate and complete every applicable real-client/hard-kill checklist row before treating this item as release-qualified.
@@ -46,7 +46,7 @@ Build 008 includes all previous modernization layers documented in [CHANGELOG.md
 | Capability | Status | Notes |
 | --- | --- | --- |
 | Gradle build and wrapper | **Implemented** | Gradle 9.6.1, Shadow 9.5.1, strict Java 25 compilation. |
-| Paper target | **Implemented; final build-024 smoke pending** | Exact compile API is `26.2.build.62-beta`; `api-version: 26.2` and an explicit `ServerBuildInfo` gate reject older lines/builds. Repeat the controlled profile and full candidate smoke against build 62 or newer before approval. |
+| Paper target | **Implemented; final build-025 smoke pending** | Exact compile API is `26.2.build.62-beta`; `api-version: 26.2` and an explicit `ServerBuildInfo` gate reject older lines/builds. Repeat the controlled profile and full candidate smoke against build 62 or newer before approval. |
 | Standalone SQLite JAR | **Implemented** | SQLite JDBC 3.53.2.0 is shaded; MySQL/MariaDB is absent. |
 | Archive-composition gate | **Implemented** | Rejects bundled Paper/Bukkit/PlaceholderAPI/live-database classes or files and remote-database drivers. |
 | Isolated scenario artifacts | **Implemented; final-candidate rerun pending** | The harness is an independent Paper plugin and the Java 25 Class-File API transformer writes a distinct `TEST-ONLY-` copy. Neither is packaged beneath `build/libs/` or allowed to replace the production JAR. Development-artifact isolation and controlled-profile gates passed. |
@@ -210,8 +210,8 @@ Do not implement this for the current event. If reconsidered in a future design 
 
 ### P2 — presentation and social play
 
-- Paged all-time/season/category leaderboards with explicit selector labels.
-- Queue/capacity item, current score/idle/elapsed state, best delta, and next-rank target in the GUI.
+- [x] Build 025: paged all-time/active-season/Combo/Flawless leaderboards with explicit selector labels and cached 28-row pages.
+- [x] Build 025: event/queue/capacity item, current score/combo/idle/elapsed state, best delta, and next-rank target in the GUI.
 - Staff-only health/quarantine/reward-uncertainty views with confirmation screens.
 
 ### P2 — integrations

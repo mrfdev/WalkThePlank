@@ -2,6 +2,19 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.8.0-025] — 2026-07-21
+
+Expected artifact: `1MB-WalkThePlank-v2.8.0-025-j25-26.2.jar`
+
+### Paged leaderboards and live menu status
+
+- Added a hardened full-height leaderboard browser with 28 immutable cached rows per page, previous/next controls, and explicit Classic, active-season, Combo, and Flawless selectors. Missing seasons and empty categories have deliberate non-clickable empty states.
+- Changed the main leaderboard icon from a chat-only position action into the paged browser while retaining the existing `infinityparkour.topcmd` permission and execution-time permission revalidation.
+- Added a live main-menu status card covering event open/closed state, arena capacity/use, walk-up or queue state, active score/combo, elapsed/idle time, personal-best delta, and the next Classic rank target.
+- Kept every page inside the existing owner UUID, random nonce, generation, exact-inventory identity, duplicate-click suppression, and one-pending-action model. Database reads remain off the tick path: GUI rendering consumes immutable repository/game publications only.
+- Added configurable non-italic MiniMessage defaults with the 1MB pastel palette and light-blue outer frame. Player and season names remain literal components and cannot inject formatting.
+- Shelved Momentum, quests, community plank goals, seeded daily challenges, and optional WorldGuard-style validation as future ideas. No telemetry, bStats, or external metrics integration was added.
+
 ## [2.7.0-024] — 2026-07-21
 
 Expected artifact: `1MB-WalkThePlank-v2.7.0-024-j25-26.2.jar`
