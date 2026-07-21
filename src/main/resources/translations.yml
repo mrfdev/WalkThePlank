@@ -110,7 +110,7 @@ mainGui:
       - 'minimessage:<!italic><color:#ffd166>Click to begin.</color>'
   scoreboardItem:
     item: OAK_SIGN
-    title: 'minimessage:<!italic><color:#bde0fe><bold>Top 10</bold></color>'
+    title: 'minimessage:<!italic><color:#bde0fe><bold>Leaderboards</bold></color>'
     glow: false
     scoreboardRecord: 'minimessage:<!italic><color:#d8e2dc>{{rank}}.</color> <color:#bde0fe>{{playerName}}</color> <color:#d8e2dc>•</color> <color:#ffd166>{{score}} points</color>'
     noPermissionLore:
@@ -118,7 +118,20 @@ mainGui:
     lore:
       - '{{scoreboard}}'
       - ''
-      - 'minimessage:<!italic><color:#ffd166>Click to view your position.</color>'
+      - 'minimessage:<!italic><color:#ffd166>Click to browse every leaderboard.</color>'
+  statusItem:
+    item: CLOCK
+    title: 'minimessage:<!italic><color:#bde0fe><bold>Event Status</bold></color>'
+    glow: false
+    lore:
+      - 'minimessage:<!italic><color:#d8e2dc>Event:</color> <color:#b7f7c4>{{eventState}}</color>'
+      - 'minimessage:<!italic><color:#d8e2dc>Arenas:</color> <color:#bde0fe>{{arenaStatus}}</color>'
+      - 'minimessage:<!italic><color:#d8e2dc>Queue:</color> <color:#f2f5f7>{{queueStatus}}</color>'
+      - ''
+      - 'minimessage:<!italic><color:#d8e2dc>Current run:</color> <color:#ffd166>{{runStatus}}</color>'
+      - 'minimessage:<!italic><color:#d8e2dc>Time:</color> <color:#f2f5f7>{{timeStatus}}</color>'
+      - 'minimessage:<!italic><color:#d8e2dc>Personal best:</color> <color:#ffc8dd>{{bestStatus}}</color>'
+      - 'minimessage:<!italic><color:#d8e2dc>Next rank:</color> <color:#b7f7c4>{{nextRankStatus}}</color>'
   playerItem:
     item: PLAYER_HEAD
     title: 'minimessage:<!italic><color:#bde0fe><bold>{{playerName}}''s Stats</bold></color>'
@@ -152,3 +165,80 @@ mainGui:
       - 'minimessage:<!italic><color:#d8e2dc>Close this menu.</color>'
       - ''
       - 'minimessage:<!italic><color:#ffd166>Click to close.</color>'
+
+leaderboardGui:
+  title: 'WalkThePlank • {{boardName}} • {{page}}/{{pages}}'
+  titleColor: '#111827'
+  useFillItem: true
+  fillItem: LIGHT_BLUE_STAINED_GLASS_PANE
+  entryItem:
+    item: NAME_TAG
+    title: 'minimessage:<!italic><color:#bde0fe><bold>#{{rank}}</bold></color> <color:#f2f5f7>{{playerName}}</color>'
+    glow: false
+    lore:
+      - 'minimessage:<!italic><color:#d8e2dc>Score:</color> <color:#ffd166>{{score}} points</color>'
+      - 'minimessage:<!italic><color:#d8e2dc>Leaderboard:</color> <color:#b7f7c4>{{boardName}}</color>'
+  emptyItem:
+    item: PAPER
+    title: 'minimessage:<!italic><color:#d8e2dc><bold>No Scores Yet</bold></color>'
+    glow: false
+    lore:
+      - 'minimessage:<!italic><color:#f2f5f7>Complete a run to appear here.</color>'
+  classicItem:
+    item: NETHER_STAR
+    title: 'minimessage:<!italic><color:#ffd166><bold>Classic</bold></color>'
+    glow: false
+    lore:
+      - 'minimessage:<!italic><color:#d8e2dc>The historical all-time leaderboard.</color>'
+      - 'minimessage:<!italic><color:#ffd166>{{selectorAction}}</color>'
+  seasonItem:
+    item: SUNFLOWER
+    title: 'minimessage:<!italic><color:#b7f7c4><bold>Active Season</bold></color>'
+    glow: false
+    lore:
+      - 'minimessage:<!italic><color:#d8e2dc>{{seasonName}}</color>'
+      - 'minimessage:<!italic><color:#ffd166>{{selectorAction}}</color>'
+  seasonUnavailableItem:
+    item: GRAY_DYE
+    title: 'minimessage:<!italic><color:#d8e2dc><bold>No Active Season</bold></color>'
+    glow: false
+    lore:
+      - 'minimessage:<!italic><color:#9ca3af>Season ranking is currently unavailable.</color>'
+  comboItem:
+    item: BLAZE_POWDER
+    title: 'minimessage:<!italic><color:#ffc8dd><bold>Combo</bold></color>'
+    glow: false
+    lore:
+      - 'minimessage:<!italic><color:#d8e2dc>Best uninterrupted landing streak.</color>'
+      - 'minimessage:<!italic><color:#ffd166>{{selectorAction}}</color>'
+  flawlessItem:
+    item: FEATHER
+    title: 'minimessage:<!italic><color:#bde0fe><bold>Flawless</bold></color>'
+    glow: false
+    lore:
+      - 'minimessage:<!italic><color:#d8e2dc>Best verified flawless run.</color>'
+      - 'minimessage:<!italic><color:#ffd166>{{selectorAction}}</color>'
+  previousItem:
+    item: ARROW
+    title: 'minimessage:<!italic><color:#bde0fe><bold>Previous Page</bold></color>'
+    glow: false
+    lore:
+      - 'minimessage:<!italic><color:#d8e2dc>Go to page {{targetPage}}.</color>'
+  nextItem:
+    item: ARROW
+    title: 'minimessage:<!italic><color:#bde0fe><bold>Next Page</bold></color>'
+    glow: false
+    lore:
+      - 'minimessage:<!italic><color:#d8e2dc>Go to page {{targetPage}}.</color>'
+  backItem:
+    item: OAK_DOOR
+    title: 'minimessage:<!italic><color:#bde0fe><bold>Back</bold></color>'
+    glow: false
+    lore:
+      - 'minimessage:<!italic><color:#d8e2dc>Return to WalkThePlank.</color>'
+  closeItem:
+    item: BARRIER
+    title: 'minimessage:<!italic><color:#ffb3c1><bold>Close</bold></color>'
+    glow: false
+    lore:
+      - 'minimessage:<!italic><color:#d8e2dc>Close this menu.</color>'

@@ -14,6 +14,7 @@ final class MainMenuLayoutTest {
             MainMenuLayout.TUTORIAL_SLOT,
             MainMenuLayout.PLAY_SLOT,
             MainMenuLayout.SCOREBOARD_SLOT,
+            MainMenuLayout.STATUS_SLOT,
             MainMenuLayout.PLAYER_STATS_SLOT,
             MainMenuLayout.BACK_SLOT,
             MainMenuLayout.CLOSE_SLOT);
@@ -40,12 +41,12 @@ final class MainMenuLayoutTest {
                     "unexpected frame state at slot " + slot);
         }
 
-        assertEquals(Set.of(20, 22, 24, 45, 52, 53), ACTION_SLOTS);
+        assertEquals(Set.of(20, 22, 24, 31, 45, 52, 53), ACTION_SLOTS);
         assertTrue(FRAME_ACTION_SLOTS.stream().allMatch(MainMenuLayout.BORDER_SLOTS::contains));
         assertTrue(ACTION_SLOTS.stream()
                 .filter(slot -> !FRAME_ACTION_SLOTS.contains(slot))
                 .noneMatch(MainMenuLayout.BORDER_SLOTS::contains));
-        assertEquals(25, openUnusedCenterSlots().size());
+        assertEquals(24, openUnusedCenterSlots().size());
     }
 
     @Test

@@ -129,12 +129,39 @@ public final class ConfigurationManager {
             "mainGui.scoreboardItem.item",
             "mainGui.scoreboardItem.title",
             "mainGui.scoreboardItem.scoreboardRecord",
+            "mainGui.statusItem.item",
+            "mainGui.statusItem.title",
             "mainGui.playerItem.item",
             "mainGui.playerItem.title",
             "mainGui.backItem.item",
             "mainGui.backItem.title",
             "mainGui.closeItem.item",
-            "mainGui.closeItem.title");
+            "mainGui.closeItem.title",
+            "leaderboardGui.title",
+            "leaderboardGui.titleColor",
+            "leaderboardGui.fillItem",
+            "leaderboardGui.entryItem.item",
+            "leaderboardGui.entryItem.title",
+            "leaderboardGui.emptyItem.item",
+            "leaderboardGui.emptyItem.title",
+            "leaderboardGui.classicItem.item",
+            "leaderboardGui.classicItem.title",
+            "leaderboardGui.seasonItem.item",
+            "leaderboardGui.seasonItem.title",
+            "leaderboardGui.seasonUnavailableItem.item",
+            "leaderboardGui.seasonUnavailableItem.title",
+            "leaderboardGui.comboItem.item",
+            "leaderboardGui.comboItem.title",
+            "leaderboardGui.flawlessItem.item",
+            "leaderboardGui.flawlessItem.title",
+            "leaderboardGui.previousItem.item",
+            "leaderboardGui.previousItem.title",
+            "leaderboardGui.nextItem.item",
+            "leaderboardGui.nextItem.title",
+            "leaderboardGui.backItem.item",
+            "leaderboardGui.backItem.title",
+            "leaderboardGui.closeItem.item",
+            "leaderboardGui.closeItem.title");
     private static final List<String> TRANSLATION_STRING_LIST_PATHS = List.of(
             "scoreboardRecordInChat.prefix",
             "scoreboardRecordInChat.suffix",
@@ -144,19 +171,44 @@ public final class ConfigurationManager {
             "mainGui.playItem.lore",
             "mainGui.scoreboardItem.noPermissionLore",
             "mainGui.scoreboardItem.lore",
+            "mainGui.statusItem.lore",
             "mainGui.playerItem.noPermissionLore",
             "mainGui.playerItem.noScoreLore",
             "mainGui.playerItem.lore",
             "mainGui.backItem.lore",
-            "mainGui.closeItem.lore");
+            "mainGui.closeItem.lore",
+            "leaderboardGui.entryItem.lore",
+            "leaderboardGui.emptyItem.lore",
+            "leaderboardGui.classicItem.lore",
+            "leaderboardGui.seasonItem.lore",
+            "leaderboardGui.seasonUnavailableItem.lore",
+            "leaderboardGui.comboItem.lore",
+            "leaderboardGui.flawlessItem.lore",
+            "leaderboardGui.previousItem.lore",
+            "leaderboardGui.nextItem.lore",
+            "leaderboardGui.backItem.lore",
+            "leaderboardGui.closeItem.lore");
     private static final List<String> TRANSLATION_BOOLEAN_PATHS = List.of(
             "mainGui.useFillItem",
             "mainGui.tutorialItem.glow",
             "mainGui.playItem.glow",
             "mainGui.scoreboardItem.glow",
+            "mainGui.statusItem.glow",
             "mainGui.playerItem.glow",
             "mainGui.backItem.glow",
-            "mainGui.closeItem.glow");
+            "mainGui.closeItem.glow",
+            "leaderboardGui.useFillItem",
+            "leaderboardGui.entryItem.glow",
+            "leaderboardGui.emptyItem.glow",
+            "leaderboardGui.classicItem.glow",
+            "leaderboardGui.seasonItem.glow",
+            "leaderboardGui.seasonUnavailableItem.glow",
+            "leaderboardGui.comboItem.glow",
+            "leaderboardGui.flawlessItem.glow",
+            "leaderboardGui.previousItem.glow",
+            "leaderboardGui.nextItem.glow",
+            "leaderboardGui.backItem.glow",
+            "leaderboardGui.closeItem.glow");
     private static final Set<String> KNOWN_CONFIG_KEYS = Set.of(
             "configVersion",
             "event",
@@ -2025,9 +2077,22 @@ public final class ConfigurationManager {
                 "mainGui.tutorialItem",
                 "mainGui.playItem",
                 "mainGui.scoreboardItem",
+                "mainGui.statusItem",
                 "mainGui.playerItem",
                 "mainGui.backItem",
-                "mainGui.closeItem")) {
+                "mainGui.closeItem",
+                "leaderboardGui",
+                "leaderboardGui.entryItem",
+                "leaderboardGui.emptyItem",
+                "leaderboardGui.classicItem",
+                "leaderboardGui.seasonItem",
+                "leaderboardGui.seasonUnavailableItem",
+                "leaderboardGui.comboItem",
+                "leaderboardGui.flawlessItem",
+                "leaderboardGui.previousItem",
+                "leaderboardGui.nextItem",
+                "leaderboardGui.backItem",
+                "leaderboardGui.closeItem")) {
             if (source.getConfigurationSection(path) == null) {
                 problems.error("translations.yml is missing section " + path);
             }
@@ -2048,9 +2113,16 @@ public final class ConfigurationManager {
         validateTranslationItem(source, "mainGui.tutorialItem.item", problems);
         validateTranslationItem(source, "mainGui.playItem.item", problems);
         validateTranslationItem(source, "mainGui.scoreboardItem.item", problems);
+        validateTranslationItem(source, "mainGui.statusItem.item", problems);
         validateTranslationItem(source, "mainGui.playerItem.item", problems);
         validateTranslationItem(source, "mainGui.backItem.item", problems);
         validateTranslationItem(source, "mainGui.closeItem.item", problems);
+        for (String item : List.of(
+                "entryItem", "emptyItem", "classicItem", "seasonItem",
+                "seasonUnavailableItem", "comboItem", "flawlessItem",
+                "previousItem", "nextItem", "backItem", "closeItem")) {
+            validateTranslationItem(source, "leaderboardGui." + item + ".item", problems);
+        }
         requireTranslationItemType(
                 source,
                 "mainGui.playerItem.item",
@@ -2059,9 +2131,16 @@ public final class ConfigurationManager {
         if (Boolean.TRUE.equals(source.get("mainGui.useFillItem"))) {
             validateTranslationPane(source, "mainGui.fillItem", problems);
         }
+        if (Boolean.TRUE.equals(source.get("leaderboardGui.useFillItem"))) {
+            validateTranslationPane(source, "leaderboardGui.fillItem", problems);
+        }
         Object configuredTitleColor = source.get("mainGui.titleColor", true);
         if (!hasValidExplicitGuiTitleColor(configuredTitleColor)) {
             problems.error("translations.yml mainGui.titleColor must use #RRGGBB notation");
+        }
+        Object leaderboardTitleColor = source.get("leaderboardGui.titleColor", true);
+        if (!hasValidExplicitGuiTitleColor(leaderboardTitleColor)) {
+            problems.error("translations.yml leaderboardGui.titleColor must use #RRGGBB notation");
         }
 
         requireTranslationPlaceholders(
@@ -2103,6 +2182,33 @@ public final class ConfigurationManager {
                 source, "mainGui.scoreboardItem.noPermissionLore", "permissionName", problems);
         requireTranslationPlaceholderInList(
                 source, "mainGui.scoreboardItem.lore", "scoreboard", problems);
+        for (String placeholder : List.of(
+                "eventState", "arenaStatus", "queueStatus", "runStatus",
+                "timeStatus", "bestStatus", "nextRankStatus")) {
+            requireTranslationPlaceholderInList(
+                    source, "mainGui.statusItem.lore", placeholder, problems);
+        }
+        requireTranslationPlaceholders(
+                source, "leaderboardGui.title", problems, "boardName", "page", "pages");
+        requireTranslationPlaceholders(
+                source, "leaderboardGui.entryItem.title", problems, "rank", "playerName");
+        for (String placeholder : List.of("score", "boardName")) {
+            requireTranslationPlaceholderInList(
+                    source, "leaderboardGui.entryItem.lore", placeholder, problems);
+        }
+        for (String path : List.of(
+                "leaderboardGui.classicItem.lore",
+                "leaderboardGui.seasonItem.lore",
+                "leaderboardGui.comboItem.lore",
+                "leaderboardGui.flawlessItem.lore")) {
+            requireTranslationPlaceholderInList(source, path, "selectorAction", problems);
+        }
+        requireTranslationPlaceholderInList(
+                source, "leaderboardGui.seasonItem.lore", "seasonName", problems);
+        requireTranslationPlaceholderInList(
+                source, "leaderboardGui.previousItem.lore", "targetPage", problems);
+        requireTranslationPlaceholderInList(
+                source, "leaderboardGui.nextItem.lore", "targetPage", problems);
         requireTranslationPlaceholders(
                 source, "mainGui.playerItem.title", problems, "playerName");
         requireTranslationPlaceholderInList(
@@ -2348,6 +2454,9 @@ public final class ConfigurationManager {
                     "mainGui.scoreboardItem.scoreboardRecord" ->
                 Set.of("index", "rank", "playerName", "score");
             case "mainGui.tutorialItem.lore" -> Set.of("platformBlock");
+            case "mainGui.statusItem.lore" -> Set.of(
+                    "eventState", "arenaStatus", "queueStatus", "runStatus",
+                    "timeStatus", "bestStatus", "nextRankStatus");
             case "mainGui.playerItem.title" -> Set.of("playerName");
             case "mainGui.playerItem.lore" ->
                 Set.of("playerScore", "playerPlace", "totalPlaces", "percentile");
@@ -2370,6 +2479,15 @@ public final class ConfigurationManager {
                 Set.of("playerPlace", "totalPlaces", "playerScore", "percentile");
             case "chat.scoreMsgs" -> Set.of("score");
             case "mainGui.scoreboardItem.lore" -> Set.of("scoreboard");
+            case "leaderboardGui.title" -> Set.of("boardName", "page", "pages");
+            case "leaderboardGui.entryItem.title" -> Set.of("rank", "playerName");
+            case "leaderboardGui.entryItem.lore" -> Set.of("score", "boardName");
+            case "leaderboardGui.classicItem.lore",
+                    "leaderboardGui.comboItem.lore",
+                    "leaderboardGui.flawlessItem.lore" -> Set.of("selectorAction");
+            case "leaderboardGui.seasonItem.lore" -> Set.of("selectorAction", "seasonName");
+            case "leaderboardGui.previousItem.lore",
+                    "leaderboardGui.nextItem.lore" -> Set.of("targetPage");
             default -> Set.of();
         };
     }

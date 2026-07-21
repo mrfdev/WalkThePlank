@@ -3,6 +3,7 @@ package com.mrfdev.walktheplank.gui;
 import com.mrfdev.walktheplank.config.ConfigurationManager;
 import com.mrfdev.walktheplank.config.RuntimeSettings;
 import com.mrfdev.walktheplank.database.PlayerStats;
+import com.mrfdev.walktheplank.database.ScoreCategory;
 import com.mrfdev.walktheplank.database.ScoreEntry;
 import com.mrfdev.walktheplank.database.ScoreRepository;
 import com.mrfdev.walktheplank.game.GameManager;
@@ -94,7 +95,10 @@ public final class MenuService {
             return;
         }
 
-        ParkourMenu menu = new ParkourMenu(player);
+        show(player, new ParkourMenu(player));
+    }
+
+    private void show(Player player, ParkourMenu menu) {
         UUID ownerId = player.getUniqueId();
         GuiSessionRegistry.Session<Inventory, ParkourMenu> previous = sessions.current(ownerId);
         GuiSessionRegistry.Session<Inventory, ParkourMenu> current = sessions.activate(
@@ -299,17 +303,40 @@ public final class MenuService {
         private final UUID nonce = UUID.randomUUID();
         private final Inventory inventory;
         private final Map<Integer, Consumer<Player>> actions = new HashMap<>();
+        private final LeaderboardPage leaderboardPage;
         private long generation;
 
         private ParkourMenu(Player player) {
+            this(player, null, 1);
+        }
+
+        private ParkourMenu(Player player, LeaderboardKind kind, int requestedPage) {
             this.player = player;
             ownerId = player.getUniqueId();
-            ConfigurationSection gui = requireSection("mainGui");
+            leaderboardPage = kind == null
+                    ? null
+                    : LeaderboardPage.of(
+                            kind,
+                            leaderboardScores(kind),
+                            requestedPage,
+                            LeaderboardLayout.PAGE_SIZE);
+            ConfigurationSection gui = requireSection(
+                    leaderboardPage == null ? "mainGui" : "leaderboardGui");
+            Component configuredTitle = leaderboardPage == null
+                    ? messages.translated("mainGui.title", Map.of())
+                    : messages.render(gui.getString("title", "WalkThePlank"), Map.of(
+                            "boardName", leaderboardName(kind),
+                            "page", leaderboardPage.pageNumber(),
+                            "pages", leaderboardPage.pageCount()));
             Component title = MenuAppearance.readableTitle(
-                    messages.translated("mainGui.title", Map.of()),
+                    configuredTitle,
                     gui.getString("titleColor", MenuAppearance.DEFAULT_TITLE_COLOR));
             inventory = Bukkit.createInventory(this, MainMenuLayout.SIZE, title);
-            populate();
+            if (leaderboardPage == null) {
+                populateMain();
+            } else {
+                populateLeaderboard();
+            }
         }
 
         @Override
@@ -347,7 +374,7 @@ public final class MenuService {
             return actions.get(rawSlot);
         }
 
-        private void populate() {
+        private void populateMain() {
             ConfigurationSection gui = requireSection("mainGui");
             RuntimeSettings current = settings.get();
             if (gui.getBoolean("useFillItem", true)) {
@@ -375,7 +402,13 @@ public final class MenuService {
             setAction(
                     MainMenuLayout.SCOREBOARD_SLOT,
                     items.create(scoreboardSection, scoreboardLore(scoreboardSection)),
-                    this::showStats);
+                    clicker -> openLeaderboard(clicker, LeaderboardKind.CLASSIC, 1));
+
+            inventory.setItem(
+                    MainMenuLayout.STATUS_SLOT,
+                    items.create(
+                            requireSection("mainGui.statusItem"),
+                            statusReplacements(current)));
 
             ConfigurationSection playerSection =
                     requireSection("mainGui.playerItem");
@@ -403,6 +436,191 @@ public final class MenuService {
                     MainMenuLayout.CLOSE_SLOT,
                     items.create(requireSection("mainGui.closeItem")),
                     Player::closeInventory);
+        }
+
+        private void populateLeaderboard() {
+            ConfigurationSection gui = requireSection("leaderboardGui");
+            if (gui.getBoolean("useFillItem", true)) {
+                ItemStack fill = items.createFill(MenuAppearance.borderMaterial(
+                        gui.getString("fillItem", MenuAppearance.DEFAULT_BORDER_MATERIAL)));
+                for (int slot : LeaderboardLayout.BORDER_SLOTS) {
+                    inventory.setItem(slot, fill.clone());
+                }
+            }
+
+            String boardName = leaderboardName(leaderboardPage.kind());
+            int entryIndex = 0;
+            for (ScoreEntry entry : leaderboardPage.entries()) {
+                int slot = LeaderboardLayout.ENTRY_SLOTS.get(entryIndex++);
+                inventory.setItem(
+                        slot,
+                        items.create(requireSection("leaderboardGui.entryItem"), Map.of(
+                                "rank", entry.rank(),
+                                "playerName", entry.username(),
+                                "score", entry.score(),
+                                "boardName", boardName)));
+            }
+            if (leaderboardPage.entries().isEmpty()) {
+                inventory.setItem(
+                        MainMenuLayout.PLAY_SLOT,
+                        items.create(requireSection("leaderboardGui.emptyItem")));
+            }
+
+            setAction(
+                    LeaderboardLayout.BACK_SLOT,
+                    items.create(requireSection("leaderboardGui.backItem")),
+                    clicker -> show(clicker, new ParkourMenu(clicker)));
+            if (leaderboardPage.hasPrevious()) {
+                int target = leaderboardPage.pageNumber() - 1;
+                setAction(
+                        LeaderboardLayout.PREVIOUS_SLOT,
+                        items.create(
+                                requireSection("leaderboardGui.previousItem"),
+                                Map.of("targetPage", target)),
+                        clicker -> openLeaderboard(clicker, leaderboardPage.kind(), target));
+            }
+
+            addSelector(LeaderboardLayout.CLASSIC_SLOT, LeaderboardKind.CLASSIC, "classicItem");
+            if (scores.activeSeason().isPresent()) {
+                addSelector(LeaderboardLayout.SEASON_SLOT, LeaderboardKind.SEASON, "seasonItem");
+            } else {
+                inventory.setItem(
+                        LeaderboardLayout.SEASON_SLOT,
+                        items.create(requireSection("leaderboardGui.seasonUnavailableItem")));
+            }
+            addSelector(LeaderboardLayout.COMBO_SLOT, LeaderboardKind.COMBO, "comboItem");
+            addSelector(LeaderboardLayout.FLAWLESS_SLOT, LeaderboardKind.FLAWLESS, "flawlessItem");
+
+            if (leaderboardPage.hasNext()) {
+                int target = leaderboardPage.pageNumber() + 1;
+                setAction(
+                        LeaderboardLayout.NEXT_SLOT,
+                        items.create(
+                                requireSection("leaderboardGui.nextItem"),
+                                Map.of("targetPage", target)),
+                        clicker -> openLeaderboard(clicker, leaderboardPage.kind(), target));
+            }
+            setAction(
+                    LeaderboardLayout.CLOSE_SLOT,
+                    items.create(requireSection("leaderboardGui.closeItem")),
+                    Player::closeInventory);
+        }
+
+        private void addSelector(int slot, LeaderboardKind kind, String sectionName) {
+            boolean selected = leaderboardPage.kind() == kind;
+            Map<String, Object> replacements = new HashMap<>();
+            replacements.put("selectorAction", selected ? "Selected" : "Click to view.");
+            replacements.put(
+                    "seasonName",
+                    scores.activeSeason().map(season -> season.name()).orElse("No active season"));
+            ItemStack item = items.create(
+                    requireSection("leaderboardGui." + sectionName),
+                    Map.copyOf(replacements));
+            if (selected) {
+                org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+                meta.setEnchantmentGlintOverride(true);
+                item.setItemMeta(meta);
+            }
+            setAction(slot, item, clicker -> openLeaderboard(clicker, kind, 1));
+        }
+
+        private void openLeaderboard(Player clicker, LeaderboardKind kind, int page) {
+            String permission = settings.get().permissions().top();
+            if (!clicker.hasPermission(permission)) {
+                messages.send(clicker, "chat.noPermissionTop", Map.of("permissionName", permission));
+                clicker.closeInventory();
+                return;
+            }
+            if (kind == LeaderboardKind.SEASON && scores.activeSeason().isEmpty()) {
+                kind = LeaderboardKind.CLASSIC;
+                page = 1;
+            }
+            show(clicker, new ParkourMenu(clicker, kind, page));
+        }
+
+        private List<ScoreEntry> leaderboardScores(LeaderboardKind kind) {
+            return switch (kind) {
+                case CLASSIC -> scores.snapshot().scores();
+                case SEASON -> scores.activeSeasonScores()
+                        .map(snapshot -> snapshot.scores())
+                        .orElseGet(List::of);
+                case COMBO -> scores.categoryScores(ScoreCategory.COMBO).scores();
+                case FLAWLESS -> scores.categoryScores(ScoreCategory.FLAWLESS).scores();
+            };
+        }
+
+        private String leaderboardName(LeaderboardKind kind) {
+            return kind.label();
+        }
+
+        private Map<String, Object> statusReplacements(RuntimeSettings current) {
+            GameManager.PlaceholderSnapshot game = games.placeholderSnapshot(ownerId);
+            GameManager.QueueStatus queue = game.queue();
+            GameManager.SessionStatus session = game.session().orElse(null);
+            PlayerStats stats = scores.stats(ownerId).orElse(null);
+
+            String queueStatus;
+            if (!queue.enabled()) {
+                queueStatus = "Walk-up only";
+            } else if (queue.paused()) {
+                queueStatus = "Paused";
+            } else if (game.playerQueueReady()) {
+                queueStatus = "Arena ready now";
+            } else if (game.playerQueuePosition() > 0) {
+                queueStatus = "#" + game.playerQueuePosition() + " of " + queue.total();
+            } else if (queue.total() > 0) {
+                queueStatus = queue.total() + " waiting";
+            } else {
+                queueStatus = "No wait";
+            }
+
+            String runStatus = session == null
+                    ? "Not playing"
+                    : session.score() + " points • combo " + session.combo();
+            String timeStatus = session == null
+                    ? "—"
+                    : session.elapsedSeconds() + "s elapsed • " + session.idleSeconds() + "s idle";
+            String bestStatus;
+            if (stats == null) {
+                bestStatus = "No completed score";
+            } else if (session == null) {
+                bestStatus = stats.bestScore() + " points";
+            } else {
+                int pointsToBeat = Math.max(0, stats.bestScore() + 1 - session.score());
+                bestStatus = pointsToBeat == 0
+                        ? stats.bestScore() + " points • new-best pace"
+                        : stats.bestScore() + " points • " + pointsToBeat + " to beat";
+            }
+
+            return Map.of(
+                    "eventState", current.eventEnabled() ? "Open" : "Closed",
+                    "arenaStatus", game.availableArenas() + "/" + game.totalArenas()
+                            + " available • " + game.activeArenas() + " active",
+                    "queueStatus", queueStatus,
+                    "runStatus", runStatus,
+                    "timeStatus", timeStatus,
+                    "bestStatus", bestStatus,
+                    "nextRankStatus", nextRankStatus(stats));
+        }
+
+        private String nextRankStatus(PlayerStats stats) {
+            if (stats == null) {
+                return "Complete a run first";
+            }
+            if (stats.rank() == 1) {
+                return "You hold #1";
+            }
+            ScoreEntry target = null;
+            for (ScoreEntry entry : scores.snapshot().scores()) {
+                if (entry.rank() < stats.rank()) {
+                    target = entry;
+                } else {
+                    break;
+                }
+            }
+            return target == null
+                    ? "No higher target available"
+                    : "#" + target.rank() + " • " + (target.score() + 1) + " points";
         }
 
         private void play(Player clicker) {
