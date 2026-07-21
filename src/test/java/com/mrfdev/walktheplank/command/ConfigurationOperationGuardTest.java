@@ -13,4 +13,12 @@ class ConfigurationOperationGuardTest {
         assertFalse(WalkCommand.arenaEditStateCurrent(7L, 7L, false, true));
         assertFalse(WalkCommand.arenaEditStateCurrent(7L, 7L, true, false));
     }
+
+    @Test
+    void eventEditRequiresMatchingGenerationAuthorizationAndOpenLifecycle() {
+        assertTrue(EventCommands.editStateCurrent(7L, 7L, true, false));
+        assertFalse(EventCommands.editStateCurrent(7L, 8L, true, false));
+        assertFalse(EventCommands.editStateCurrent(7L, 7L, false, false));
+        assertFalse(EventCommands.editStateCurrent(7L, 7L, true, true));
+    }
 }

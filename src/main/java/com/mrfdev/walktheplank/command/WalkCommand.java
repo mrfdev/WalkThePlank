@@ -31,6 +31,7 @@ public final class WalkCommand {
     final PlayerCommands players;
     final QueueCommands queue;
     final ArenaCommands arenas;
+    final EventCommands events;
     final SeasonCommands seasons;
     final RewardCommands rewards;
     final InvestigationCommands investigations;
@@ -70,6 +71,7 @@ public final class WalkCommand {
                 Objects.requireNonNull(configuration, "configuration"),
                 Objects.requireNonNull(
                         configurationActivator, "configurationActivator"));
+        this.events = new EventCommands(support, configuration, this.reloadHandler);
         this.seasons = new SeasonCommands(support);
         this.rewards = new RewardCommands(support);
         this.investigations = new InvestigationCommands(support);
@@ -90,7 +92,9 @@ public final class WalkCommand {
      */
     public CompletableFuture<Boolean> prepareShutdown() {
         support.closeCommands();
-        return arenas.prepareShutdown();
+        return arenas.prepareShutdown().thenCombine(
+                events.prepareShutdown(),
+                (arenaClean, eventClean) -> arenaClean && eventClean);
     }
 
     int execute(
@@ -195,6 +199,11 @@ public final class WalkCommand {
                 permissions.reload(),
                 "/walk admin reload",
                 "Reload and safely drain runs");
+        support.addAdminHelp(
+                sender,
+                permissions.reload(),
+                "/walk admin event <status|enable|disable>",
+                "Persist and apply the event participation switch");
         support.addAdminHelp(
                 sender,
                 permissions.adminStop(),

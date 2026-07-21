@@ -47,8 +47,11 @@ class CommandArchitectureTest {
         assertTrue(tree.contains("ArgumentTypes.uuid()"));
         assertTrue(tree.contains("IntegerArgumentType.integer(1, 100)"));
         assertTrue(tree.contains("Commands.literal(\"confirm\")"));
+        assertTrue(tree.contains("Commands.literal(\"event\")"));
+        assertTrue(tree.contains("Commands.literal(\"enabled\")"));
         assertTrue(tree.contains(
                 "List.of(\"walk\", \"infinityparkour\", \"infp\")"));
+        assertTrue(descriptor.contains("softdepend: [Multiverse-Core,"));
         assertFalse(descriptor.contains("\ncommands:"));
     }
 
@@ -58,6 +61,7 @@ class CommandArchitectureTest {
                 "PlayerCommands.java",
                 "QueueCommands.java",
                 "ArenaCommands.java",
+                "EventCommands.java",
                 "SeasonCommands.java",
                 "RewardCommands.java",
                 "InvestigationCommands.java",

@@ -2,6 +2,18 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.8.1-026] — 2026-07-21
+
+Expected artifact: `1MB-WalkThePlank-v2.8.1-026-j25-26.2.jar`
+
+### In-game event participation control
+
+- Added typed `/walk admin event status|enable|disable`, explicit `/walk admin event enabled true|false`, and `on|off|true|false` convenience forms under the existing administrative reload permission.
+- Event changes atomically persist `event.enabled` off-thread, validate the complete configuration, then use the established reload pipeline to close menus, drain active/pending/queue work, and publish the new state. Failed activation restores the exact prior config bytes.
+- Added generation, authorization, lifecycle, concurrent-mutation, file-change, shutdown-reconciliation, audit, and post-commit verification gates. The success response is emitted only after the durable file and runtime state agree.
+- Declared Multiverse-Core as a soft dependency so configured arena worlds finish loading before strict startup validation when Multiverse is installed.
+- No automatic scheduling was added; operators still decide when an event opens and closes.
+
 ## [2.8.0-025] — 2026-07-21
 
 Expected artifact: `1MB-WalkThePlank-v2.8.0-025-j25-26.2.jar`

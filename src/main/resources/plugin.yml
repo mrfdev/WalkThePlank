@@ -6,9 +6,10 @@ prefix: 1MB-WalkThePlank
 authors: [Meldiron, The456gamer, mrfdev, 1MB]
 description: Standalone endless parkour modernized by 1MB for Paper 26.2.
 website: https://github.com/mrfdev/WalkThePlank
-# PlaceholderAPI is the only Java-level integration. The remaining entries are optional
-# command providers ordered before startup validation when they are installed.
-softdepend: [PlaceholderAPI, CMI, UltimateFireworks, PyroWelcomesPro]
+# PlaceholderAPI is the only Java-level integration. Multiverse-Core must finish loading
+# configured arena worlds before startup validation; the remaining entries are optional
+# command providers ordered before validation when they are installed.
+softdepend: [Multiverse-Core, PlaceholderAPI, CMI, UltimateFireworks, PyroWelcomesPro]
 permissions:
   infinityparkour.player:
     description: Grants the standard WalkThePlank player command set.

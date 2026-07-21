@@ -12,15 +12,15 @@ intermediate builds from this modernization and are fully superseded.
 
 The Bukkit plugin name intentionally remains `InfinityParkour`. This preserves the existing data directory at `plugins/InfinityParkour/`, so the live `config.yml`, `translations.yml`, and `database.db` can be upgraded in place without renaming player data.
 
-Current source release: **v2.8.0, build 025**
+Current source release: **v2.8.1, build 026**
 
 Expected standalone artifact:
 
 ```text
-1MB-WalkThePlank-v2.8.0-025-j25-26.2.jar
+1MB-WalkThePlank-v2.8.1-026-j25-26.2.jar
 ```
 
-> Real-player testing through build 022 confirmed normal movement, sequential scoring, exact two-platform rotation, cleanup, the modern GUI, and the summer appearance. Build 023 made FIFO reservation a separate default-off permission, and build 024 added the event roster, sounds, and global participation switch. Build 025 adds paged leaderboards and live menu status. Prior machine evidence remains historical, so build 025 needs its own freeze, Paper smoke, synchronization, GUI review, and client approval.
+> Real-player testing through build 022 confirmed normal movement, sequential scoring, exact two-platform rotation, cleanup, the modern GUI, and the summer appearance. Builds 023–025 added optional queue reservation, event themes/sounds, and paged GUI status. Build 026 adds durable in-game event opening/closing. Prior machine evidence remains historical, so build 026 needs its own freeze, Paper smoke, synchronization, command test, GUI review, and client approval.
 
 See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-walktheplank.md](feature-improvements-walktheplank.md) for the authoritative future-development TODO and implemented-versus-remaining status.
 
@@ -89,16 +89,16 @@ Build the deployment artifact with the checked-in Gradle wrapper:
 The deployable file is:
 
 ```text
-build/libs/1MB-WalkThePlank-v2.8.0-025-j25-26.2.jar
+build/libs/1MB-WalkThePlank-v2.8.1-026-j25-26.2.jar
 ```
 
 Do not deploy the `-unshaded.jar`; it does not contain SQLite JDBC. `build` runs the automated tests, creates the shaded artifact, and executes the archive/metadata verification gate. `freezeCandidate` additionally rejects a dirty Git tree. Every candidate embeds the full source commit and strict dirty state in `build-info.properties` and the JAR manifest; `/walk info`, `/walk debug overview`, and startup show the abbreviated source label.
 
-Earlier completed machine evidence is preserved in annotated RC tags and ignored operator release archives, but it does not prove build 025. The exact clean build-025 candidate needs two byte-identical builds, scenario-profile evidence, Paper smoke, live-copy preservation checks, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
+Earlier completed machine evidence is preserved in annotated RC tags and ignored operator release archives, but it does not prove build 026. The exact clean build-026 candidate needs two byte-identical builds, scenario-profile evidence, Paper smoke, live-copy preservation checks, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
 
 | Release property | Value |
 | --- | --- |
-| Filename | `1MB-WalkThePlank-v2.8.0-025-j25-26.2.jar` |
+| Filename | `1MB-WalkThePlank-v2.8.1-026-j25-26.2.jar` |
 | Source identity | Full Git commit plus strict clean/dirty state embedded in the JAR |
 | Final size and SHA-256 | Annotated candidate tag and operator release archive |
 | Automated test result | Must pass with zero failures/errors/skips and strict Java 25 compilation |
@@ -119,7 +119,7 @@ Useful build commands:
 ./gradlew syncTestServer
 ```
 
-`releaseInfo` must print version `2.8.0`, build `025`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 025 into the active plugin directory.
+`releaseInfo` must print version `2.8.1`, build `026`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 026 into the active plugin directory.
 
 ## Install or upgrade
 
@@ -132,7 +132,7 @@ For an existing server:
 3. Back up the old plugin JAR and the complete `plugins/InfinityParkour/` directory as one matched rollback set.
 4. Keep the data directory named `plugins/InfinityParkour/`.
 5. Remove or disable every older InfinityParkour/WalkThePlank JAR. Paper must see only one plugin with the `InfinityParkour` name.
-6. Copy `1MB-WalkThePlank-v2.8.0-025-j25-26.2.jar` into `plugins/`.
+6. Copy `1MB-WalkThePlank-v2.8.1-026-j25-26.2.jar` into `plugins/`.
 7. Start Paper and inspect the complete startup log. A successful live-data start should report 100 preserved Classic scores and, on the first schema-v3 migration only, a verified pre-migration backup path.
 8. Run `/walk info`, `/walk admin validate`, `/walk admin status`, `/walk admin doctor`, `/walk debug all`, and the full beta checklist before allowing players in.
 9. Stop Paper cleanly once and require the clean restoration/disable message before the event rehearsal is accepted.
@@ -185,6 +185,8 @@ The primary command is `/walktheplank`. `/walk`, `/infinityparkour`, and `/infp`
 | `/walk admin [help]` | Any admin child | Shows permission-filtered administrative help. |
 | `/walk admin open <player>` | `infinityparkour.admin.open` | Opens a new plugin menu for an exact-name online player. |
 | `/walk admin reload` | `infinityparkour.reload` | Validates/reloads config and translations, closes menus, ends active runs, cancels pending starts, and drains the queue. Database-path changes require a restart. |
+| `/walk admin event [status]` | `infinityparkour.reload` | Shows whether new event participation is open or closed. |
+| `/walk admin event <enable\|disable>` | `infinityparkour.reload` | Atomically persists `event.enabled`, validates, safely drains/reloads, and reports success only after disk/runtime verification. `enabled true\|false`, `on\|off`, and `true\|false` are equivalent. |
 | `/walk admin stop <player>` | `infinityparkour.admin.stop` | Stops an online player's run without reward eligibility. The run and positive score are still persisted. |
 | `/walk admin recover` | `infinityparkour.admin.recover` | Retries pending/quarantined block restoration and starts ownership-verified recovery lookups for eligible online players with durable pending records, without overwriting conflicts. |
 | `/walk admin validate` | `infinityparkour.admin.validate` | Validates on-disk config/translations without applying them; reports errors, warnings, and the safe SHA-256 config fingerprint. |
@@ -307,6 +309,8 @@ Examples:
 /walk settings particles reduced
 /walk settings sounds off
 /walk admin validate
+/walk admin event status
+/walk admin event enable
 /walk admin arena create summer-main
 /walk admin queue pause
 /walk admin season create Summer 2026
@@ -339,7 +343,7 @@ Defaults below are declared in `plugin.yml`. Leaf strings may be remapped under 
 | `infinityparkour.info` | False; player parent grants it | `/walk info` and `/walk version`. |
 | `infinityparkour.help` | False; player parent grants it | Permission-filtered help. |
 | `infinityparkour.preferences` | False; explicit grant or admin parent | View/change UUID-owned particle, sound, and title preferences through `/walk settings`. |
-| `infinityparkour.reload` | False; admin parent grants it | Root/nested reload. |
+| `infinityparkour.reload` | False; admin parent grants it | Root/nested reload and durable `/walk admin event` control. |
 | `infinityparkour.admin.open` | False; admin parent grants it | Open another player's menu. |
 | `infinityparkour.admin.debug` | False; admin parent grants it | Status/debug pages and the privacy-safe `/walk admin doctor` support report. |
 | `infinityparkour.admin.stop` | False; admin parent grants it | Stop another run without rewards. |
@@ -506,7 +510,7 @@ theme-presets:
         pitch: 1.0
 ```
 
-There is deliberately no event scheduler. Operators choose the theme and set `event.enabled: true`, validate/reload, announce the event, then set it false and reload when the event closes.
+There is deliberately no event scheduler. Operators choose the theme, then use `/walk admin event enable` to atomically persist, validate, reload, and open participation. `/walk admin event disable` safely drains and closes it. Editing `event.enabled` followed by `/walk admin reload` remains supported.
 
 Legacy configuration behavior is deliberate:
 
@@ -684,7 +688,7 @@ The current API intentionally does not expose mutable sessions, direct database 
 
 ## Testing and event approval
 
-The build-025 suite passes **295 tests across 73 test classes**, with zero failures, errors, or skips. It adds pagination bounds/empty-board and leaderboard layout coverage to the build-024 event/sound tests and the existing queue, precise landing, two-platform durability, Paper runtime, restoration, GUI, migration, permission, audit, recovery, reward, export, teleport, and reflection-locked event-contract suites. Earlier real-player testing approved sequential scoring, cleanup, the previous main GUI, and summer appearance; build 025 still requires the paged/status GUI review plus the global-switch and eight-theme sound acceptance matrix.
+The build-026 suite passes **297 tests across 74 test classes**, with zero failures, errors, or skips. It includes the build-025 pagination/layout coverage plus event-editor shape and command lifecycle/generation guards. Earlier real-player testing approved sequential scoring, cleanup, the previous main GUI, and summer appearance; build 026 still requires the event-command and paged/status GUI review plus the eight-theme sound matrix.
 
 Build 020 carries forward build 008's isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
 
@@ -695,8 +699,8 @@ Build 020 carries forward build 008's isolated destructive-test system. It never
 The test-only outputs are deliberately outside `build/libs/`:
 
 ```text
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.8.0-025.jar
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.8.0-025-Failpoints.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.8.1-026.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.8.1-026-Failpoints.jar
 ```
 
 `verifyReleaseJar` byte-scans the production JAR for scenario packages, commands, manifest/agent markers, canaries, every scenario-property prefix, and all 24 failpoint names. `verifyProductionScenarioIsolation` repeats that negative proof and requires the harness and instrumented copy to trigger positive controls, preventing a broken scan from reporting a false pass. It also builds a second instrumented copy and requires byte-for-byte identity. The runner refuses symlinked destructive roots and writes a bounded per-run nonce marker. Both the property-armed failpoint controller and the scenario plugin require that marker, the exact generated root/working directory/layout/data paths, and the bridge loaded by the instrumented target's own classloader.

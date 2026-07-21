@@ -269,6 +269,7 @@ final class WalkCommandTree {
                         command.support.permissions().reload()))
                 .executes(context -> command.execute(
                         context.getSource(), command::reload)));
+        admin.then(eventNode(command));
         admin.then(playerTargetNode(
                 "stop",
                 command,
@@ -316,6 +317,43 @@ final class WalkCommandTree {
                 .executes(context -> command.execute(
                         context.getSource(), command.database::doctor)));
         return admin;
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> eventNode(
+            WalkCommand command) {
+        LiteralArgumentBuilder<CommandSourceStack> event =
+                Commands.literal("event")
+                        .requires(source -> command.adminPermission(
+                                source,
+                                command.support.permissions().reload()))
+                        .executes(context -> command.execute(
+                                context.getSource(), command.events::status));
+        event.then(Commands.literal("status")
+                .executes(context -> command.execute(
+                        context.getSource(), command.events::status)));
+        for (String literal : List.of("enable", "on", "true")) {
+            event.then(Commands.literal(literal)
+                    .executes(context -> command.execute(
+                            context.getSource(),
+                            sender -> command.events.setEnabled(sender, true))));
+        }
+        for (String literal : List.of("disable", "off", "false")) {
+            event.then(Commands.literal(literal)
+                    .executes(context -> command.execute(
+                            context.getSource(),
+                            sender -> command.events.setEnabled(sender, false))));
+        }
+        LiteralArgumentBuilder<CommandSourceStack> enabled = Commands.literal("enabled");
+        enabled.then(Commands.literal("true")
+                .executes(context -> command.execute(
+                        context.getSource(),
+                        sender -> command.events.setEnabled(sender, true))));
+        enabled.then(Commands.literal("false")
+                .executes(context -> command.execute(
+                        context.getSource(),
+                        sender -> command.events.setEnabled(sender, false))));
+        event.then(enabled);
+        return event;
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> arenaNode(
