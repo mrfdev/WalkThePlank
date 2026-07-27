@@ -2,6 +2,18 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.8.2-027] — 2026-07-27
+
+Expected artifact: `1MB-WalkThePlank-v2.8.2-027-j25-26.2.jar`
+
+### UUID-first Floodgate identity compatibility
+
+- Fixed the conclusively reproduced `PlayerJoinEvent` failure for dot-prefixed Floodgate players such as `.Fedecito2579` without adding a Floodgate runtime dependency.
+- UUID remains the authoritative identity. The current player name is bounded display metadata: unchanged Java names remain limited to 3–16 ASCII letters/digits/underscores, while the additional accepted form is exactly one leading dot followed by 1–16 ASCII letters/digits/underscores.
+- Formatting codes, Unicode, whitespace, control characters, multiple dots, suffix dots, operators, and other punctuation remain rejected at both Java and SQLite boundaries.
+- SQLite schema v4 atomically rebuilds the three username-constrained score tables, verifies exact row-copy counts, validates the resulting constraints, records the migration, and uses the established verified pre-migration backup and retention policy.
+- Added exact-name runtime coverage and a populated schema-v3 migration regression that preserves Java UUID/name/score data before successfully storing the reproduced Floodgate UUID and name.
+
 ## [2.8.1-026] — 2026-07-21
 
 Expected artifact: `1MB-WalkThePlank-v2.8.1-026-j25-26.2.jar`

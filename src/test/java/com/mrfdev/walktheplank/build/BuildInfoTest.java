@@ -3,9 +3,12 @@ package com.mrfdev.walktheplank.build;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
@@ -15,11 +18,16 @@ class BuildInfoTest {
         try (InputStream stream = BuildInfoTest.class.getResourceAsStream("/build-info.properties")) {
             assertNotNull(stream);
             BuildInfo info = BuildInfo.loadProperties(stream);
-            assertEquals("v2.8.1 build 026", info.releaseLabel());
-            assertEquals("1MB-WalkThePlank-v2.8.1-026-j25-26.2.jar", info.artifactFile());
+            assertEquals("v2.8.2 build 027", info.releaseLabel());
+            assertEquals("1MB-WalkThePlank-v2.8.2-027-j25-26.2.jar", info.artifactFile());
             assertEquals("26.2.build.62-beta", info.paperApiVersion());
             assertEquals(62, info.paperApiBuild());
             assertEquals(40, info.sourceCommit().length());
+            String controlledScenarios = Files.readString(
+                    Path.of(System.getProperty("user.dir"))
+                            .resolve("scripts/run-controlled-scenarios.sh"));
+            assertTrue(controlledScenarios.contains(
+                    "[[ \"$user_version\" == 4 ]]"));
         }
     }
 

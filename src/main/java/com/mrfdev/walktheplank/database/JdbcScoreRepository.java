@@ -50,7 +50,7 @@ import java.util.regex.Pattern;
 
 /** SQLite JDBC-backed implementation of the score repository. */
 public final class JdbcScoreRepository implements ScoreRepository {
-    private static final int SCHEMA_VERSION = 3;
+    private static final int SCHEMA_VERSION = 4;
     private static final int MAX_MUTATION_ATTEMPTS = 3;
     private static final int DEFAULT_RUN_HISTORY_LIMIT = 10_000;
     private static final int MAX_RUN_HISTORY_LIMIT = 1_000_000;
@@ -71,6 +71,16 @@ public final class JdbcScoreRepository implements ScoreRepository {
             "uuid IS NOT NULL AND " + SQLITE_TRIMMED_UUID + " <> ''";
     private static final String SQLITE_IDENTITY_PREDICATE =
             "uuid = ? COLLATE NOCASE AND " + SQLITE_RESOLVED_UUID;
+    private static final String SQLITE_USERNAME_CONSTRAINT = """
+            CHECK (typeof(username) = 'text' AND (
+                (length(username) BETWEEN 3 AND 16
+                    AND username NOT GLOB '*[^A-Za-z0-9_]*')
+                OR
+                (length(username) BETWEEN 2 AND 17
+                    AND substr(username, 1, 1) = '.'
+                    AND substr(username, 2) NOT GLOB '*[^A-Za-z0-9_]*')
+            ))
+            """;
 
     private final DatabaseSettings settings;
     private final Logger logger;
@@ -921,6 +931,7 @@ public final class JdbcScoreRepository implements ScoreRepository {
         }
         requireIndexDefinition(connection, UUID_INDEX, requiredIndexSql().get(UUID_INDEX));
         requireIndexDefinition(connection, RANKING_INDEX, requiredIndexSql().get(RANKING_INDEX));
+        requireCurrentUsernameConstraints(connection);
         if (columns.get("uuid").nullable() && containsBlankUuid(connection)) {
             return true;
         }
@@ -929,7 +940,10 @@ public final class JdbcScoreRepository implements ScoreRepository {
 
     private void migrateSQLite(Connection connection)
             throws SQLException, ScoreRepositoryException {
+        int sourceSchemaVersion = sqliteUserVersion(connection);
         boolean scoreboardExists = sqliteTableExists(connection, "scoreboard");
+        boolean seasonScoresExist = sqliteTableExists(connection, "season_scores");
+        boolean categoryScoresExist = sqliteTableExists(connection, "category_scores");
         Map<String, ColumnInfo> existingColumns = scoreboardExists
                 ? sqliteColumns(connection, "scoreboard")
                 : Map.of();
@@ -959,12 +973,10 @@ public final class JdbcScoreRepository implements ScoreRepository {
                                     AND score >= 0 AND score <= 2147483647),
                             uuid VARCHAR(36) NULL,
                             username VARCHAR(128) NOT NULL
-                                CHECK (typeof(username) = 'text'
-                                    AND length(username) BETWEEN 3 AND 16
-                                    AND username NOT GLOB '*[^A-Za-z0-9_]*'),
+                                %s,
                             updated_at TIMESTAMP NULL
                         )
-                        """);
+                        """.formatted(SQLITE_USERNAME_CONSTRAINT));
             } else {
                 if (!existingColumns.containsKey("uuid")) {
                     statement.executeUpdate(
@@ -1022,15 +1034,13 @@ public final class JdbcScoreRepository implements ScoreRepository {
                         season_id VARCHAR(36) NOT NULL,
                         uuid VARCHAR(36) NOT NULL COLLATE NOCASE,
                         username VARCHAR(128) NOT NULL
-                            CHECK (typeof(username) = 'text'
-                                AND length(username) BETWEEN 3 AND 16
-                                AND username NOT GLOB '*[^A-Za-z0-9_]*'),
+                            %s,
                         score INTEGER NOT NULL DEFAULT 0 CHECK (score >= 0),
                         updated_at INTEGER NOT NULL,
                         UNIQUE (season_id, uuid),
                         FOREIGN KEY (season_id) REFERENCES seasons(id) ON DELETE RESTRICT
                     )
-                    """);
+                    """.formatted(SQLITE_USERNAME_CONSTRAINT));
             statement.executeUpdate(
                     "CREATE INDEX IF NOT EXISTS " + SEASON_RANKING_INDEX
                             + " ON season_scores(season_id, score DESC, id ASC)");
@@ -1129,14 +1139,12 @@ public final class JdbcScoreRepository implements ScoreRepository {
                             CHECK (category IN ('COMBO', 'FLAWLESS')),
                         uuid VARCHAR(36) NOT NULL COLLATE NOCASE,
                         username VARCHAR(128) NOT NULL
-                            CHECK (typeof(username) = 'text'
-                                AND length(username) BETWEEN 3 AND 16
-                                AND username NOT GLOB '*[^A-Za-z0-9_]*'),
+                            %s,
                         score INTEGER NOT NULL CHECK (score >= 1),
                         updated_at INTEGER NOT NULL,
                         UNIQUE (category, uuid)
                     )
-                    """);
+                    """.formatted(SQLITE_USERNAME_CONSTRAINT));
             statement.executeUpdate(
                     "CREATE INDEX IF NOT EXISTS " + CATEGORY_RANKING_INDEX
                             + " ON category_scores(category, score DESC, id ASC)");
@@ -1152,7 +1160,16 @@ public final class JdbcScoreRepository implements ScoreRepository {
                     )
                     """);
 
+            if (sourceSchemaVersion < 4) {
+                upgradeUsernameConstraints(
+                        connection,
+                        statement,
+                        scoreboardExists,
+                        seasonScoresExist,
+                        categoryScoresExist);
+            }
             validateRequiredSchema(connection);
+            requireCurrentUsernameConstraints(connection);
 
             try (PreparedStatement migration = connection.prepareStatement(
                     "INSERT OR IGNORE INTO schema_migrations (version, description) VALUES (?, ?)")) {
@@ -1162,10 +1179,15 @@ public final class JdbcScoreRepository implements ScoreRepository {
                 migration.setInt(1, 2);
                 migration.setString(2, "Seasons, bounded run history, and reward execution ledger");
                 migration.executeUpdate();
-                migration.setInt(1, SCHEMA_VERSION);
+                migration.setInt(1, 3);
                 migration.setString(
                         2,
                         "Accessibility preferences and separate combo/flawless categories");
+                migration.executeUpdate();
+                migration.setInt(1, SCHEMA_VERSION);
+                migration.setString(
+                        2,
+                        "UUID-first identity metadata supports dot-prefixed Floodgate names");
                 migration.executeUpdate();
             }
             statement.execute("PRAGMA user_version = " + SCHEMA_VERSION);
@@ -1173,6 +1195,148 @@ public final class JdbcScoreRepository implements ScoreRepository {
         } catch (SQLException | ScoreRepositoryException exception) {
             rollback(connection, exception);
             throw exception;
+        }
+    }
+
+    private static void upgradeUsernameConstraints(
+            Connection connection,
+            Statement statement,
+            boolean scoreboardExists,
+            boolean seasonScoresExist,
+            boolean categoryScoresExist)
+            throws SQLException, ScoreRepositoryException {
+        if (scoreboardExists) {
+            int rows = tableRowCount(connection, "scoreboard");
+            statement.executeUpdate("DROP INDEX IF EXISTS " + UUID_INDEX);
+            statement.executeUpdate("DROP INDEX IF EXISTS " + RANKING_INDEX);
+            statement.executeUpdate(
+                    "ALTER TABLE scoreboard RENAME TO scoreboard_before_username_v4");
+            statement.executeUpdate("""
+                    CREATE TABLE scoreboard (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        score INTEGER NOT NULL DEFAULT 0
+                            CHECK (typeof(score) = 'integer'
+                                AND score >= 0 AND score <= 2147483647),
+                        uuid VARCHAR(36) NULL,
+                        username VARCHAR(128) NOT NULL
+                            %s,
+                        updated_at TIMESTAMP NULL
+                    )
+                    """.formatted(SQLITE_USERNAME_CONSTRAINT));
+            int copied = statement.executeUpdate("""
+                    INSERT INTO scoreboard (id, score, uuid, username, updated_at)
+                    SELECT id, score, uuid, username, updated_at
+                    FROM scoreboard_before_username_v4
+                    """);
+            requireCopiedRows("scoreboard", rows, copied);
+            statement.executeUpdate("DROP TABLE scoreboard_before_username_v4");
+            statement.executeUpdate(
+                    "CREATE UNIQUE INDEX " + UUID_INDEX
+                            + " ON scoreboard(uuid COLLATE NOCASE) WHERE "
+                            + SQLITE_RESOLVED_UUID);
+            statement.executeUpdate(
+                    "CREATE INDEX " + RANKING_INDEX
+                            + " ON scoreboard(score DESC, id ASC)");
+        }
+
+        if (seasonScoresExist) {
+            int rows = tableRowCount(connection, "season_scores");
+            statement.executeUpdate("DROP INDEX IF EXISTS " + SEASON_RANKING_INDEX);
+            statement.executeUpdate(
+                    "ALTER TABLE season_scores RENAME TO season_scores_before_username_v4");
+            statement.executeUpdate("""
+                    CREATE TABLE season_scores (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        season_id VARCHAR(36) NOT NULL,
+                        uuid VARCHAR(36) NOT NULL COLLATE NOCASE,
+                        username VARCHAR(128) NOT NULL
+                            %s,
+                        score INTEGER NOT NULL DEFAULT 0 CHECK (score >= 0),
+                        updated_at INTEGER NOT NULL,
+                        UNIQUE (season_id, uuid),
+                        FOREIGN KEY (season_id) REFERENCES seasons(id) ON DELETE RESTRICT
+                    )
+                    """.formatted(SQLITE_USERNAME_CONSTRAINT));
+            int copied = statement.executeUpdate("""
+                    INSERT INTO season_scores (
+                        id, season_id, uuid, username, score, updated_at)
+                    SELECT id, season_id, uuid, username, score, updated_at
+                    FROM season_scores_before_username_v4
+                    """);
+            requireCopiedRows("season_scores", rows, copied);
+            statement.executeUpdate("DROP TABLE season_scores_before_username_v4");
+            statement.executeUpdate(
+                    "CREATE INDEX " + SEASON_RANKING_INDEX
+                            + " ON season_scores(season_id, score DESC, id ASC)");
+        }
+
+        if (categoryScoresExist) {
+            int rows = tableRowCount(connection, "category_scores");
+            statement.executeUpdate("DROP INDEX IF EXISTS " + CATEGORY_RANKING_INDEX);
+            statement.executeUpdate(
+                    "ALTER TABLE category_scores RENAME TO category_scores_before_username_v4");
+            statement.executeUpdate("""
+                    CREATE TABLE category_scores (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        category VARCHAR(16) NOT NULL
+                            CHECK (category IN ('COMBO', 'FLAWLESS')),
+                        uuid VARCHAR(36) NOT NULL COLLATE NOCASE,
+                        username VARCHAR(128) NOT NULL
+                            %s,
+                        score INTEGER NOT NULL CHECK (score >= 1),
+                        updated_at INTEGER NOT NULL,
+                        UNIQUE (category, uuid)
+                    )
+                    """.formatted(SQLITE_USERNAME_CONSTRAINT));
+            int copied = statement.executeUpdate("""
+                    INSERT INTO category_scores (
+                        id, category, uuid, username, score, updated_at)
+                    SELECT id, category, uuid, username, score, updated_at
+                    FROM category_scores_before_username_v4
+                    """);
+            requireCopiedRows("category_scores", rows, copied);
+            statement.executeUpdate("DROP TABLE category_scores_before_username_v4");
+            statement.executeUpdate(
+                    "CREATE INDEX " + CATEGORY_RANKING_INDEX
+                            + " ON category_scores(category, score DESC, id ASC)");
+        }
+    }
+
+    private static int tableRowCount(Connection connection, String tableName)
+            throws SQLException {
+        if (!Set.of("scoreboard", "season_scores", "category_scores").contains(tableName)) {
+            throw new IllegalArgumentException("Unsupported username table " + tableName);
+        }
+        try (Statement query = connection.createStatement();
+                ResultSet result = query.executeQuery("SELECT COUNT(*) FROM " + tableName)) {
+            if (!result.next()) {
+                throw new SQLException("Could not count rows in " + tableName);
+            }
+            return result.getInt(1);
+        }
+    }
+
+    private static void requireCopiedRows(String tableName, int expected, int copied)
+            throws ScoreRepositoryException {
+        if (copied != expected) {
+            throw new ScoreRepositoryException(
+                    "SQLite username migration copied " + copied + " of " + expected
+                            + " rows from " + tableName);
+        }
+    }
+
+    private static void requireCurrentUsernameConstraints(Connection connection)
+            throws SQLException, ScoreRepositoryException {
+        String expected = normalizeSchemaSql(SQLITE_USERNAME_CONSTRAINT);
+        for (String tableName : List.of("scoreboard", "season_scores", "category_scores")) {
+            String tableSql = sqliteObjectSql(connection, "table", tableName)
+                    .orElseThrow(() -> new ScoreRepositoryException(
+                            "SQLite schema is missing required table " + tableName));
+            if (!normalizeSchemaSql(tableSql).contains(expected)) {
+                throw new ScoreRepositoryException(
+                        "Unsupported SQLite schema: " + tableName
+                                + " does not enforce the current username metadata policy");
+            }
         }
     }
 

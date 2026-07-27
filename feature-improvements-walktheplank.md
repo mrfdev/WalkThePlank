@@ -1,17 +1,17 @@
 # WalkThePlank future improvements and release status
 
-This is the authoritative future-development TODO and release-status document. It separates what is implemented through source release **v2.8.1 build 026** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
+This is the authoritative future-development TODO and release-status document. It separates what is implemented through source release **v2.8.2 build 027** from what still needs server acceptance or future design work. “Implemented” means the behavior is present in source; the table or checklist identifies whether automated or Paper/live-data evidence still remains. It does not mean the summer-event candidate is production-approved. The release candidate still has to pass [checklist-walktheplank.md](checklist-walktheplank.md).
 
 Status labels:
 
-- **Implemented** — present in the current build-026 source.
+- **Implemented** — present in the current build-027 source.
 - **Implemented; beta verification pending** — present, but the final JAR still needs the named Paper/live-data test.
 - **Partial** — a safe foundation exists, but an important workflow or assurance remains.
 - **Proposed** — not present and must not be advertised as a current feature.
 
 ## Deferred modernization queue
 
-Build 003 remains the historical modernization baseline, build 004 the event-safety release, build 005 the destructive-testing foundation, build 006 the off-main durability release, and build 007 the command/API modernization release. Build 008 added bounded migration-backup retention, milestones/accessibility, separate Combo/Flawless categories, rate-limited movement anomaly evidence, and a verified audit chain. Builds 009–022 culminated in a successful real-player score-9 run and approved summer appearance. Builds 023–025 added optional queue reservation, event themes/sounds, and paged GUI status. Build 026 adds atomic in-game event opening/closing through the validated safe-reload pipeline. Every remaining unchecked feature stays deferred so its evidence cannot be confused with this candidate.
+Build 003 remains the historical modernization baseline, build 004 the event-safety release, build 005 the destructive-testing foundation, build 006 the off-main durability release, and build 007 the command/API modernization release. Build 008 added bounded migration-backup retention, milestones/accessibility, separate Combo/Flawless categories, rate-limited movement anomaly evidence, and a verified audit chain. Builds 009–022 culminated in a successful real-player score-9 run and approved summer appearance. Builds 023–026 added optional queue reservation, event themes/sounds, paged GUI status, and atomic in-game event control. Build 027 adds UUID-first dot-prefixed Floodgate display metadata and schema v4 without changing Classic ownership. Every remaining unchecked feature stays deferred so its evidence cannot be confused with this candidate.
 
 1. [x] **v2.1.1 build 004 — event-safety and operations implemented; beta acceptance still pending.** External-teleport decisions occur at `HIGHEST` with observation-only `MONITOR` and next-tick verification; GUI sessions bind owner UUID/nonce/generation/exact inventory with one pending action; trusted formatting is parsed separately from literal dynamic components with explicit `minimessage:` opt-in and legacy `&` compatibility; `/walk admin doctor` produces a privacy-safe report with an asynchronous SQLite probe.
 2. [x] **v2.1.2 build 005 — disposable Paper integration and fault-injection harness implemented; final-candidate and real-client evidence pending.** A separate test plugin, Java 25 Class-File API instrumented-copy builder, 24 named failpoints, two-start/PlaceholderAPI/lifecycle/log runner, real-player queue/teleport/GUI/reconnect/exit probes, reflection event contracts, and positive/negative production-isolation checks are present. Development-artifact runs passed the automated two-start profile and the `config.after_runtime_commit` exit-97/recovery profile; repeat them against the clean committed candidate and complete every applicable real-client/hard-kill checklist row before treating this item as release-qualified.
@@ -46,7 +46,7 @@ Build 008 includes all previous modernization layers documented in [CHANGELOG.md
 | Capability | Status | Notes |
 | --- | --- | --- |
 | Gradle build and wrapper | **Implemented** | Gradle 9.6.1, Shadow 9.5.1, strict Java 25 compilation. |
-| Paper target | **Implemented; final build-026 smoke pending** | Exact compile API is `26.2.build.62-beta`; `api-version: 26.2` and an explicit `ServerBuildInfo` gate reject older lines/builds. Repeat the controlled profile and full candidate smoke against build 62 or newer before approval. |
+| Paper target | **Implemented; final build-027 smoke pending** | Exact compile API is `26.2.build.62-beta`; `api-version: 26.2` and an explicit `ServerBuildInfo` gate reject older lines/builds. Repeat the controlled profile and full candidate smoke against build 62 or newer before approval. |
 | Standalone SQLite JAR | **Implemented** | SQLite JDBC 3.53.2.0 is shaded; MySQL/MariaDB is absent. |
 | Archive-composition gate | **Implemented** | Rejects bundled Paper/Bukkit/PlaceholderAPI/live-database classes or files and remote-database drivers. |
 | Isolated scenario artifacts | **Implemented; final-candidate rerun pending** | The harness is an independent Paper plugin and the Java 25 Class-File API transformer writes a distinct `TEST-ONLY-` copy. Neither is packaged beneath `build/libs/` or allowed to replace the production JAR. Development-artifact isolation and controlled-profile gates passed. |
@@ -60,7 +60,7 @@ Build 008 includes all previous modernization layers documented in [CHANGELOG.md
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| SQLite schema v3 | **Implemented; live-copy repeat pending** | Existing Classic scores plus seasons/run/reward durability, UUID-owned preferences, separate category bests, and exact per-run category projections. |
+| SQLite schema v4 | **Implemented; live-copy repeat pending** | Existing Classic scores plus seasons/run/reward durability, UUID-owned preferences, separate category bests, exact per-run category projections, and narrowly bounded dot-prefixed Floodgate display metadata without changing UUID ownership. |
 | Verified migration backup and retention | **Implemented; live-copy repeat pending** | `VACUUM INTO` plus `PRAGMA quick_check`; exact automatic candidates are all verified before the oldest excess is pruned. Default 5, configurable 2–100, operator-named files untouched. |
 | UUID ownership | **Implemented** | Existing UUID rows are preserved; unresolved legacy rows remain visible but cannot be claimed by name. |
 | Schema drift rejection | **Implemented** | Required constraints, foreign keys, and named index definitions are checked fail-closed. |
@@ -132,7 +132,7 @@ These are not hidden defects; they are explicit design or release boundaries tha
 ### P0 — finish before event approval
 
 1. **Qualify and commit the build-008 candidate.** Commit the reviewed source, create two byte-identical clean builds, rerun the controlled two-start and automated hard-kill profiles against that exact artifact, then record archive verification, final hash/size/test result, Paper 26.2 build-61-or-newer smoke, test-server sync, and plugin-log review. Earlier evidence remains historical.
-2. **Repeat schema-v3 migration on a disposable copy of all 100 live rows.** Compare every Classic UUID/score/top-ten position, verify source/database/automatic backups, exercise retention without touching operator files, and prove `_resources` stayed unchanged.
+2. **Repeat schema-v4 migration on a disposable copy of all 100 live rows.** Compare every Classic UUID/score/top-ten position, verify source/database/automatic backups, exercise retention without touching operator files, prove `_resources` stayed unchanged, and complete a dot-prefixed Floodgate identity/score write owned by its UUID.
 3. **Complete the real-client abuse/recovery matrix.** The test-only plugin records deterministic evidence and its player-assisted stale command exercises the real scheduled callback/revalidation path without fabricating packets. A real player must still perform simultaneous queue/start actions, GUI click/drag/hotbar/double-click/creative cases, every cleanup cause, cancelled/retargeted teleports, reconnect recovery, world protection, signs, containers, tile PDC, conflicts, and missing-world recovery. Run named hard-kill/restart cases separately.
 4. **Rehearse reward uncertainty with staging accounts.** Test PENDING discovery/abandon and UNKNOWN downstream investigation/resolution. Assign a named operator and never interpret a resolution as a replay request.
 5. **Rehearse rollback.** Restore the prior JAR and matching data folder together, measure recovery time, and document that database rollback discards later scores.

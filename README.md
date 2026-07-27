@@ -12,15 +12,15 @@ intermediate builds from this modernization and are fully superseded.
 
 The Bukkit plugin name intentionally remains `InfinityParkour`. This preserves the existing data directory at `plugins/InfinityParkour/`, so the live `config.yml`, `translations.yml`, and `database.db` can be upgraded in place without renaming player data.
 
-Current source release: **v2.8.1, build 026**
+Current source release: **v2.8.2, build 027**
 
 Expected standalone artifact:
 
 ```text
-1MB-WalkThePlank-v2.8.1-026-j25-26.2.jar
+1MB-WalkThePlank-v2.8.2-027-j25-26.2.jar
 ```
 
-> Real-player testing through build 022 confirmed normal movement, sequential scoring, exact two-platform rotation, cleanup, the modern GUI, and the summer appearance. Builds 023–025 added optional queue reservation, event themes/sounds, and paged GUI status. Build 026 adds durable in-game event opening/closing. Prior machine evidence remains historical, so build 026 needs its own freeze, Paper smoke, synchronization, command test, GUI review, and client approval.
+> Real-player testing through build 022 confirmed normal movement, sequential scoring, exact two-platform rotation, cleanup, the modern GUI, and the summer appearance. Builds 023–026 added optional queue reservation, event themes/sounds, paged GUI status, and durable in-game event control. Build 027 adds UUID-first dot-prefixed Floodgate identity compatibility and schema v4. Prior machine evidence remains historical, so build 027 needs its own freeze, Paper smoke, live-copy migration, synchronization, Bedrock-player test, GUI review, and client approval.
 
 See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-walktheplank.md](feature-improvements-walktheplank.md) for the authoritative future-development TODO and implemented-versus-remaining status.
 
@@ -53,7 +53,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release changes and [feature-improvements-w
 - A reward execution ledger with deterministic plan IDs, idempotency keys, command roots and SHA-256 hashes, atomic run-completion/reward-intent persistence, per-step dispatch states, a per-player completion barrier, and startup freezing of uncertain work without automatic replay.
 - A strict 1–32-entry reward command-root allow-list checked during configuration validation and again at runtime before command-map lookup or dispatch. The bundled roots are `say`, `cmi`, `uf`, and `welcomes`; operators should remove providers they do not intentionally use.
 - Atomic UUID-only CSV and JSON exports for all-time, active-season, and historical-season leaderboards. CSV fields receive spreadsheet-formula neutralization as defense in depth.
-- Schema-v3 SQLite migration with a verified pre-migration backup, bounded verified automatic-backup retention, schema/index/foreign-key validation, preservation of existing UUID-linked Classic rows, and exclusive process ownership of the configured database.
+- Schema-v4 SQLite migration with a verified pre-migration backup, bounded verified automatic-backup retention, schema/index/foreign-key validation, preservation of existing UUID-linked Classic rows, bounded dot-prefixed Floodgate display metadata, and exclusive process ownership of the configured database.
 - A built-in PlaceholderAPI expansion for all-time, season, queue, arena, and active-run values, backed by one immutable game-state publication per callback so asynchronous requests never traverse Bukkit-thread mutable collections.
 - A read-only Bukkit services API plus primary-thread lifecycle events.
 - Permission-filtered help, build information, safe diagnostics, health counters, configuration validation, and guarded in-game arena editing.
@@ -89,16 +89,16 @@ Build the deployment artifact with the checked-in Gradle wrapper:
 The deployable file is:
 
 ```text
-build/libs/1MB-WalkThePlank-v2.8.1-026-j25-26.2.jar
+build/libs/1MB-WalkThePlank-v2.8.2-027-j25-26.2.jar
 ```
 
 Do not deploy the `-unshaded.jar`; it does not contain SQLite JDBC. `build` runs the automated tests, creates the shaded artifact, and executes the archive/metadata verification gate. `freezeCandidate` additionally rejects a dirty Git tree. Every candidate embeds the full source commit and strict dirty state in `build-info.properties` and the JAR manifest; `/walk info`, `/walk debug overview`, and startup show the abbreviated source label.
 
-Earlier completed machine evidence is preserved in annotated RC tags and ignored operator release archives, but it does not prove build 026. The exact clean build-026 candidate needs two byte-identical builds, scenario-profile evidence, Paper smoke, live-copy preservation checks, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
+Earlier completed machine evidence is preserved in annotated RC tags and ignored operator release archives, but it does not prove build 027. The exact clean build-027 candidate needs two byte-identical builds, scenario-profile evidence, Paper smoke, live-copy schema-v4 preservation checks, checksum, archive, and candidate tag; none of that final evidence may be copied from another artifact. The checksum is deliberately not committed back into this source tree because changing a committed checksum would create a new source commit and invalidate the commit embedded in the JAR.
 
 | Release property | Value |
 | --- | --- |
-| Filename | `1MB-WalkThePlank-v2.8.1-026-j25-26.2.jar` |
+| Filename | `1MB-WalkThePlank-v2.8.2-027-j25-26.2.jar` |
 | Source identity | Full Git commit plus strict clean/dirty state embedded in the JAR |
 | Final size and SHA-256 | Annotated candidate tag and operator release archive |
 | Automated test result | Must pass with zero failures/errors/skips and strict Java 25 compilation |
@@ -119,7 +119,7 @@ Useful build commands:
 ./gradlew syncTestServer
 ```
 
-`releaseInfo` must print version `2.8.1`, build `026`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 026 into the active plugin directory.
+`releaseInfo` must print version `2.8.2`, build `027`, and the exact filename above. `syncTestServer` is a local deployment helper: it builds the release, moves older WalkThePlank/InfinityParkour JARs from the bundled Paper test server into `plugins-disabled/walktheplank/`, and copies only build 027 into the active plugin directory.
 
 ## Install or upgrade
 
@@ -132,8 +132,8 @@ For an existing server:
 3. Back up the old plugin JAR and the complete `plugins/InfinityParkour/` directory as one matched rollback set.
 4. Keep the data directory named `plugins/InfinityParkour/`.
 5. Remove or disable every older InfinityParkour/WalkThePlank JAR. Paper must see only one plugin with the `InfinityParkour` name.
-6. Copy `1MB-WalkThePlank-v2.8.1-026-j25-26.2.jar` into `plugins/`.
-7. Start Paper and inspect the complete startup log. A successful live-data start should report 100 preserved Classic scores and, on the first schema-v3 migration only, a verified pre-migration backup path.
+6. Copy `1MB-WalkThePlank-v2.8.2-027-j25-26.2.jar` into `plugins/`.
+7. Start Paper and inspect the complete startup log. A successful live-data start should report 100 preserved Classic scores and, on the first schema-v4 migration only, a verified pre-migration backup path.
 8. Run `/walk info`, `/walk admin validate`, `/walk admin status`, `/walk admin doctor`, `/walk debug all`, and the full beta checklist before allowing players in.
 9. Stop Paper cleanly once and require the clean restoration/disable message before the event rehearsal is accepted.
 
@@ -532,7 +532,7 @@ Runtime `{{placeholders}}`—including player and season names, database values,
 
 Reward commands are trusted console authority. They must be single-line, at most 2048 characters, and use a safe command root. When rewards are enabled, unavailable roots fail configuration validation. Matching ranges may overlap deliberately; validation warns because commands from every matching tier will be combined. An inclusive interval sweep rejects any configuration in which a possible score would combine more than the durable ledger limit of 100 non-empty steps.
 
-## SQLite schema v3, migration, backup retention, and UUID ownership
+## SQLite schema v4, migration, backup retention, and UUID ownership
 
 The only supported backend is `plugins/InfinityParkour/database.db` unless a different confined relative filename is configured.
 
@@ -540,7 +540,7 @@ Before opening SQLite, the repository acquires a non-blocking exclusive operatin
 
 The Gradle wrapper distribution is SHA-256 pinned, runtime/compile/test dependencies are locked, dependency checksums are verified, and CI actions are pinned to reviewed commit SHAs with weekly dependency update proposals. Release archives also use fixed entry ordering and timestamps. These controls are intended to support byte-for-byte comparison under the same pinned build environment; the release checklist still requires two observed clean-build hashes rather than assuming reproducibility across Java vendors or patch releases.
 
-Schema v3 contains:
+Schema v4 contains:
 
 - `scoreboard`: UUID-owned all-time bests and last-known names;
 - `schema_migrations`: applied schema records;
@@ -555,14 +555,14 @@ Schema v3 contains:
 Before mutating an existing non-empty database that requires migration, the plugin creates a sibling backup named like:
 
 ```text
-database.db.pre-migration-v3-<epoch-millis>.sqlite
+database.db.pre-migration-v4-<epoch-millis>.sqlite
 ```
 
 The backup is made with SQLite `VACUUM INTO` and must pass `PRAGMA quick_check` before migration proceeds. At every startup, exact automatic names matching `<database>.pre-migration-v<schema>-<epoch>[-suffix].sqlite` are treated as plugin-owned retention candidates: every candidate is a safe regular file and must pass `quick_check`, then only the oldest excess files beyond `database.sqlite.migrationBackupRetention` are removed. The default retains five and the accepted range is 2–100. A corrupt or non-regular automatic candidate fails startup; an operator-named file that does not match the exact pattern is never pruned.
 
-The schema migration runs transactionally and validates required columns, indexes, constraints, and foreign keys. Persistence accepts only vanilla Java last-known names matching `[A-Za-z0-9_]{3,16}` and non-negative scores no larger than Java's integer maximum; the fresh schema also records matching constraints. A database with a newer unsupported schema, malformed nonblank UUID, duplicate nonblank UUID, incompatible table/index definition, unsafe path, or failed backup disables the plugin safely.
+The schema migration runs transactionally and validates required columns, indexes, constraints, and foreign keys. UUIDs—not usernames—own every player record. The last-known name is bounded display metadata: ordinary Java names must match `[A-Za-z0-9_]{3,16}`, while Floodgate compatibility adds only the form `\\.[A-Za-z0-9_]{1,16}`. Formatting codes, Unicode, whitespace, control characters, multiple/suffix dots, operators, and other punctuation remain rejected. Scores must be non-negative and no larger than Java's integer maximum; the fresh schema records matching constraints. Schema v4 rebuilds the three username-constrained score tables transactionally and verifies their exact copied row counts. A database with a newer unsupported schema, malformed nonblank UUID, duplicate nonblank UUID, incompatible table/index definition, unsafe path, or failed backup disables the plugin safely.
 
-Build 008's disposable-copy schema-v3 rehearsal preserved all **100** rows and all **100** UUIDs, score sum **4256**, maximum score **149**, the unchanged Classic top ten, and a valid `PRAGMA quick_check`; its automatic backup passed retention verification and `_resources` remained unchanged. Build 023 has no database-schema change, but repeat the same invariants against its frozen candidate rather than treating older evidence as approval.
+Build 008's historical disposable-copy schema-v3 rehearsal preserved all **100** rows and all **100** UUIDs, score sum **4256**, maximum score **149**, the unchanged Classic top ten, and a valid `PRAGMA quick_check`; its automatic backup passed retention verification and `_resources` remained unchanged. Build 027 advances to schema v4 for bounded dot-prefixed Floodgate name metadata, so repeat the same invariants plus a Bedrock identity/score write against its frozen candidate rather than treating older evidence as approval.
 
 Migration never guesses identity from a username. Blank UUID text is normalized to unresolved `NULL`; malformed or duplicate nonblank UUIDs fail. Unresolved rows can remain visible in rankings, but player-specific lookup cannot claim them and UUID-only export refuses the entire affected snapshot. No CMI database or online API is queried automatically.
 
@@ -688,7 +688,7 @@ The current API intentionally does not expose mutable sessions, direct database 
 
 ## Testing and event approval
 
-The build-026 suite passes **297 tests across 74 test classes**, with zero failures, errors, or skips. It includes the build-025 pagination/layout coverage plus event-editor shape and command lifecycle/generation guards. Earlier real-player testing approved sequential scoring, cleanup, the previous main GUI, and summer appearance; build 026 still requires the event-command and paged/status GUI review plus the eight-theme sound matrix.
+The build-027 suite passes **298 tests across 74 test classes**, with zero failures, errors, or skips. It includes exact `.Fedecito2579` persistence coverage and a populated schema-v3-to-v4 migration regression in addition to build 026's event-editor, command lifecycle/generation, and earlier gameplay/durability coverage. Earlier real-player testing approved sequential scoring, cleanup, the previous main GUI, and summer appearance; build 027 still requires exact-artifact migration, Bedrock-player, event-command, paged/status GUI, and eight-theme sound review.
 
 Build 020 carries forward build 008's isolated destructive-test system. It never instruments the deployable JAR in place. Java 25's Class-File API transforms a separate copy and injects the test bridge only at the reviewed boundaries; a second, independently packaged Paper plugin drives scenarios and emits deterministic `WTP-SCENARIO PASS`, `FAIL`, `INFO`, and `PENDING` records. Build the artifacts and prove both negative and positive controls with:
 
@@ -699,8 +699,8 @@ Build 020 carries forward build 008's isolated destructive-test system. It never
 The test-only outputs are deliberately outside `build/libs/`:
 
 ```text
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.8.1-026.jar
-build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.8.1-026-Failpoints.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.8.2-027.jar
+build/scenario-artifacts/TEST-ONLY-1MB-WalkThePlank-v2.8.2-027-Failpoints.jar
 ```
 
 `verifyReleaseJar` byte-scans the production JAR for scenario packages, commands, manifest/agent markers, canaries, every scenario-property prefix, and all 24 failpoint names. `verifyProductionScenarioIsolation` repeats that negative proof and requires the harness and instrumented copy to trigger positive controls, preventing a broken scan from reporting a false pass. It also builds a second instrumented copy and requires byte-for-byte identity. The runner refuses symlinked destructive roots and writes a bounded per-run nonce marker. Both the property-armed failpoint controller and the scenario plugin require that marker, the exact generated root/working directory/layout/data paths, and the bridge loaded by the instrumented target's own classloader.

@@ -555,8 +555,8 @@ record_sqlite_evidence() {
         || fail "SQLite synchronous was not numeric after $phase: $synchronous"
     [[ "$foreign_keys" =~ ^[01]$ ]] \
         || fail "SQLite foreign_keys was not boolean after $phase: $foreign_keys"
-    [[ "$user_version" == 3 ]] \
-        || fail "SQLite user_version was not schema v3 after $phase: $user_version"
+    [[ "$user_version" == 4 ]] \
+        || fail "SQLite user_version was not schema v4 after $phase: $user_version"
     [[ "$line_count" == 5 && "$quick_check" == ok ]] \
         || fail "SQLite quick_check failed after $phase: ${quick_check:-no result}"
 

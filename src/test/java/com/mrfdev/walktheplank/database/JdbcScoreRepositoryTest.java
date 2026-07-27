@@ -85,7 +85,7 @@ class JdbcScoreRepositoryTest {
 
         try (Connection connection = connect(database)) {
             assertAll(
-                    () -> assertEquals(3, pragmaInt(connection, "user_version")),
+                    () -> assertEquals(4, pragmaInt(connection, "user_version")),
                     () -> assertTrue(columnIsNullable(connection, "scoreboard", "updated_at")),
                     () -> assertTrue(tableExists(connection, "seasons")),
                     () -> assertTrue(tableExists(connection, "season_scores")),
@@ -111,6 +111,126 @@ class JdbcScoreRepositoryTest {
             repository.initialize();
             assertTrue(repository.migrationBackup().isEmpty());
             assertEquals(2, repository.snapshot().totalEntries());
+        }
+    }
+
+    @Test
+    void migratesPopulatedSchemaThreeUsernameConstraintForFloodgateMetadata()
+            throws Exception {
+        Path database = temporaryDirectory.resolve("schema-three-floodgate.db");
+        try (JdbcScoreRepository repository = repository(database)) {
+            repository.initialize();
+            repository.createSeason(SEASON_ID, "Migration Season", BASE_TIME)
+                    .get(5, TimeUnit.SECONDS);
+            repository.activateSeason(SEASON_ID, BASE_TIME.plusSeconds(1))
+                    .get(5, TimeUnit.SECONDS);
+            repository.startRun(new RunStart(
+                            RUN_ID,
+                            ALICE_UUID,
+                            "JavaAlice",
+                            "main",
+                            BASE_TIME.plusSeconds(2),
+                            "2.8.1-026"))
+                    .get(5, TimeUnit.SECONDS);
+            repository.completeRun(new RunCompletion(
+                            RUN_ID,
+                            BASE_TIME.plusSeconds(10),
+                            42,
+                            "FALL",
+                            List.of(
+                                    new RunCategoryScore(ScoreCategory.COMBO, 8),
+                                    new RunCategoryScore(ScoreCategory.FLAWLESS, 42))))
+                    .get(5, TimeUnit.SECONDS);
+        }
+
+        try (Connection connection = connect(database);
+                Statement statement = connection.createStatement()) {
+            statement.executeUpdate("DROP INDEX uq_scoreboard_uuid");
+            statement.executeUpdate("DROP INDEX idx_scoreboard_ranking");
+            statement.executeUpdate(
+                    "ALTER TABLE scoreboard RENAME TO scoreboard_schema_four");
+            statement.executeUpdate("""
+                    CREATE TABLE scoreboard (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        score INTEGER NOT NULL DEFAULT 0
+                            CHECK (typeof(score) = 'integer'
+                                AND score >= 0 AND score <= 2147483647),
+                        uuid VARCHAR(36) NULL,
+                        username VARCHAR(128) NOT NULL
+                            CHECK (typeof(username) = 'text'
+                                AND length(username) BETWEEN 3 AND 16
+                                AND username NOT GLOB '*[^A-Za-z0-9_]*'),
+                        updated_at TIMESTAMP NULL
+                    )
+                    """);
+            statement.executeUpdate("""
+                    INSERT INTO scoreboard (id, score, uuid, username, updated_at)
+                    SELECT id, score, uuid, username, updated_at
+                    FROM scoreboard_schema_four
+                    """);
+            statement.executeUpdate("DROP TABLE scoreboard_schema_four");
+            statement.executeUpdate("""
+                    CREATE UNIQUE INDEX uq_scoreboard_uuid
+                    ON scoreboard(uuid COLLATE NOCASE)
+                    WHERE uuid IS NOT NULL
+                        AND trim(uuid, char(9) || char(10) || char(11)
+                            || char(12) || char(13) || char(32)) <> ''
+                    """);
+            statement.executeUpdate(
+                    "CREATE INDEX idx_scoreboard_ranking "
+                            + "ON scoreboard(score DESC, id ASC)");
+            statement.executeUpdate(
+                    "DELETE FROM schema_migrations WHERE version = 4");
+            statement.execute("PRAGMA user_version = 3");
+        }
+
+        UUID floodgateUuid =
+                UUID.fromString("00000000-0000-0000-0009-01f7f208c5b7");
+        Optional<Path> backup;
+        try (JdbcScoreRepository repository = repository(database)) {
+            repository.initialize();
+            backup = repository.migrationBackup();
+            repository.recordScore(floodgateUuid, ".Fedecito2579", 9)
+                    .get(5, TimeUnit.SECONDS);
+            assertAll(
+                    () -> assertEquals(
+                            42,
+                            repository.stats(ALICE_UUID).orElseThrow().bestScore()),
+                    () -> assertEquals(
+                            "JavaAlice",
+                            repository.stats(ALICE_UUID).orElseThrow().username()),
+                    () -> assertEquals(
+                            42,
+                            repository.activeSeasonScores()
+                                    .orElseThrow()
+                                    .stats(ALICE_UUID)
+                                    .orElseThrow()
+                                    .bestScore()),
+                    () -> assertEquals(
+                            8,
+                            repository.categoryStats(
+                                            ScoreCategory.COMBO, ALICE_UUID)
+                                    .orElseThrow()
+                                    .bestScore()),
+                    () -> assertEquals(
+                            42,
+                            repository.categoryStats(
+                                            ScoreCategory.FLAWLESS, ALICE_UUID)
+                                    .orElseThrow()
+                                    .bestScore()),
+                    () -> assertEquals(
+                            ".Fedecito2579",
+                            repository.stats(floodgateUuid).orElseThrow().username()));
+        }
+
+        assertTrue(backup.isPresent());
+        assertSQLiteQuickCheck(backup.orElseThrow());
+        try (Connection connection = connect(database);
+                Statement statement = connection.createStatement()) {
+            assertEquals(4, pragmaInt(connection, "user_version"));
+            assertThrows(SQLException.class, () -> statement.executeUpdate(
+                    "INSERT INTO scoreboard (score, username) "
+                            + "VALUES (1, '.Bad-Name')"));
         }
     }
 
@@ -300,12 +420,37 @@ class JdbcScoreRepositoryTest {
     }
 
     @Test
-    void runtimeScoreWritesAndRunInputsRejectNonVanillaNames() throws Exception {
+    void runtimeIdentityMetadataAcceptsNarrowFloodgateNamesAndRejectsUnsafeNames()
+            throws Exception {
         Path database = temporaryDirectory.resolve("runtime-name-validation.db");
         try (JdbcScoreRepository repository = repository(database)) {
             repository.initialize();
 
-            for (String username : List.of("&cAdmin", "\u00a7cAdmin", "=Formula", "AB")) {
+            UUID floodgateUuid =
+                    UUID.fromString("00000000-0000-0000-0009-01f7f208c5b7");
+            repository.touchIdentity(floodgateUuid, ".Fedecito2579")
+                    .get(5, TimeUnit.SECONDS);
+            ScoreUpdateResult floodgate = repository.recordScore(
+                            floodgateUuid, ".Fedecito2579", 10)
+                    .get(5, TimeUnit.SECONDS);
+            assertAll(
+                    () -> assertEquals(floodgateUuid, floodgate.uuid()),
+                    () -> assertEquals(".Fedecito2579", floodgate.username()),
+                    () -> assertEquals(
+                            ".Fedecito2579",
+                            repository.stats(floodgateUuid).orElseThrow().username()));
+
+            for (String username : List.of(
+                    "&cAdmin",
+                    "\u00a7cAdmin",
+                    "=Formula",
+                    "AB",
+                    ".",
+                    "..Alice",
+                    "Alice.",
+                    ".Bad-Name",
+                    ".Bad Name",
+                    "." + "A".repeat(17))) {
                 assertThrows(
                         IllegalArgumentException.class,
                         () -> repository.touchIdentity(ALICE_UUID, username));
@@ -334,9 +479,11 @@ class JdbcScoreRepositoryTest {
 
             repository.recordScore(ALICE_UUID, "Player_123", 0)
                     .get(5, TimeUnit.SECONDS);
+            repository.recordScore(BOB_UUID, ".A", 0)
+                    .get(5, TimeUnit.SECONDS);
             assertAll(
-                    () -> assertEquals(1, repository.snapshot().totalEntries()),
-                    () -> assertEquals("Player_123", repository.top().get(0).username()));
+                    () -> assertEquals(3, repository.snapshot().totalEntries()),
+                    () -> assertEquals(".Fedecito2579", repository.top().get(0).username()));
         }
     }
 

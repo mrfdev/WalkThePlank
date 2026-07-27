@@ -7,17 +7,20 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 final class PersistenceValidation {
-    private static final Pattern PLAYER_NAME_PATTERN =
+    private static final Pattern JAVA_PLAYER_NAME_PATTERN =
             Pattern.compile("[A-Za-z0-9_]{3,16}");
+    private static final Pattern FLOODGATE_PLAYER_NAME_PATTERN =
+            Pattern.compile("\\.[A-Za-z0-9_]{1,16}");
 
     private PersistenceValidation() {
     }
 
     static String playerName(String value) {
         Objects.requireNonNull(value, "username");
-        if (!PLAYER_NAME_PATTERN.matcher(value).matches()) {
+        if (!JAVA_PLAYER_NAME_PATTERN.matcher(value).matches()
+                && !FLOODGATE_PLAYER_NAME_PATTERN.matcher(value).matches()) {
             throw new IllegalArgumentException(
-                    "username must contain 3 to 16 ASCII letters, digits, or underscores");
+                    "username must be a Java name or a dot-prefixed Floodgate name");
         }
         return value;
     }
