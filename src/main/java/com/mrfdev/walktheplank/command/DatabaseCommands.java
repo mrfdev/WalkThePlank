@@ -1,5 +1,6 @@
 package com.mrfdev.walktheplank.command;
 
+import com.mrfdev.walktheplank.build.JavaRuntimePolicy;
 import com.mrfdev.walktheplank.build.PaperRuntimePolicy;
 import com.mrfdev.walktheplank.config.PermissionSettings;
 import com.mrfdev.walktheplank.config.RuntimeSettings;
@@ -182,9 +183,9 @@ final class DatabaseCommands {
                 pluginTasks.stream().filter(BukkitTask::isSync).count();
         long asynchronousTasks = pluginTasks.size() - synchronousTasks;
 
-        int runtimeJava = Runtime.version().feature();
-        boolean javaMatches = Integer.toString(runtimeJava)
-                .equals(support.buildInfo.javaTarget());
+        JavaRuntimePolicy.Verification javaRuntime =
+                JavaRuntimePolicy.current(support.buildInfo);
+        boolean javaSupported = javaRuntime.supported();
         PaperRuntimePolicy.Verification paperRuntime =
                 PaperRuntimePolicy.current(support.buildInfo);
         boolean paperMatches = paperRuntime.supported();
@@ -213,7 +214,7 @@ final class DatabaseCommands {
 
         int warnings = 0;
         warnings += support.buildInfo.sourceDirty() ? 1 : 0;
-        warnings += javaMatches ? 0 : 1;
+        warnings += javaSupported ? 0 : 1;
         warnings += paperMatches ? 0 : 1;
         warnings += database.quickCheckPassed() ? 0 : 1;
         warnings += current.finishCommandsEnabled()
@@ -264,7 +265,7 @@ final class DatabaseCommands {
                 "Java target/runtime",
                 support.buildInfo.javaTarget() + " / "
                         + System.getProperty("java.version", "unknown")
-                        + (javaMatches ? " (match)" : " (MISMATCH)"));
+                        + " (" + javaRuntime.relationshipLabel() + ")");
         support.sendField(
                 sender,
                 "Paper target/runtime",

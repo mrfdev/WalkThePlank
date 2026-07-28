@@ -16,6 +16,7 @@ public record BuildInfo(
         String javaTarget,
         String paperTarget,
         String paperApiVersion,
+        int paperMinimumBuild,
         String placeholderApiVersion,
         String sourceCommit,
         boolean sourceDirty) {
@@ -44,6 +45,13 @@ public record BuildInfo(
             throw new IllegalArgumentException(
                     "paperApiVersion must be an exact build on the Paper target line");
         }
+        if (paperMinimumBuild < 1) {
+            throw new IllegalArgumentException("paperMinimumBuild must be positive");
+        }
+        if (Integer.parseInt(paperApi.group(2)) != paperMinimumBuild) {
+            throw new IllegalArgumentException(
+                    "paperMinimumBuild must match the exact compiled Paper API build");
+        }
     }
 
     public static BuildInfo load(JavaPlugin plugin) throws IOException {
@@ -66,6 +74,9 @@ public record BuildInfo(
                 properties.getProperty("javaTarget"),
                 properties.getProperty("paperTarget"),
                 properties.getProperty("paperApiVersion"),
+                requirePositiveInt(
+                        properties.getProperty("paperMinimumBuild"),
+                        "paperMinimumBuild"),
                 properties.getProperty("placeholderApiVersion"),
                 properties.getProperty("sourceCommit"),
                 requireBoolean(properties.getProperty("sourceDirty"), "sourceDirty"));
@@ -104,5 +115,20 @@ public record BuildInfo(
             default -> throw new IllegalArgumentException(
                     "Invalid embedded boolean build value for " + name);
         };
+    }
+
+    private static int requirePositiveInt(String value, String name) {
+        String normalized = requireValue(value, name);
+        if (!normalized.matches("[1-9]\\d*")) {
+            throw new IllegalArgumentException(
+                    "Invalid embedded positive integer build value for " + name);
+        }
+        try {
+            return Integer.parseInt(normalized);
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(
+                    "Embedded build value is too large for " + name,
+                    exception);
+        }
     }
 }

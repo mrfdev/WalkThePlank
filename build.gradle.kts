@@ -17,6 +17,7 @@ val buildNumber = providers.gradleProperty("buildNumber").get()
 val javaTarget = providers.gradleProperty("javaTarget").get()
 val paperTarget = providers.gradleProperty("paperTarget").get()
 val paperApiVersion = providers.gradleProperty("paperApiVersion").get()
+val paperMinimumBuild = providers.gradleProperty("paperMinimumBuild").get()
 val placeholderApiVersion = providers.gradleProperty("placeholderApiVersion").get()
 val sqliteJdbcVersion = providers.gradleProperty("sqliteJdbcVersion").get()
 val junitVersion = providers.gradleProperty("junitVersion").get()
@@ -38,6 +39,19 @@ require(buildNumber.matches(Regex("\\d{3}"))) {
 }
 require(javaTarget == "25") { "This release line must compile for Java 25" }
 require(paperTarget == "26.2") { "This release line must target Paper 26.2" }
+require(paperApiVersion.matches(
+    Regex("${Regex.escape(paperTarget)}\\.build\\.\\d+-stable"),
+)) {
+    "paperApiVersion must be an exact stable build on the Paper $paperTarget line"
+}
+require(paperMinimumBuild.matches(Regex("[1-9]\\d*"))) {
+    "paperMinimumBuild must be a positive integer"
+}
+require(paperMinimumBuild == paperApiVersion
+    .substringAfter(".build.")
+    .substringBefore('-')) {
+    "paperMinimumBuild must match the exact stable compile API for this release"
+}
 
 version = pluginVersion
 
@@ -128,6 +142,7 @@ tasks.processResources {
         "javaTarget" to javaTarget,
         "paperTarget" to paperTarget,
         "paperApiVersion" to paperApiVersion,
+        "paperMinimumBuild" to paperMinimumBuild,
         "placeholderApiVersion" to placeholderApiVersion,
         "artifactFile" to releaseJarName,
         "sourceCommit" to sourceCommit,
@@ -348,6 +363,8 @@ tasks.withType<Jar>().configureEach {
         "1MB-Build-Number" to buildNumber,
         "Build-Java-Target" to javaTarget,
         "Build-Paper-Target" to paperTarget,
+        "Build-Paper-API" to paperApiVersion,
+        "Build-Paper-Minimum-Build" to paperMinimumBuild,
         "Build-Source-Commit" to sourceCommit,
         "Build-Source-Dirty" to sourceDirty.toString(),
     )
@@ -360,6 +377,9 @@ tasks.register("releaseInfo") {
         logger.lifecycle("Version: $pluginVersion")
         logger.lifecycle("Build: $buildNumber")
         logger.lifecycle("Artifact: $releaseJarName")
+        logger.lifecycle("Java target: $javaTarget")
+        logger.lifecycle("Paper target: $paperTarget build $paperMinimumBuild or newer")
+        logger.lifecycle("Paper API: $paperApiVersion")
         logger.lifecycle("Source: $sourceCommit${if (sourceDirty) "-dirty" else "-clean"}")
     }
 }
@@ -441,6 +461,9 @@ val verifyReleaseJar = tasks.register("verifyReleaseJar") {
             check(buildProperties.getProperty("artifactFile") == releaseJarName)
             check(buildProperties.getProperty("javaTarget") == javaTarget)
             check(buildProperties.getProperty("paperTarget") == paperTarget)
+            check(buildProperties.getProperty("paperApiVersion") == paperApiVersion)
+            check(buildProperties.getProperty("paperMinimumBuild") == paperMinimumBuild)
+            check(buildProperties.getProperty("placeholderApiVersion") == placeholderApiVersion)
             check(buildProperties.getProperty("sourceCommit") == sourceCommit)
             check(buildProperties.getProperty("sourceDirty") == sourceDirty.toString())
 
@@ -452,7 +475,7 @@ val verifyReleaseJar = tasks.register("verifyReleaseJar") {
                 .use { it.readText() }
             check(descriptor.contains("name: InfinityParkour"))
             check(descriptor.contains("version: '$pluginDescriptorVersion'"))
-            check(descriptor.contains("api-version: '26.2'"))
+            check(descriptor.contains("api-version: '$paperTarget'"))
 
             val manifest = checkNotNull(jar.manifest) { "Release is missing its manifest" }
             val attributes = manifest.mainAttributes
@@ -460,6 +483,8 @@ val verifyReleaseJar = tasks.register("verifyReleaseJar") {
             check(attributes.getValue("1MB-Build-Number") == buildNumber)
             check(attributes.getValue("Build-Java-Target") == javaTarget)
             check(attributes.getValue("Build-Paper-Target") == paperTarget)
+            check(attributes.getValue("Build-Paper-API") == paperApiVersion)
+            check(attributes.getValue("Build-Paper-Minimum-Build") == paperMinimumBuild)
             check(attributes.getValue("Build-Source-Commit") == sourceCommit)
             check(attributes.getValue("Build-Source-Dirty") == sourceDirty.toString())
             check(attributes.getValue("WalkThePlank-Test-Artifact") == null)
@@ -577,7 +602,90 @@ val verifyProductionScenarioIsolation =
                     .getValue("WalkThePlank-Test-Artifact") == "instrumented-failpoints")
             }
         }
+}
+
+val verifyReleaseDrift = tasks.register("verifyReleaseDrift") {
+    group = "verification"
+    description =
+        "Rejects stale current-release, Java, Paper, API, and artifact references in maintained documentation."
+
+    val expectedArtifact = releaseJarName
+    val expectedRelease = "$pluginVersion-$buildNumber"
+    val expectedApi = paperApiVersion
+    val expectedPaperBuild = paperApiVersion
+        .substringAfter(".build.")
+        .substringBefore('-')
+    val requiredMarkers = mapOf(
+        "README.md" to listOf(
+            "Current source release: **v$pluginVersion, build $buildNumber**",
+            expectedArtifact,
+            "Paper **$paperTarget build $expectedPaperBuild stable or newer**",
+            "Java **$javaTarget** bytecode and minimum runtime",
+            "successful live-data start must report the stopped pre-start score count",
+        ),
+        "checklist-walktheplank.md" to listOf(
+            "# WalkThePlank v$expectedRelease beta and event checklist",
+            expectedArtifact,
+            "`$expectedApi`",
+            "Oracle Java `25.0.4",
+            "Oracle Java `26.0.2",
+        ),
+        "feature-improvements-walktheplank.md" to listOf(
+            "source release **v$pluginVersion build $buildNumber**",
+            "current build-$buildNumber source",
+            "Exact compile API is `$expectedApi`",
+        ),
+        "CHANGELOG.md" to listOf(
+            "## [$expectedRelease]",
+            "Expected artifact: `$expectedArtifact`",
+        ),
+        "docs/CONTROLLED-SCENARIOS.md" to listOf(
+            "jdk-25.0.4.jdk/Contents/Home/bin/java",
+            "26.2 build $expectedPaperBuild or newer",
+        ),
+        "scripts/run-controlled-scenarios.sh" to listOf(
+            "jdk-25.0.4.jdk/Contents/Home/bin/java",
+            "paperApiVersion",
+        ),
+    )
+    inputs.files(requiredMarkers.keys.map(::file))
+    inputs.properties(
+        mapOf(
+            "pluginVersion" to pluginVersion,
+            "buildNumber" to buildNumber,
+            "javaTarget" to javaTarget,
+            "paperTarget" to paperTarget,
+            "paperApiVersion" to paperApiVersion,
+            "paperMinimumBuild" to paperMinimumBuild,
+            "releaseJarName" to releaseJarName,
+        ),
+    )
+
+    doLast {
+        for ((path, markers) in requiredMarkers) {
+            val content = file(path).readText(Charsets.UTF_8)
+            for (marker in markers) {
+                check(marker in content) {
+                    "$path is missing current release marker: $marker"
+                }
+            }
+        }
+
+        val scenarioScript = file("scripts/run-controlled-scenarios.sh")
+            .readText(Charsets.UTF_8)
+        check("jdk-25.0.2.jdk" !in scenarioScript) {
+            "Controlled-scenario script still contains the retired JDK 25.0.2 path"
+        }
+        check("jdk-26.0.1.jdk" !in scenarioScript) {
+            "Controlled-scenario script still contains the retired JDK 26.0.1 path"
+        }
+        val checklist = file("checklist-walktheplank.md")
+            .readText(Charsets.UTF_8)
+        check("Paper beta status" !in checklist) {
+            "Acceptance checklist still describes the current stable Paper release as beta"
+        }
     }
+}
 
 tasks.build {
     dependsOn(verifyReleaseJar)
@@ -585,6 +693,7 @@ tasks.build {
 
 tasks.check {
     dependsOn(verifyProductionScenarioIsolation)
+    dependsOn(verifyReleaseDrift)
 }
 
 val verifyCleanSource = tasks.register("verifyCleanSource") {

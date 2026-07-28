@@ -5,8 +5,9 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 project_dir="$(cd "$script_dir/.." && pwd -P)"
 invocation_dir="$PWD"
+release_properties="$project_dir/gradle.properties"
 
-default_java="/Library/Java/JavaVirtualMachines/jdk-25.0.2.jdk/Contents/Home/bin/java"
+default_java="/Library/Java/JavaVirtualMachines/jdk-25.0.4.jdk/Contents/Home/bin/java"
 default_paper="$project_dir/servers/Paper-26.2/Paper-26.2.jar"
 default_placeholderapi="$project_dir/servers/Paper-26.2/plugins/PlaceholderAPI-2.12.3.jar"
 runtime_root="$project_dir/build/controlled-scenarios"
@@ -66,7 +67,7 @@ General options:
 
 Environment:
   JAVA_BIN                      Java executable. Defaults to the exact Java 25 path:
-                                /Library/Java/JavaVirtualMachines/jdk-25.0.2.jdk/Contents/Home/bin/java
+                                /Library/Java/JavaVirtualMachines/jdk-25.0.4.jdk/Contents/Home/bin/java
   SCENARIO_FAILPOINT_TIMEOUT    Default failpoint wait in seconds.
 
 Examples:
@@ -87,6 +88,15 @@ fail() {
 
 note() {
     printf 'CONTROLLED-SCENARIO: %s\n' "$*"
+}
+
+release_property() {
+    local key="$1"
+    local value
+    value="$(sed -n "s/^${key}=//p" "$release_properties")"
+    [[ -n "$value" && "$value" != *$'\n'* ]] \
+        || fail "gradle.properties must define exactly one $key value"
+    printf '%s\n' "$value"
 }
 
 require_value() {
@@ -219,6 +229,28 @@ if [[ "$trigger_command" == *$'\n'* || "$trigger_command" == *$'\r'* ]]; then
     fail "--trigger-command must be exactly one console command"
 fi
 
+[[ -f "$release_properties" ]] \
+    || fail "canonical release properties not found: $release_properties"
+java_target="$(release_property javaTarget)"
+paper_target="$(release_property paperTarget)"
+paper_api_version="$(release_property paperApiVersion)"
+paper_minimum_build="$(release_property paperMinimumBuild)"
+paper_target_pattern="${paper_target//./\\.}"
+if [[ "$paper_api_version" =~ ^${paper_target_pattern}\.build\.([0-9]+)-(alpha|beta|stable)$ ]]; then
+    paper_api_build="${BASH_REMATCH[1]}"
+    paper_api_channel="${BASH_REMATCH[2]}"
+else
+    fail "paperApiVersion is not an exact Paper $paper_target build: $paper_api_version"
+fi
+[[ "$java_target" == "25" ]] \
+    || fail "controlled release scenarios require canonical Java target 25"
+[[ "$paper_minimum_build" =~ ^[1-9][0-9]*$ ]] \
+    || fail "paperMinimumBuild must be a positive integer"
+[[ "$paper_minimum_build" == "$paper_api_build" ]] \
+    || fail "paperMinimumBuild must match the exact Paper API build"
+[[ "$paper_api_channel" == "stable" ]] \
+    || fail "controlled release scenarios require an exact stable Paper API"
+
 if [[ "$paper_jar" != /* ]]; then
     if [[ "$paper_was_set" == true ]]; then
         paper_jar="$invocation_dir/$paper_jar"
@@ -245,10 +277,11 @@ if [[ -z "$failpoint_name" || "$placeholderapi_was_set" == true ]]; then
     )"
 fi
 
-[[ -x "$java_bin" ]] || fail "Java 25 executable not found or not executable: $java_bin"
+[[ -x "$java_bin" ]] \
+    || fail "Java $java_target executable not found or not executable: $java_bin"
 java_version="$("$java_bin" -version 2>&1 | sed -n '1p')"
-[[ "$java_version" == *'"25.'* || "$java_version" == *'"25"'* ]] \
-    || fail "Java 25 is required; detected: $java_version"
+[[ "$java_version" == *"\"$java_target."* || "$java_version" == *"\"$java_target\""* ]] \
+    || fail "Java $java_target is required; detected: $java_version"
 
 cleanup() {
     local original_status=$?
@@ -475,31 +508,45 @@ assert_failpoint_log() {
 
 assert_runtime_identity() {
     local java_line
+    local paper_identity
+    local paper_target_runtime
     local paper_build
+    local api_identity
+    local api_target_runtime
     local api_build
+    local api_channel
 
     refresh_log
-    java_line="$(grep -E '\[bootstrap\] Running Java 25([ .(]|$)' "$server_clean_log" \
+    java_line="$(grep -E "\\[bootstrap\\] Running Java ${java_target}([ .(]|$)" "$server_clean_log" \
         | sed -n '1p')"
-    paper_build="$(sed -nE \
-        's/.*\[bootstrap\] Loading Paper 26\.2-([0-9]+)-.*/\1/p' \
+    paper_identity="$(sed -nE \
+        's/.*\[bootstrap\] Loading Paper ([0-9]+\.[0-9]+)-([0-9]+)-.*/\1 \2/p' \
         "$server_clean_log" \
         | sed -n '1p')"
-    api_build="$(sed -nE \
-        's/.*Implementing API version 26\.2\.build\.([0-9]+)-beta.*/\1/p' \
+    api_identity="$(sed -nE \
+        's/.*Implementing API version ([0-9]+\.[0-9]+)\.build\.([0-9]+)-(alpha|beta|stable).*/\1 \2 \3/p' \
         "$server_clean_log" \
         | sed -n '1p')"
+    read -r paper_target_runtime paper_build <<<"$paper_identity"
+    read -r api_target_runtime api_build api_channel <<<"$api_identity"
 
-    [[ -n "$java_line" ]] || fail "server log does not prove a Java 25 runtime"
+    [[ -n "$java_line" ]] \
+        || fail "server log does not prove a Java $java_target runtime"
+    [[ "$paper_target_runtime" == "$paper_target" ]] \
+        || fail "Paper runtime target $paper_target_runtime does not match $paper_target"
     [[ "$paper_build" =~ ^[0-9]+$ ]] \
-        || fail "server log does not identify Paper 26.2 and its build"
+        || fail "server log does not identify Paper $paper_target and its build"
+    [[ "$api_target_runtime" == "$paper_target" ]] \
+        || fail "Paper API runtime target $api_target_runtime does not match $paper_target"
     [[ "$api_build" =~ ^[0-9]+$ ]] \
-        || fail "server log does not identify the Paper 26.2 beta API build"
-    ((paper_build >= 62)) \
-        || fail "Paper runtime build $paper_build is below required build 62"
-    ((api_build >= 62)) \
-        || fail "Paper API runtime build $api_build is below required build 62"
-    note "verified runtime identity: Java 25, Paper 26.2 build $paper_build (API build $api_build)"
+        || fail "server log does not identify the Paper $paper_target API build"
+    [[ "$api_channel" == "$paper_api_channel" ]] \
+        || fail "Paper API runtime channel $api_channel does not match $paper_api_channel"
+    ((paper_build >= paper_minimum_build)) \
+        || fail "Paper runtime build $paper_build is below required build $paper_minimum_build"
+    ((api_build >= paper_minimum_build)) \
+        || fail "Paper API runtime build $api_build is below required build $paper_minimum_build"
+    note "verified runtime identity: Java $java_target, Paper $paper_target build $paper_build (API build $api_build-$api_channel)"
 }
 
 record_sqlite_evidence() {

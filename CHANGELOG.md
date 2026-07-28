@@ -2,6 +2,19 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.8.3-028] — 2026-07-28
+
+Expected artifact: `1MB-WalkThePlank-v2.8.3-028-j25-26.2.jar`
+
+### Paper stable and release-tooling housekeeping
+
+- Updated the exact compile/test dependency and locked verification metadata from Paper API `26.2.build.62-beta` to official `26.2.build.84-stable`. The declared target remains Paper 26.2 and Java 25; the explicit runtime floor is now Paper-compatible 26.2 build 84.
+- Refreshed the maintained PaperScript core from its trusted current source, selected `STABLE` for default/latest checks, retained same-version upgrades and all server-specific choices, and kept the installed filename at `Paper-26.2.jar`. The maintained server launcher now defaults to JDK 25.0.4 while retaining `JAVA_BIN`/`JAVA_HOME` overrides for repeatable Java 25 and Java 26 smoke tests.
+- Embedded the exact Paper API and explicit minimum Paper build in the manifest and `build-info.properties`, verified every embedded dependency/release field, and made `plugin.yml`/scenario metadata expand the canonical Paper target rather than repeating it.
+- Corrected Doctor's Java compatibility classification so the exact Java 25 runtime reports a match, a verified Java 26 runtime reports a compatible newer runtime without a false warning, and only a JVM below the Java 25 target is unhealthy.
+- Added `verifyReleaseDrift` to the normal `check` lifecycle so maintained current-release documentation, artifact names, Java path, Paper stable target, API coordinate, and build number cannot silently diverge from `gradle.properties`.
+- Updated the destructive scenario runner to derive Java/Paper/API/minimum-build expectations from the canonical release properties and recognize the official `stable` API identity. No gameplay, reward, queue, database-schema, or Classic leaderboard behavior changed.
+
 ## [2.8.2-027] — 2026-07-27
 
 Expected artifact: `1MB-WalkThePlank-v2.8.2-027-j25-26.2.jar`

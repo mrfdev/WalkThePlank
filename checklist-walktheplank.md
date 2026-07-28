@@ -1,6 +1,6 @@
-# WalkThePlank v2.8.2-027 beta and event checklist
+# WalkThePlank v2.8.3-028 beta and event checklist
 
-This is the mandatory human/server acceptance plan for `1MB-WalkThePlank-v2.8.2-027-j25-26.2.jar`.
+This is the mandatory human/server acceptance plan for `1MB-WalkThePlank-v2.8.3-028-j25-26.2.jar`.
 
 Do not treat implemented code, a successful Gradle build, or a previous release's smoke test as production approval. The candidate is approved only after this checklist is completed against the exact frozen JAR, a production-like Paper 26.2 server, a disposable copy of the live data, and the intended external reward providers.
 
@@ -12,27 +12,30 @@ Fill this table from the final clean build. Do not copy values from any prior ca
 
 | Property | Candidate value |
 | --- | --- |
-| Semantic version/build | `2.8.2-027` |
-| Expected filename | `1MB-WalkThePlank-v2.8.2-027-j25-26.2.jar` |
-| Git commit | Full clean commit embedded in the final JAR; record in a new annotated build-027 RC tag and operator release archive |
+| Semantic version/build | `2.8.3-028` |
+| Expected filename | `1MB-WalkThePlank-v2.8.3-028-j25-26.2.jar` |
+| Git commit | Full clean commit embedded in the final JAR; record in a new annotated build-028 RC tag and operator release archive |
 | Build timestamp | Not embedded; record externally with the candidate evidence |
 | File size | Record in annotated candidate tag and operator release archive |
 | SHA-256 | Record in annotated candidate tag and operator release archive |
-| Java runtime | Oracle Java `25.0.2+10-LTS-69` (aarch64) |
-| Paper version/build | Require Paper 26.2 build 62 beta or newer; API `26.2.build.62-beta` |
-| Automated test result/count | 298 tests across 74 classes; zero failures, errors, or skips before clean-commit freeze |
+| Build JDK | Oracle Java `25.0.4+7-LTS-189` (aarch64); bytecode target/release 25 |
+| Runtime smoke JDKs | Oracle Java `25.0.4+7-LTS-189` and Oracle Java `26.0.2+10-55` |
+| Paper version/build | Require Paper 26.2 build 84 stable or newer; API `26.2.build.84-stable` |
+| Automated test result/count | 301 tests across 75 classes; zero failures, errors, or skips before clean-commit freeze |
 | `verifyReleaseJar` result | Require PASS on two clean builds with byte-identical outputs |
-| Test-server sync result | Require staged SHA-256 to match and only build 027 to be active |
+| Test-server sync result | Require staged SHA-256 to match and only build 028 to be active |
 
-Build 010 completed its controlled scenarios, reproducibility/freeze, standalone/full-stack Paper smoke, live-copy schema-v3 preservation, and test-server synchronization and is tagged `v2.4.1-010-rc.1`. Builds 011–026 culminated in successful gameplay, seasonal appearance, event controls, and paged GUI status. Build 027 adds bounded dot-prefixed Floodgate identity metadata and schema v4. Repeat every automated candidate gate plus live-copy migration, Bedrock identity/gameplay, event-command, GUI, and sound matrices against the final clean build-027 artifact.
+Build 010 completed its controlled scenarios, reproducibility/freeze, standalone/full-stack Paper smoke, live-copy schema-v3 preservation, and test-server synchronization and is tagged `v2.4.1-010-rc.1`. Builds 011–026 culminated in successful gameplay, seasonal appearance, event controls, and paged GUI status. Build 027 added bounded dot-prefixed Floodgate identity metadata and schema v4. Build 028 updates the maintained server/tooling and raises the exact API/runtime floor to Paper 26.2 build 84 stable without a schema change. Repeat every automated candidate gate plus live-copy preservation, Bedrock identity/gameplay, event-command, GUI, and sound matrices against the final clean build-028 artifact.
+
+Uncommitted pre-freeze evidence from 2026-07-28: the development artifact passed 301 tests across 75 classes, release/archive/isolation/drift gates, controlled release scenarios, and full-stack Paper 84 startup/diagnostics/clean shutdown on Java 25.0.4 and Java 26.0.2. The staged JAR matched the built SHA-256, SQLite schema v4 reported `quick_check=ok`, and the maintained profile retained 118 UUID-owned score rows. This evidence validates the housekeeping changes but does not replace the clean-commit freeze or human acceptance rows below.
 
 ## Known build-003 migration evidence
 
-Build 010's persistent live-copy smoke preserved 100 rows, 100 UUIDs, score sum 4256, maximum score 149, the unchanged Classic top ten, and `PRAGMA quick_check = ok`. Build 024 has no database-schema change, but repeat every preservation check below against its frozen candidate. Historical evidence is not a sign-off.
+Build 010's persistent live-copy smoke preserved 100 rows, 100 UUIDs, score sum 4256, maximum score 149, the unchanged Classic top ten, and `PRAGMA quick_check = ok`. Build 027 subsequently migrated the database to schema v4. Build 028 has no database-schema change, but repeat every preservation check below against its frozen candidate. Historical evidence is not a sign-off.
 
 ## 1. Source and release integrity
 
-- [x] Confirm `gradle.properties` says version `2.8.2`, build `027`, Java `25`, Paper `26.2`, and exact Paper API `26.2.build.62-beta`.
+- [x] Confirm `gradle.properties` says version `2.8.3`, build `028`, Java `25`, Paper `26.2`, minimum build `84`, and exact Paper API `26.2.build.84-stable`.
 - [x] Confirm the wrapper/build dependencies remain Gradle 9.6.1, Shadow 9.5.1, PlaceholderAPI 2.12.3, SQLite JDBC 3.53.2.0, and JUnit 6.1.2 unless a newer version has been deliberately reviewed and recorded.
 - [x] Confirm `plugin.yml` retains Bukkit name `InfinityParkour`, `api-version: 26.2`, and main class `com.mrfdev.walktheplank.WalkThePlankPlugin`.
 - [x] Confirm the production plugin uses `JavaPlugin#getLifecycleManager` with `LifecycleEvents.COMMANDS`, keeps `plugin.yml` rather than adding `paper-plugin.yml`, and contains no legacy `PluginCommand` executor/tab-completer registration.
@@ -41,13 +44,13 @@ Build 010's persistent live-copy smoke preserved 100 rows, 100 UUIDs, score sum 
 - [ ] Record a clean `git status`, require the embedded full commit to match `HEAD`, and record the annotated RC tag.
 - [ ] Run `./gradlew clean freezeCandidate` with Java 25.
 - [ ] Require zero plugin compiler warnings. The build fails if `-Xlint:all -Werror` finds a warning.
-- [x] Record the candidate test result and count: 295 tests across 73 classes; zero failures, errors, or skips. Repeat after the clean-commit freeze.
+- [x] Record the current build-028 source result and count: 301 tests across 75 classes; zero failures, errors, or skips. Repeat after the clean-commit freeze.
 - [ ] Run `./gradlew releaseInfo` and require the exact version/build/filename.
 - [ ] Run `./gradlew verifyReleaseJar` and record success.
 - [ ] Confirm the shaded JAR includes `org/sqlite/JDBC.class` and `META-INF/services/java.sql.Driver`.
 - [ ] Confirm the shaded JAR contains no `com/mysql/`, `org/mariadb/`, `org/bukkit/`, `io/papermc/paper/`, or `me/clip/placeholderapi/` classes.
 - [ ] Confirm the JAR contains no `.db` or `.sqlite` file and no `_resources` or server directory.
-- [ ] Confirm embedded `plugin.yml`, `build-info.properties`, and manifest all identify v2.8.2 build 027, Java 25, Paper 26.2 build 62 minimum, and the exact artifact name.
+- [ ] Confirm embedded `plugin.yml` identifies v2.8.3 build 028 and Paper 26.2; `build-info.properties` and the manifest additionally identify Java 25, exact API `26.2.build.84-stable`, explicit minimum build 84, and the exact artifact name.
 - [ ] Record final size, SHA-256, source commit, runtime, test result, and smoke evidence in the annotated RC tag and operator archive.
 - [ ] Copy the JAR by checksum and prove the staged copy is byte-identical.
 - [ ] Confirm only one InfinityParkour/WalkThePlank JAR is active. Move every prior build to `plugins-disabled/walktheplank/`.
@@ -62,11 +65,11 @@ The scenario system is release tooling, not a production feature. Never copy eit
 - [ ] Require these two test-only files beneath `build/scenario-artifacts/`:
 
   ```text
-  TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.8.2-027.jar
-  TEST-ONLY-1MB-WalkThePlank-v2.8.2-027-Failpoints.jar
+  TEST-ONLY-1MB-WalkThePlank-ScenarioHarness-v2.8.3-028.jar
+  TEST-ONLY-1MB-WalkThePlank-v2.8.3-028-Failpoints.jar
   ```
 
-- [ ] Require the production file to remain `build/libs/1MB-WalkThePlank-v2.8.2-027-j25-26.2.jar`; prove the instrumented file has a different path and checksum and did not replace it.
+- [ ] Require the production file to remain `build/libs/1MB-WalkThePlank-v2.8.3-028-j25-26.2.jar`; prove the instrumented file has a different path and checksum and did not replace it.
 - [ ] Run `./gradlew verifyReleaseJar` separately and require the production JAR to contain no `com/mrfdev/walktheplank/scenario/` class, `WalkThePlank-Test-Artifact`/`WalkThePlank-Test-Canary` manifest attribute, scenario command, failpoint system-property prefix, scenario canary, Java agent entry point, or any of the 24 failpoint identifiers.
 - [ ] Require positive controls: the harness must be detected as test-only, the instrumented copy must contain the injected bridge/canary and all 24 identifiers, and the isolation task must reject a deliberately scanned test artifact as production-safe.
 - [ ] Inspect the scenario harness archive. Require an independent `plugin.yml` named `WalkThePlank-ScenarioHarness`, hard dependency on `InfinityParkour`, classes only under `com/mrfdev/walktheplank/scenario/harness/`, and no shaded WalkThePlank, SQLite, Paper/Bukkit, or PlaceholderAPI classes.
@@ -227,9 +230,9 @@ LIMIT 10;
 
 ## 5. Paper startup and dependency matrix
 
-- [ ] Start with Java 25 and Paper 26.2 build 62 beta or newer.
-- [ ] Require `InfinityParkour v2.8.2-027` to enable once with 100 preserved scores.
-- [ ] Attempt startup on Paper 26.2 build 61 and on a 26.1.x runtime in disposable profiles. Require WalkThePlank to refuse enable before opening its data directory, with one bounded target-versus-runtime diagnostic.
+- [ ] Start with Java 25.0.4 and Paper 26.2 build 84 stable or newer, then repeat the clean startup/shutdown with Java 26.0.2 while keeping Java 25 bytecode.
+- [ ] Require `InfinityParkour v2.8.3-028` to enable once with the stopped pre-smoke score count preserved. The 2026-07-28 maintained-profile baseline is 118 UUID-owned rows; record a new baseline explicitly if the staging data is refreshed.
+- [ ] Attempt startup on Paper 26.2 build 83 and on a 26.1.x runtime in disposable profiles. Require WalkThePlank to refuse enable before opening its data directory, with one bounded target-versus-runtime diagnostic.
 - [ ] Require no WalkThePlank exception, deprecated-method warning, task rejection, linkage error, or unexpected startup/shutdown warning. The JVM's JOML `sun.misc.Unsafe` warning is emitted by Paper's `joml-1.10.8.jar`, not this plugin.
 - [ ] Break configuration or journal initialization in a disposable profile and require startup to abort. The disable audit says `startup_completed:false` and `clean:false`; the log explicitly refuses a clean-restoration claim.
 - [ ] Run `/plugins` or equivalent and confirm no duplicate plugin-name conflict.
@@ -553,7 +556,7 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 - [ ] Invoke doctor immediately before reload/disable and force a probe failure on a disposable database. Require a bounded privacy-safe result or contained cancellation, with no raw exception, rejected-task leak, shutdown hang, repair attempt, or database replacement.
 - [ ] Start and stop with no players, active runs, pending starts, queued/ready players, and quarantined records.
 - [ ] Clean shutdown must close menus, cancel starts, drain queue, restore sessions, retry quarantine, unregister API/PlaceholderAPI, and drain accepted database work for up to 15 seconds.
-- [ ] Require `WalkThePlank disabled; arena blocks and player state were restored` and no pending recovery/operations/database-write timeout in both build-027 controlled/console-smoke profiles.
+- [ ] Require `WalkThePlank disabled; arena blocks and player state were restored` and no pending recovery/operations/database-write timeout in both build-028 controlled/console-smoke profiles.
 - [ ] End an ordinary zero-score run by falling. If asynchronous cleanup briefly retains the arena, require only the bounded informational reservation/settled messages—never a false `SEVERE` quarantine message—and require the arena to become available once.
 - [x] Start and end at least five rapid consecutive runs in the same arena. Six build-014 client runs completed on 2026-07-20 with only the expected reservation/settled information, no lifecycle failure, no quarantine, and no blocked next run. `BlockLeaseRegistryTest` separately locks the delayed stale-completion case and proves that it preserves a newer exact owner without world mutation or duplicate release.
 - [ ] Repeat the rapid-run cleanup rehearsal with at least one scored run against the final frozen candidate.
@@ -566,11 +569,11 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 ## 17. Test-server synchronization and regression pass
 
 - [ ] Run `./gradlew syncTestServer` only after source/build/migration gates pass.
-- [ ] Confirm build 027 is active and all older WalkThePlank/InfinityParkour JARs—including both `TEST-ONLY-` artifacts—are disabled/absent.
+- [ ] Confirm build 028 is active and all older WalkThePlank/InfinityParkour JARs—including both `TEST-ONLY-` artifacts—are disabled/absent.
 - [ ] Confirm copied live data belongs to the test server, not `_resources`.
 - [ ] Restart the synchronized server from a clean stop and repeat startup/info/validate/health/doctor/top/GUI/gameplay/queue/season/export/reward/recovery/disable smoke.
 - [ ] Search the full `latest.log` for `InfinityParkour`, `WalkThePlank`, `WARN`, `ERROR`, `SEVERE`, `Exception`, `deprecated`, and task rejection; classify every match.
-- [ ] Re-run `PRAGMA quick_check` and the 100-row/top-ten comparison after build-027 console smoke: 100 UUID rows, score sum 4256, maximum 149, unchanged top ten, `quick_check=ok`.
+- [ ] Re-run `PRAGMA quick_check` and compare row count, UUID count, score sum, maximum, and top ten with the stopped pre-smoke snapshot. The 2026-07-28 maintained profile retained 118 UUID rows, score sum 4993, maximum 149, and `quick_check=ok`; the historical 100-row migration baseline remains documented separately above.
 - [ ] Re-hash the staged JAR and compare it with the candidate record.
 
 ## 18. Rollback rehearsal
@@ -579,7 +582,7 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 - [ ] Restore the exact previous JAR and matched pre-deployment data folder together.
 - [ ] Start the previous supported environment and verify the all-time leaderboard/top ten.
 - [ ] Confirm the production runbook warns that database rollback discards later event scores and never reconciles by username.
-- [ ] Confirm pending build-027 restoration/player-recovery records are resolved or preserved before starting an older plugin that cannot read them.
+- [ ] Confirm pending build-028 restoration/player-recovery records are resolved or preserved before starting an older plugin that cannot read them.
 - [ ] Record rollback duration, responsible operator, file locations, and communication plan.
 
 ## 19. Go/no-go sign-off
@@ -588,7 +591,7 @@ Use a disposable world and keep exact before/after structure or NBT/PDC evidence
 - [ ] Take a fresh stopped-server production backup.
 - [ ] Assign one operator to monitor console, health, pending writes, queue, quarantine, season state, and reward uncertainty during the event.
 - [ ] Assign a separate owner for reward investigation and rollback.
-- [ ] Record every accepted known limitation, especially Paper beta status, external-command non-transactionality, no automatic reward replay, and the requirement for retained-run ownership plus a live-safe destination during hard-kill player recovery.
+- [ ] Record every accepted known limitation, especially the Paper 26.2 build-84 minimum runtime floor, external-command non-transactionality, no automatic reward replay, and the requirement for retained-run ownership plus a live-safe destination during hard-kill player recovery.
 - [ ] Require explicit go/no-go approval. Blank or incomplete evidence means **NO-GO**.
 
 | Sign-off | Value |

@@ -1,10 +1,10 @@
 name: InfinityParkour
 version: '${version}'
 main: com.mrfdev.walktheplank.WalkThePlankPlugin
-api-version: '26.2'
+api-version: '${paperTarget}'
 prefix: 1MB-WalkThePlank
 authors: [Meldiron, The456gamer, mrfdev, 1MB]
-description: Standalone endless parkour modernized by 1MB for Paper 26.2.
+description: Standalone endless parkour modernized by 1MB for Paper ${paperTarget}.
 website: https://github.com/mrfdev/WalkThePlank
 # PlaceholderAPI is the only Java-level integration. Multiverse-Core must finish loading
 # configured arena worlds before startup validation; the remaining entries are optional

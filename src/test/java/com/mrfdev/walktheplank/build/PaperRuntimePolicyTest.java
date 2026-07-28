@@ -9,22 +9,22 @@ import org.junit.jupiter.api.Test;
 
 final class PaperRuntimePolicyTest {
     @Test
-    void acceptsBuild62AndNewerOnPaper262() {
+    void acceptsBuild84AndNewerOnPaper262() {
         PaperRuntimePolicy.Verification exact =
-                verify("26.2", OptionalInt.of(62));
+                verify("26.2", OptionalInt.of(84));
         PaperRuntimePolicy.Verification newer =
-                verify("26.2", OptionalInt.of(70));
+                verify("26.2", OptionalInt.of(90));
 
         assertTrue(exact.supported());
         assertTrue(newer.supported());
-        assertEquals("Paper 26.2 build 62 or newer", exact.targetLabel());
-        assertEquals("Paper 26.2 build 62", exact.runtimeLabel());
+        assertEquals("Paper 26.2 build 84 or newer", exact.targetLabel());
+        assertEquals("Paper 26.2 build 84", exact.runtimeLabel());
     }
 
     @Test
     void rejectsOlderBuildsAndEveryOlderMinecraftLine() {
         PaperRuntimePolicy.Verification oldBuild =
-                verify("26.2", OptionalInt.of(61));
+                verify("26.2", OptionalInt.of(83));
         PaperRuntimePolicy.Verification oldMinecraft =
                 verify("26.1.2", OptionalInt.of(999));
 
@@ -55,7 +55,7 @@ final class PaperRuntimePolicyTest {
             OptionalInt runtimeBuild) {
         return PaperRuntimePolicy.evaluate(
                 "26.2",
-                62,
+                84,
                 "Paper",
                 runtimeMinecraft,
                 runtimeBuild);

@@ -16,7 +16,7 @@ The scenario artifacts are intentionally separate from the production plugin:
   into production.
 
 The runner uses Java 25 at
-`/Library/Java/JavaVirtualMachines/jdk-25.0.2.jdk/Contents/Home/bin/java` by default. Override
+`/Library/Java/JavaVirtualMachines/jdk-25.0.4.jdk/Contents/Home/bin/java` by default. Override
 that exact executable with `JAVA_BIN` only when another Java 25 installation is intentional.
 
 ## Automated two-start scenario
@@ -65,11 +65,12 @@ layout, and the target/harness data paths to agree before destructive controls a
 
 The runner also requires the local `sqlite3` CLI. Every clean phase records a read-only
 `PRAGMA journal_mode`, `PRAGMA synchronous`, `PRAGMA foreign_keys`, `PRAGMA user_version`, and
-`PRAGMA quick_check` report beside its server log. It requires schema v3 and accepts only
+`PRAGMA quick_check` report beside its server log. It requires schema v4 and accepts only
 `quick_check=ok`; `foreign_keys` is recorded rather than required to be enabled because that
 setting belongs to the short-lived read-only inspection connection, not the plugin's runtime
-connection. It parses the bootstrap log to require Java 25 and both the Paper runtime and API
-identity at 26.2 build 62 or newer.
+connection. It reads the Java/Paper/API/minimum-build release target from `gradle.properties`,
+then parses the bootstrap log to require Java 25 and both the Paper runtime and stable API
+identity at 26.2 build 84 or newer.
 
 The automated sequence proves:
 
@@ -187,7 +188,7 @@ Use these recovery oracles; do not infer stronger atomicity:
 
 Immediately after exit 97, the runner performs the same read-only SQLite PRAGMA report when the
 database exists. The automated `config.after_runtime_commit` profile now halts during a post-start
-administrative reload, so its crash phase normally has an initialized schema-v3 database and must
+administrative reload, so its crash phase normally has an initialized schema-v4 database and must
 already pass `quick_check=ok`; the recovery restart repeats that proof.
 
 `Runtime.halt(97)` accurately removes Java shutdown hooks and plugin-disable cleanup from these

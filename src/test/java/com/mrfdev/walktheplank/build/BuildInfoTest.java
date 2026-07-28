@@ -18,10 +18,11 @@ class BuildInfoTest {
         try (InputStream stream = BuildInfoTest.class.getResourceAsStream("/build-info.properties")) {
             assertNotNull(stream);
             BuildInfo info = BuildInfo.loadProperties(stream);
-            assertEquals("v2.8.2 build 027", info.releaseLabel());
-            assertEquals("1MB-WalkThePlank-v2.8.2-027-j25-26.2.jar", info.artifactFile());
-            assertEquals("26.2.build.62-beta", info.paperApiVersion());
-            assertEquals(62, info.paperApiBuild());
+            assertEquals("v2.8.3 build 028", info.releaseLabel());
+            assertEquals("1MB-WalkThePlank-v2.8.3-028-j25-26.2.jar", info.artifactFile());
+            assertEquals("26.2.build.84-stable", info.paperApiVersion());
+            assertEquals(84, info.paperApiBuild());
+            assertEquals(84, info.paperMinimumBuild());
             assertEquals(40, info.sourceCommit().length());
             String controlledScenarios = Files.readString(
                     Path.of(System.getProperty("user.dir"))
@@ -40,6 +41,7 @@ class BuildInfoTest {
                 javaTarget=25
                 paperTarget=26.2
                 paperApiVersion=26.2.build.60-beta
+                paperMinimumBuild=60
                 placeholderApiVersion=2.12.3
                 sourceCommit=0123456789abcdef0123456789abcdef01234567
                 sourceDirty=false
@@ -63,6 +65,7 @@ class BuildInfoTest {
                 "25",
                 "26.2",
                 "api",
+                60,
                 "papi",
                 "0123456789abcdef0123456789abcdef01234567",
                 false));
@@ -77,6 +80,7 @@ class BuildInfoTest {
                 "25",
                 "26.2",
                 "api",
+                60,
                 "papi",
                 "not-a-commit",
                 false));
@@ -91,6 +95,7 @@ class BuildInfoTest {
                 javaTarget=25
                 paperTarget=26.2
                 paperApiVersion=api
+                paperMinimumBuild=60
                 placeholderApiVersion=papi
                 sourceCommit=0123456789abcdef0123456789abcdef01234567
                 sourceDirty=maybe

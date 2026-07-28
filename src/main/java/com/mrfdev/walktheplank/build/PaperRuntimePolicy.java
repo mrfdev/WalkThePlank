@@ -4,7 +4,7 @@ import io.papermc.paper.ServerBuildInfo;
 import java.util.Objects;
 import java.util.OptionalInt;
 
-/** Exact Paper release-line and minimum-build startup policy. */
+/** Paper-compatible release-line and explicit minimum-build startup policy. */
 public final class PaperRuntimePolicy {
     private PaperRuntimePolicy() {
     }
@@ -14,7 +14,7 @@ public final class PaperRuntimePolicy {
         ServerBuildInfo runtime = ServerBuildInfo.buildInfo();
         return evaluate(
                 target.paperTarget(),
-                target.paperApiBuild(),
+                target.paperMinimumBuild(),
                 runtime.brandName(),
                 runtime.minecraftVersionId(),
                 runtime.buildNumber());

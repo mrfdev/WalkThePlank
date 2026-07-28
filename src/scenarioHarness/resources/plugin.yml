@@ -1,7 +1,7 @@
 name: WalkThePlank-ScenarioHarness
 version: '${version}'
 main: com.mrfdev.walktheplank.scenario.harness.WalkThePlankScenarioPlugin
-api-version: '26.2'
+api-version: '${paperTarget}'
 prefix: WTP-Scenario
 authors: [1MB]
 description: Test-only destructive Paper scenarios for WalkThePlank.
