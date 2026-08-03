@@ -79,6 +79,7 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
 public final class GameManager {
+    private static final Duration ADMIN_TEST_FAST_FORWARD_TIMEOUT = Duration.ofMinutes(5L);
     private static final Set<String> DISALLOWED_EFFECTS = Set.of(
             "speed",
             "jump_boost",
@@ -111,6 +112,7 @@ public final class GameManager {
     private final Set<PlayerRecoveryCompletion> pendingPlayerRecoveryCompletions =
             new HashSet<>();
     private final Map<UUID, PendingExternalTeleport> pendingExternalTeleports = new HashMap<>();
+    private final Map<UUID, AdminTestFastForward> adminTestFastForwards = new HashMap<>();
     private final Map<AnomalyKey, AnomalyWindow> anomalyWindows = new HashMap<>();
     private final Set<String> reportedSoundFailures = new HashSet<>();
     private final Set<UUID> playerRecoveryLookups = ConcurrentHashMap.newKeySet();
@@ -713,6 +715,7 @@ public final class GameManager {
         Objects.requireNonNull(player, "player");
         Objects.requireNonNull(reason, "reason");
         GameSession session = sessions.remove(player.getUniqueId());
+        adminTestFastForwards.remove(player.getUniqueId());
         pendingExternalTeleports.remove(player.getUniqueId());
         if (session == null) {
             anomalyWindows.keySet().removeIf(key ->
@@ -747,9 +750,14 @@ public final class GameManager {
                     publicationFailure);
         }
         int score = session.score();
-        boolean scoringEligible = reason != SessionEndReason.MOVEMENT_MODIFIED;
-        int authoritativeScore = scoringEligible ? score : 0;
-        List<RunCategoryScore> categoryScores = session.categoryScores();
+        RunOutcomePolicy.Projection projection = RunOutcomePolicy.project(
+                session.adminTest(),
+                reason,
+                score,
+                session.categoryScores());
+        boolean scoringEligible = projection.scoringEligible();
+        int authoritativeScore = projection.authoritativeScore();
+        List<RunCategoryScore> categoryScores = projection.categoryScores();
         PlayerSnapshot snapshot = session.playerSnapshot();
         RuntimeException cleanupFailure = null;
         boolean blocksRestored = true;
@@ -841,7 +849,14 @@ public final class GameManager {
         playEndSound(player, reason);
 
         try {
-            persistResult(session, reason, score, categoryScores);
+            if (projection.interruptedReason().isPresent()) {
+                markRunInterrupted(
+                        session.runId(),
+                        RunStatus.ABORTED,
+                        projection.interruptedReason().orElseThrow());
+            } else {
+                persistResult(session, reason, score, categoryScores);
+            }
         } catch (RuntimeException | LinkageError persistenceFailure) {
             recordRunPersistenceFailure(session, persistenceFailure);
             try {
@@ -884,6 +899,7 @@ public final class GameManager {
                     "score", score,
                     "persisted_score", authoritativeScore,
                     "scoring_eligible", scoringEligible,
+                    "admin_test", session.adminTest(),
                     "reason", reason,
                     "cleanup_queued", cleanupQueued,
                     "cleanup_complete", cleanupComplete));
@@ -894,20 +910,22 @@ public final class GameManager {
                     session.arena().id(),
                     auditFailure);
         }
-        try {
-            plugin.getServer().getPluginManager().callEvent(new WalkRunEndEvent(
-                    player,
-                    session.arena().id(),
-                    authoritativeScore,
-                    session.elapsedDuration(System.nanoTime()),
-                    reason,
-                    cleanupComplete));
-        } catch (RuntimeException | LinkageError listenerFailure) {
-            recordLifecycleFailure(
-                    "run.end_event_failed",
-                    player.getUniqueId(),
-                    session.arena().id(),
-                    listenerFailure);
+        if (projection.publicEventsEligible()) {
+            try {
+                plugin.getServer().getPluginManager().callEvent(new WalkRunEndEvent(
+                        player,
+                        session.arena().id(),
+                        authoritativeScore,
+                        session.elapsedDuration(System.nanoTime()),
+                        reason,
+                        cleanupComplete));
+            } catch (RuntimeException | LinkageError listenerFailure) {
+                recordLifecycleFailure(
+                        "run.end_event_failed",
+                        player.getUniqueId(),
+                        session.arena().id(),
+                        listenerFailure);
+            }
         }
         if (cleanupFailure != null) {
             recordLifecycleFailure(
@@ -1132,7 +1150,9 @@ public final class GameManager {
 
     public void handleMove(Player player, Location destination) {
         GameSession session = sessions.get(player.getUniqueId());
-        if (session == null || pendingExternalTeleports.containsKey(player.getUniqueId())) {
+        if (session == null
+                || adminTestFastForwards.containsKey(player.getUniqueId())
+                || pendingExternalTeleports.containsKey(player.getUniqueId())) {
             return;
         }
         if (session.hasFallen(destination)) {
@@ -1161,49 +1181,30 @@ public final class GameManager {
         if (successor == null) {
             return;
         }
-        String successorRejection = successorPlacementRejection(session, successor.prepared());
-        if (successorRejection != null) {
-            failActiveSession(
-                    player,
-                    session,
-                    "successor_landing_revalidation",
-                    new IllegalStateException(
-                            "Successor landing commit rejected: " + successorRejection));
-            return;
-        }
-
-        GameSession.AdvanceResult result;
-        try {
-            long nowNanos = System.nanoTime();
-            if (session.jumpWouldBeTooFast(nowNanos)) {
-                recordMovementAnomaly(player, "jump_interval", "run_ended");
-                end(player, SessionEndReason.MOVEMENT_MODIFIED);
-                messages.send(player, "chat.runIntegrityFailed");
-                return;
-            }
-            result = session.advance(nowNanos, successor);
-            attachSuccessorPreparation(session, result.successorPreparation());
-            attachBlockCleanup(session, result.cleanup());
-            publishSessionScores();
-            operations.metrics().recordJump();
-        } catch (RuntimeException | LinkageError exception) {
-            failActiveSession(player, session, "advance", exception);
+        GameSession.AdvanceResult result = advancePreparedSession(
+                player,
+                session,
+                successor,
+                false);
+        if (result == null) {
             return;
         }
         int score = result.score();
-        try {
-            plugin.getServer().getPluginManager().callEvent(
-                    new WalkJumpEvent(player, session.arena().id(), score));
-        } catch (RuntimeException | LinkageError eventFailure) {
-            operations.metrics().recordFailure("event", eventFailure);
-            operations.audit("event.jump_failed", player.getUniqueId(), session.arena().id(), Map.of(
-                    "run_id", session.runId(),
-                    "score", score,
-                    "failure", eventFailure.getClass().getSimpleName()));
-            plugin.getLogger().log(
-                    Level.SEVERE,
-                    "WalkJumpEvent listener failed; the active run will continue",
-                    eventFailure);
+        if (!session.adminTest()) {
+            try {
+                plugin.getServer().getPluginManager().callEvent(
+                        new WalkJumpEvent(player, session.arena().id(), score));
+            } catch (RuntimeException | LinkageError eventFailure) {
+                operations.metrics().recordFailure("event", eventFailure);
+                operations.audit("event.jump_failed", player.getUniqueId(), session.arena().id(), Map.of(
+                        "run_id", session.runId(),
+                        "score", score,
+                        "failure", eventFailure.getClass().getSimpleName()));
+                plugin.getLogger().log(
+                        Level.SEVERE,
+                        "WalkJumpEvent listener failed; the active run will continue",
+                        eventFailure);
+            }
         }
         boolean milestone = showMilestoneFeedback(player, session, result);
         if (!milestone) {
@@ -1218,6 +1219,45 @@ public final class GameManager {
         } catch (RuntimeException | LinkageError exception) {
             failActiveSession(player, session, "score_message", exception);
         }
+    }
+
+    private GameSession.AdvanceResult advancePreparedSession(
+            Player player,
+            GameSession session,
+            GameSession.SuccessorCommit successor,
+            boolean syntheticAdminTestStep) {
+        String successorRejection = successorPlacementRejection(session, successor.prepared());
+        if (successorRejection != null) {
+            failActiveSession(
+                    player,
+                    session,
+                    "successor_landing_revalidation",
+                    new IllegalStateException(
+                            "Successor landing commit rejected: " + successorRejection));
+            return null;
+        }
+
+        GameSession.AdvanceResult result;
+        try {
+            long nowNanos = System.nanoTime();
+            if (!syntheticAdminTestStep && session.jumpWouldBeTooFast(nowNanos)) {
+                recordMovementAnomaly(player, "jump_interval", "run_ended");
+                end(player, SessionEndReason.MOVEMENT_MODIFIED);
+                messages.send(player, "chat.runIntegrityFailed");
+                return null;
+            }
+            result = session.advance(nowNanos, successor);
+            attachSuccessorPreparation(session, result.successorPreparation());
+            attachBlockCleanup(session, result.cleanup());
+            publishSessionScores();
+            if (!session.adminTest()) {
+                operations.metrics().recordJump();
+            }
+        } catch (RuntimeException | LinkageError exception) {
+            failActiveSession(player, session, "advance", exception);
+            return null;
+        }
+        return result;
     }
 
     private void attachSuccessorPreparation(
@@ -1268,6 +1308,7 @@ public final class GameManager {
         Location actual = player.getLocation();
         Location underPlayer = actual.clone().subtract(0.0, 1.0, 0.0);
         if (sessions.get(player.getUniqueId()) == session
+                && !adminTestFastForwards.containsKey(player.getUniqueId())
                 && LandingPolicy.isGroundedAndNotAscending(
                         hasGroundSupport(player),
                         player.getVelocity().getY())
@@ -1688,6 +1729,315 @@ public final class GameManager {
     public int currentScore(UUID playerId) {
         SessionStatus session = publishedGameState.sessions().get(playerId);
         return session == null ? 0 : session.score();
+    }
+
+    /**
+     * Starts a bounded, permanently non-scoring replay of real platform transitions.
+     *
+     * <p>The caller must already have placed the player in a run. Every synthetic transition uses
+     * the normal durability, lease, restoration, placement, and jump-planning path. Work is
+     * deliberately serialized across ticks so the recovery writer cannot be flooded.</p>
+     */
+    public AdminTestStartResult startAdminTestFastForward(Player player, int targetScore) {
+        Objects.requireNonNull(player, "player");
+        RuntimeSettings current = settings.get();
+        if (!current.adminTesting().enabled()
+                || !hasAdminTestPermission(player, current)) {
+            return AdminTestStartResult.DISABLED;
+        }
+        if (targetScore < 1
+                || targetScore > current.adminTesting().maximumTargetScore()) {
+            return AdminTestStartResult.TARGET_OUT_OF_RANGE;
+        }
+        UUID playerId = player.getUniqueId();
+        GameSession session = sessions.get(playerId);
+        if (session == null) {
+            return AdminTestStartResult.NO_ACTIVE_RUN;
+        }
+        if (adminTestFastForwards.containsKey(playerId)) {
+            return AdminTestStartResult.ALREADY_RUNNING;
+        }
+        if (session.score() != 0) {
+            return AdminTestStartResult.SCORE_NOT_ZERO;
+        }
+        if (!session.beginAdminTest()) {
+            return session.score() == 0
+                    ? AdminTestStartResult.ALREADY_RUNNING
+                    : AdminTestStartResult.SCORE_NOT_ZERO;
+        }
+
+        AdminTestFastForward control = new AdminTestFastForward(session, targetScore);
+        adminTestFastForwards.put(playerId, control);
+        try {
+            operations.audit("admin.test.fast_forward", playerId, session.arena().id(), Map.of(
+                    "run_id", session.runId(),
+                    "phase", "started",
+                    "from_score", 0,
+                    "target_score", targetScore,
+                    "test_mode", true));
+        } catch (RuntimeException | LinkageError auditFailure) {
+            recordLifecycleFailure(
+                    "admin.test.audit_failed",
+                    playerId,
+                    session.arena().id(),
+                    auditFailure);
+        }
+        continueAdminTestFastForwardSafely(control);
+        return AdminTestStartResult.STARTED;
+    }
+
+    private void continueAdminTestFastForwardSafely(AdminTestFastForward control) {
+        try {
+            continueAdminTestFastForward(control);
+        } catch (RuntimeException | LinkageError failure) {
+            GameSession session = control.session;
+            Player player = session.player();
+            adminTestFastForwards.remove(player.getUniqueId(), control);
+            if (sessions.get(player.getUniqueId()) == session) {
+                failActiveSession(
+                        player,
+                        session,
+                        "admin_test_fast_forward",
+                        failure);
+            } else {
+                recordLifecycleFailure(
+                        "admin.test.fast_forward_failed",
+                        player.getUniqueId(),
+                        session.arena().id(),
+                        failure);
+            }
+        }
+    }
+
+    private void continueAdminTestFastForward(AdminTestFastForward control) {
+        control.pollScheduled = false;
+        GameSession session = control.session;
+        Player player = session.player();
+        RuntimeSettings current = settings.get();
+        boolean supportedGameMode = player.getGameMode() == GameMode.SURVIVAL
+                || player.getGameMode() == GameMode.ADVENTURE;
+        AdminTestFastForwardPolicy.Rejection rejection =
+                AdminTestFastForwardPolicy.evaluate(new AdminTestFastForwardPolicy.State(
+                        plugin.isEnabled(),
+                        shuttingDown,
+                        current.adminTesting().enabled(),
+                        control.targetScore,
+                        current.adminTesting().maximumTargetScore(),
+                        adminTestFastForwards.get(player.getUniqueId()) == control,
+                        sessions.get(player.getUniqueId()) == session,
+                        System.nanoTime() - control.deadlineNanos >= 0L,
+                        session.adminTest(),
+                        player.isOnline(),
+                        player.isDead(),
+                        hasAdminTestPermission(player, current),
+                        player.hasPermission(current.permissions().playGame()),
+                        supportedGameMode,
+                        arenaLeases.owns(session.arena().id(), session.arenaLease())));
+        if (rejection != AdminTestFastForwardPolicy.Rejection.NONE) {
+            abortAdminTestFastForward(control, rejection);
+            return;
+        }
+
+        if (control.pendingCleanup != null) {
+            if (!control.pendingCleanup.settled()) {
+                scheduleAdminTestFastForwardPoll(control);
+                return;
+            }
+            control.pendingCleanup = null;
+        }
+
+        GameSession.SuccessorCommit successor = session.readySuccessor();
+        if (successor == null) {
+            scheduleAdminTestFastForwardPoll(control);
+            return;
+        }
+        if (session.score() >= control.targetScore) {
+            completeAdminTestFastForward(control);
+            return;
+        }
+
+        GameSession.AdvanceResult result = advancePreparedSession(
+                player,
+                session,
+                successor,
+                true);
+        if (result == null || sessions.get(player.getUniqueId()) != session) {
+            adminTestFastForwards.remove(player.getUniqueId(), control);
+            return;
+        }
+        control.pendingCleanup = result.cleanup();
+        control.currentPlatform = result.currentPlatform();
+        Location currentPlatform = adminTestPlatformLocation(
+                player,
+                session,
+                result.currentPlatform());
+        player.setVelocity(player.getVelocity().zero());
+        player.setFallDistance(0.0F);
+        if (!teleportInternally(player, currentPlatform)) {
+            failActiveSession(
+                    player,
+                    session,
+                    "admin_test_fast_forward_teleport",
+                    new IllegalStateException("Paper rejected the internal admin-test teleport"));
+            return;
+        }
+        scheduleAdminTestFastForwardPoll(control);
+    }
+
+    private static Location adminTestPlatformLocation(
+            Player player,
+            GameSession session,
+            GridPoint platform) {
+        Location current = player.getLocation();
+        World world = Objects.requireNonNull(
+                session.arena().start().getWorld(),
+                "Admin-test arena world is missing");
+        return new Location(
+                world,
+                platform.x() + 0.5D,
+                platform.y() + 1.0D,
+                platform.z() + 0.5D,
+                current.getYaw(),
+                current.getPitch());
+    }
+
+    private static boolean hasAdminTestPermission(
+            Player player,
+            RuntimeSettings current) {
+        return adminTestPermissionGranted(
+                player.hasPermission(current.permissions().admin()),
+                player.hasPermission(current.permissions().adminTest()));
+    }
+
+    static boolean adminTestPermissionGranted(
+            boolean adminParent,
+            boolean adminTestLeaf) {
+        return adminParent || adminTestLeaf;
+    }
+
+    private void scheduleAdminTestFastForwardPoll(AdminTestFastForward control) {
+        if (control.pollScheduled
+                || adminTestFastForwards.get(control.session.player().getUniqueId()) != control) {
+            return;
+        }
+        control.pollScheduled = true;
+        try {
+            plugin.getServer().getScheduler().runTaskLater(
+                    plugin,
+                    () -> continueAdminTestFastForwardSafely(control),
+                    1L);
+        } catch (RuntimeException schedulingFailure) {
+            control.pollScheduled = false;
+            adminTestFastForwards.remove(control.session.player().getUniqueId(), control);
+            failActiveSession(
+                    control.session.player(),
+                    control.session,
+                    "admin_test_fast_forward_schedule",
+                    schedulingFailure);
+        }
+    }
+
+    private void completeAdminTestFastForward(AdminTestFastForward control) {
+        GameSession session = control.session;
+        Player player = session.player();
+        if (adminTestFastForwards.get(player.getUniqueId()) != control) {
+            return;
+        }
+        Location currentPlatform = adminTestPlatformLocation(
+                player,
+                session,
+                Objects.requireNonNull(
+                        control.currentPlatform,
+                        "Admin-test current platform is missing"));
+        player.setVelocity(player.getVelocity().zero());
+        player.setFallDistance(0.0F);
+        if (!teleportInternally(player, currentPlatform)) {
+            failActiveSession(
+                    player,
+                    session,
+                    "admin_test_fast_forward_handoff_teleport",
+                    new IllegalStateException(
+                            "Paper rejected the final admin-test handoff teleport"));
+            return;
+        }
+        player.setVelocity(player.getVelocity().zero());
+        player.setFallDistance(0.0F);
+        if (sessions.get(player.getUniqueId()) != session
+                || !adminTestFastForwards.remove(player.getUniqueId(), control)) {
+            return;
+        }
+        try {
+            publishSessionScores();
+        } catch (RuntimeException | LinkageError publicationFailure) {
+            recordLifecycleFailure(
+                    "admin.test.publication_failed",
+                    player.getUniqueId(),
+                    session.arena().id(),
+                    publicationFailure);
+        }
+        try {
+            operations.audit("admin.test.fast_forward", player.getUniqueId(), session.arena().id(), Map.of(
+                    "run_id", session.runId(),
+                    "phase", "ready",
+                    "score", session.score(),
+                    "target_score", control.targetScore,
+                    "test_mode", true));
+        } catch (RuntimeException | LinkageError auditFailure) {
+            recordLifecycleFailure(
+                    "admin.test.audit_failed",
+                    player.getUniqueId(),
+                    session.arena().id(),
+                    auditFailure);
+        }
+        try {
+            player.sendMessage(messages.prefixedTemplate(
+                    "&aAdmin test ready at score &f{{score}}&a. Manual jumps are enabled; "
+                            + "this run cannot affect rewards or leaderboards.",
+                    Map.of("score", session.score())));
+        } catch (RuntimeException | LinkageError messageFailure) {
+            recordLifecycleFailure(
+                    "admin.test.message_failed",
+                    player.getUniqueId(),
+                    session.arena().id(),
+                    messageFailure);
+        }
+    }
+
+    private void abortAdminTestFastForward(
+            AdminTestFastForward control,
+            AdminTestFastForwardPolicy.Rejection rejection) {
+        GameSession session = control.session;
+        Player player = session.player();
+        if (!adminTestFastForwards.remove(player.getUniqueId(), control)) {
+            return;
+        }
+        try {
+            operations.audit("admin.test.fast_forward", player.getUniqueId(), session.arena().id(), Map.of(
+                    "run_id", session.runId(),
+                    "phase", "aborted",
+                    "score", session.score(),
+                    "reason", rejection,
+                    "test_mode", true));
+        } catch (RuntimeException | LinkageError auditFailure) {
+            recordLifecycleFailure(
+                    "admin.test.audit_failed",
+                    player.getUniqueId(),
+                    session.arena().id(),
+                    auditFailure);
+        }
+        if (sessions.get(player.getUniqueId()) == session) {
+            SessionEndReason endReason;
+            if (rejection == AdminTestFastForwardPolicy.Rejection.PLAY_PERMISSION_REVOKED
+                    || rejection
+                            == AdminTestFastForwardPolicy.Rejection.ADMIN_PERMISSION_REVOKED) {
+                endReason = SessionEndReason.PERMISSION_REVOKED;
+            } else if (rejection == AdminTestFastForwardPolicy.Rejection.TIMEOUT) {
+                endReason = SessionEndReason.TIMEOUT;
+            } else {
+                endReason = SessionEndReason.ADMIN;
+            }
+            end(player, endReason);
+        }
     }
 
     public int activeSessions() {
@@ -3880,6 +4230,15 @@ public final class GameManager {
             Duration elapsedDuration) {
     }
 
+    public enum AdminTestStartResult {
+        STARTED,
+        DISABLED,
+        NO_ACTIVE_RUN,
+        SCORE_NOT_ZERO,
+        ALREADY_RUNNING,
+        TARGET_OUT_OF_RANGE
+    }
+
     private record AnomalyKey(UUID playerId, String kind) {
     }
 
@@ -4159,6 +4518,24 @@ public final class GameManager {
         private ActivationRecords {
             Objects.requireNonNull(playerRecovery, "playerRecovery");
             Objects.requireNonNull(platforms, "platforms");
+        }
+    }
+
+    private static final class AdminTestFastForward {
+        private final GameSession session;
+        private final int targetScore;
+        private final long deadlineNanos;
+        private GameSession.BlockCleanup pendingCleanup;
+        private GridPoint currentPlatform;
+        private boolean pollScheduled;
+
+        private AdminTestFastForward(GameSession session, int targetScore) {
+            this.session = Objects.requireNonNull(session, "session");
+            if (targetScore < 1) {
+                throw new IllegalArgumentException("targetScore must be positive");
+            }
+            this.targetScore = targetScore;
+            deadlineNanos = System.nanoTime() + ADMIN_TEST_FAST_FORWARD_TIMEOUT.toNanos();
         }
     }
 

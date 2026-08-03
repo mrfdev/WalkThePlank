@@ -30,6 +30,11 @@ final class PermissionDescriptorTest {
                     "permissions.infinityparkour.admin.children.infinityparkour.queue.join"));
             assertFalse(descriptor.getBoolean(
                     "permissions.infinityparkour.queue.join.default"));
+
+            assertTrue(descriptor.getBoolean(
+                    "permissions.infinityparkour.admin.children.infinityparkour.admin.test"));
+            assertFalse(descriptor.getBoolean(
+                    "permissions.infinityparkour.admin.test.default"));
         }
     }
 }

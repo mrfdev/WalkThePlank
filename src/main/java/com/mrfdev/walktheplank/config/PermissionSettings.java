@@ -27,7 +27,8 @@ public record PermissionSettings(
         String adminSeason,
         String adminExport,
         String adminReward,
-        String adminInvestigate) {
+        String adminInvestigate,
+        String adminTest) {
     public PermissionSettings(
             String openGui,
             String leaveArena,
@@ -72,7 +73,8 @@ public record PermissionSettings(
                 adminSeason,
                 adminExport,
                 adminReward,
-                adminInvestigate);
+                adminInvestigate,
+                "infinityparkour.admin.test");
     }
 
     public PermissionSettings(
@@ -118,7 +120,8 @@ public record PermissionSettings(
                 adminSeason,
                 adminExport,
                 adminReward,
-                adminInvestigate);
+                adminInvestigate,
+                "infinityparkour.admin.test");
     }
 
     public PermissionSettings {
@@ -144,6 +147,7 @@ public record PermissionSettings(
         adminExport = validate(adminExport, "adminExport");
         adminReward = validate(adminReward, "adminReward");
         adminInvestigate = validate(adminInvestigate, "adminInvestigate");
+        adminTest = validate(adminTest, "adminTest");
 
         Map<String, String> playerPermissions = new LinkedHashMap<>();
         playerPermissions.put("openGui", openGui);
@@ -170,6 +174,7 @@ public record PermissionSettings(
         privilegedPermissions.put("adminExport", adminExport);
         privilegedPermissions.put("adminReward", adminReward);
         privilegedPermissions.put("adminInvestigate", adminInvestigate);
+        privilegedPermissions.put("adminTest", adminTest);
         requirePrivilegeSeparation(playerPermissions, privilegedPermissions);
     }
 

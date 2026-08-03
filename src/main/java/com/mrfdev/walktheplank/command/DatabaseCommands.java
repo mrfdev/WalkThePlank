@@ -602,7 +602,7 @@ final class DatabaseCommands {
         support.sendLine(
                 sender,
                 "&7Staff: &f/walk admin open, reload, stop, recover, validate, "
-                        + "arena, queue, season, export, reward, run, status, "
+                        + "arena, queue, season, export, reward, run, test, status, "
                         + "debug, doctor");
         support.sendLine(
                 sender,
@@ -638,6 +638,7 @@ final class DatabaseCommands {
                 Map.entry("admin.season", permissions.adminSeason()),
                 Map.entry("admin.export", permissions.adminExport()),
                 Map.entry("admin.reward", permissions.adminReward()),
+                Map.entry("admin.test", permissions.adminTest()),
                 Map.entry(
                         "admin.investigate",
                         permissions.adminInvestigate())).entrySet()) {

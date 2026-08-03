@@ -2,6 +2,18 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.8.4-029] — 2026-08-03
+
+Expected artifact: `1MB-WalkThePlank-v2.8.4-029-j25-26.2.jar`
+
+### Non-scoring high-score reproduction
+
+- Added the separately permissioned `/walk admin test fast-forward <target-score>` workflow for reproducing long-run behavior without requiring an operator to make hundreds of manual jumps. Administrative testing is disabled by default and bounded by `adminTesting.maximumTargetScore`.
+- Fast-forwarding replays the real platform planner, durability journal, restoration, block-lease, and successor pipeline one transition at a time on the primary thread while file durability remains on its bounded worker. It waits for each predecessor cleanup and the next durable successor instead of faking a score counter.
+- The run is irreversibly marked as an administrative test before the first synthetic transition. Test runs cannot update Classic, season, Combo, or Flawless results; cannot prepare or dispatch rewards; and settle as an audited `ABORTED` run without a score.
+- Normal movement handling and cosmetic feedback are suppressed only while synthetic transitions are in flight. Public jump/completion events and normal jump metrics remain suppressed for the entire marked test run, preventing unaware integrations from treating its manual tail as genuine gameplay. At the target score the player is placed on the exact current platform with a ready successor and resumes ordinary manual movement, allowing a direct 110-to-111-to-112 reproduction.
+- Source review found no explicit score-111 ceiling. The planner changes difficulty at score 100 and otherwise continues; this controlled workflow is intended to distinguish a genuine cumulative durability/world-placement failure from an ordinary fall on the harder post-100 jumps. No database-schema or historical-leaderboard change is included.
+
 ## [2.8.3-028] — 2026-07-28
 
 Expected artifact: `1MB-WalkThePlank-v2.8.3-028-j25-26.2.jar`

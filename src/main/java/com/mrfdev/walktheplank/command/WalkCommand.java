@@ -23,7 +23,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 /**
  * Lifecycle-registered Brigadier command coordinator.
  *
- * <p>Domain behavior lives in the player, queue, arena, season, reward, investigation, and
+ * <p>Domain behavior lives in the player, queue, arena, season, reward, investigation, test, and
  * database modules. This class only coordinates registration, shutdown, reload, and shared help.
  */
 public final class WalkCommand {
@@ -35,6 +35,7 @@ public final class WalkCommand {
     final SeasonCommands seasons;
     final RewardCommands rewards;
     final InvestigationCommands investigations;
+    final TestCommands tests;
     final DatabaseCommands database;
 
     private final ReloadHandler reloadHandler;
@@ -75,6 +76,7 @@ public final class WalkCommand {
         this.seasons = new SeasonCommands(support);
         this.rewards = new RewardCommands(support);
         this.investigations = new InvestigationCommands(support);
+        this.tests = new TestCommands(support);
         this.database = new DatabaseCommands(support);
     }
 
@@ -249,6 +251,11 @@ public final class WalkCommand {
                 permissions.adminInvestigate(),
                 "/walk admin run",
                 "Query redacted retained-run evidence");
+        support.addAdminHelp(
+                sender,
+                permissions.adminTest(),
+                "/walk admin test fast-forward <target-score>",
+                "Start a self-only non-scoring reproduction run");
         support.addAdminHelp(
                 sender,
                 permissions.adminDebug(),

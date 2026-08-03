@@ -38,6 +38,8 @@ class CommandArchitectureTest {
                 "src/main/java/com/mrfdev/walktheplank/WalkThePlankPlugin.java"));
         String tree = Files.readString(
                 COMMANDS.resolve("WalkCommandTree.java"));
+        String tests = Files.readString(
+                COMMANDS.resolve("TestCommands.java"));
         String descriptor = Files.readString(
                 PROJECT.resolve("src/main/resources/plugin.yml"));
 
@@ -46,9 +48,16 @@ class CommandArchitectureTest {
         assertTrue(tree.contains("ArgumentTypes.player()"));
         assertTrue(tree.contains("ArgumentTypes.uuid()"));
         assertTrue(tree.contains("IntegerArgumentType.integer(1, 100)"));
+        assertTrue(tree.contains("IntegerArgumentType.integer(1, 500)"));
         assertTrue(tree.contains("Commands.literal(\"confirm\")"));
         assertTrue(tree.contains("Commands.literal(\"event\")"));
         assertTrue(tree.contains("Commands.literal(\"enabled\")"));
+        assertTrue(tree.contains("Commands.literal(\"test\")"));
+        assertTrue(tree.contains("Commands.literal(\"fast-forward\")"));
+        assertTrue(tree.contains("context.getSource(), command.tests::help"));
+        assertTrue(tests.contains(
+                "Started a non-scoring fast-forward toward score"));
+        assertFalse(tests.contains("Fast-forwarded this test run to score"));
         assertTrue(tree.contains(
                 "List.of(\"walk\", \"infinityparkour\", \"infp\")"));
         assertTrue(descriptor.contains("softdepend: [Multiverse-Core,"));
@@ -65,6 +74,7 @@ class CommandArchitectureTest {
                 "SeasonCommands.java",
                 "RewardCommands.java",
                 "InvestigationCommands.java",
+                "TestCommands.java",
                 "DatabaseCommands.java")) {
             assertTrue(Files.isRegularFile(COMMANDS.resolve(module)), module);
         }

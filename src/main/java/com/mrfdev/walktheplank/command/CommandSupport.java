@@ -151,7 +151,8 @@ final class CommandSupport {
                 || sender.hasPermission(permissions.adminSeason())
                 || sender.hasPermission(permissions.adminExport())
                 || sender.hasPermission(permissions.adminReward())
-                || sender.hasPermission(permissions.adminInvestigate());
+                || sender.hasPermission(permissions.adminInvestigate())
+                || sender.hasPermission(permissions.adminTest());
     }
 
     void deny(CommandSender sender, String permission) {

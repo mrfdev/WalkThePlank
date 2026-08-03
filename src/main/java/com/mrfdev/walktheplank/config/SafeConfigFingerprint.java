@@ -32,6 +32,8 @@ final class SafeConfigFingerprint {
             "queue.reminderIntervalSeconds",
             "arenaSelection.policy",
             "arenaSelection.pinnedArena",
+            "adminTesting.enabled",
+            "adminTesting.maximumTargetScore",
             "permissions.openGui",
             "permissions.leaveArena",
             "permissions.playGame",
@@ -52,6 +54,7 @@ final class SafeConfigFingerprint {
             "permissions.adminSeason",
             "permissions.adminExport",
             "permissions.adminReward",
+            "permissions.adminTest",
             "database.type",
             "database.sqlite.busyTimeoutMillis");
 

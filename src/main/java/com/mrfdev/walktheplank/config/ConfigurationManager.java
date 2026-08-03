@@ -252,6 +252,9 @@ public final class ConfigurationManager {
             "categories.combo",
             "categories.combo.enabled",
             "categories.combo.maximumGapSeconds",
+            "adminTesting",
+            "adminTesting.enabled",
+            "adminTesting.maximumTargetScore",
             "antiCheat",
             "antiCheat.enabled",
             "antiCheat.blockProjectiles",
@@ -283,6 +286,7 @@ public final class ConfigurationManager {
             "permissions.adminExport",
             "permissions.adminReward",
             "permissions.adminInvestigate",
+            "permissions.adminTest",
             "database",
             "database.type",
             "database.sqlite",
@@ -757,6 +761,7 @@ public final class ConfigurationManager {
                                 "antiCheat.minimumJumpIntervalMillis", 150L)),
                         Duration.ofSeconds(source.getLong(
                                 "antiCheat.anomalyAuditCooldownSeconds", 10L))),
+                parseAdminTestingSettings(source),
                 permissions);
         validateArenaLayout(parsedSettings);
         return parsedSettings;
@@ -791,7 +796,19 @@ public final class ConfigurationManager {
                 source.getString("permissions.adminReward", "infinityparkour.admin.reward"),
                 source.getString(
                         "permissions.adminInvestigate",
-                        "infinityparkour.admin.investigate"));
+                        "infinityparkour.admin.investigate"),
+                source.getString(
+                        "permissions.adminTest",
+                        "infinityparkour.admin.test"));
+    }
+
+    static AdminTestingSettings parseAdminTestingSettings(YamlConfiguration source) {
+        Objects.requireNonNull(source, "source");
+        return new AdminTestingSettings(
+                source.getBoolean("adminTesting.enabled", false),
+                source.getInt(
+                        "adminTesting.maximumTargetScore",
+                        AdminTestingSettings.DEFAULT_MAXIMUM_TARGET_SCORE));
     }
 
     private DatabaseSettings parseDatabaseSettings(
@@ -1238,7 +1255,7 @@ public final class ConfigurationManager {
         }
     }
 
-    private static boolean isKnownConfigKey(String key) {
+    static boolean isKnownConfigKey(String key) {
         if (KNOWN_CONFIG_KEYS.contains(key)) {
             return true;
         }
@@ -1329,6 +1346,7 @@ public final class ConfigurationManager {
                 "queue.enabled",
                 "milestones.enabled",
                 "categories.combo.enabled",
+                "adminTesting.enabled",
                 "antiCheat.enabled",
                 "antiCheat.blockProjectiles",
                 "antiCheat.blockRiptide",
@@ -1396,6 +1414,12 @@ public final class ConfigurationManager {
                 "categories.combo.maximumGapSeconds",
                 1,
                 60,
+                problems);
+        validateIntegerRange(
+                source,
+                "adminTesting.maximumTargetScore",
+                AdminTestingSettings.MINIMUM_TARGET_SCORE,
+                AdminTestingSettings.MAXIMUM_TARGET_SCORE,
                 problems);
         validateIntegerRange(
                 source,
@@ -2010,7 +2034,8 @@ public final class ConfigurationManager {
                 "adminSeason",
                 "adminExport",
                 "adminReward",
-                "adminInvestigate")) {
+                "adminInvestigate",
+                "adminTest")) {
             Object value = source.get("permissions." + name);
             if (!(value instanceof String permission)
                     || permission.isBlank()

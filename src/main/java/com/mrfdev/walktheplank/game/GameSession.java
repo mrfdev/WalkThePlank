@@ -54,6 +54,7 @@ final class GameSession {
     private int currentCombo;
     private int maximumCombo;
     private boolean flawless = true;
+    private boolean adminTest;
 
     GameSession(
             Player player,
@@ -230,6 +231,7 @@ final class GameSession {
                 maximumCombo,
                 flawless,
                 jumpInterval,
+                currentPoint,
                 next,
                 new BlockCleanup(
                         previous.key(),
@@ -356,6 +358,19 @@ final class GameSession {
 
     int score() {
         return score;
+    }
+
+    boolean beginAdminTest() {
+        ensureActive();
+        if (adminTest || score != 0) {
+            return false;
+        }
+        adminTest = true;
+        return true;
+    }
+
+    boolean adminTest() {
+        return adminTest;
     }
 
     int currentCombo() {
@@ -542,8 +557,15 @@ final class GameSession {
             int maximumCombo,
             boolean flawless,
             Duration jumpInterval,
+            GridPoint currentPlatform,
             PreparedBlock successorPreparation,
             BlockCleanup cleanup) {
+        AdvanceResult {
+            Objects.requireNonNull(jumpInterval, "jumpInterval");
+            Objects.requireNonNull(currentPlatform, "currentPlatform");
+            Objects.requireNonNull(successorPreparation, "successorPreparation");
+            Objects.requireNonNull(cleanup, "cleanup");
+        }
     }
 
     record SuccessorCommit(
@@ -598,6 +620,10 @@ final class GameSession {
 
         BlockLeaseRegistry.CompletionRelease release() {
             return leases.completeRelease(key, lease);
+        }
+
+        boolean settled() {
+            return !leases.owns(key, lease);
         }
     }
 

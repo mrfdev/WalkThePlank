@@ -293,6 +293,7 @@ final class WalkCommandTree {
         admin.then(exportNode(command));
         admin.then(rewardNode(command));
         admin.then(investigationNode(command));
+        admin.then(adminTestNode(command));
 
         LiteralArgumentBuilder<CommandSourceStack> status =
                 Commands.literal("status")
@@ -317,6 +318,27 @@ final class WalkCommandTree {
                 .executes(context -> command.execute(
                         context.getSource(), command.database::doctor)));
         return admin;
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> adminTestNode(
+            WalkCommand command) {
+        return Commands.literal("test")
+                .requires(source -> command.adminPermission(
+                        source,
+                        command.support.permissions().adminTest()))
+                .executes(context -> command.execute(
+                        context.getSource(), command.tests::help))
+                .then(Commands.literal("fast-forward")
+                        .then(Commands.argument(
+                                        "target-score",
+                                        IntegerArgumentType.integer(1, 500))
+                                .executes(context -> command.execute(
+                                        context.getSource(),
+                                        sender -> command.tests.fastForward(
+                                                sender,
+                                                IntegerArgumentType.getInteger(
+                                                        context,
+                                                        "target-score"))))));
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> eventNode(

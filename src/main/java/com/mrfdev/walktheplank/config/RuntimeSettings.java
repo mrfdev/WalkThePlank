@@ -33,6 +33,7 @@ public record RuntimeSettings(
         MilestoneSettings milestones,
         ComboSettings combo,
         AntiCheatSettings antiCheat,
+        AdminTestingSettings adminTesting,
         PermissionSettings permissions) {
     public RuntimeSettings(
             int configVersion,
@@ -89,6 +90,7 @@ public record RuntimeSettings(
                         true,
                         java.time.Duration.ofMillis(150),
                         java.time.Duration.ofSeconds(10)),
+                AdminTestingSettings.defaults(),
                 permissions);
     }
 
@@ -104,6 +106,7 @@ public record RuntimeSettings(
         Objects.requireNonNull(milestones, "milestones");
         Objects.requireNonNull(combo, "combo");
         Objects.requireNonNull(antiCheat, "antiCheat");
+        Objects.requireNonNull(adminTesting, "adminTesting");
         Objects.requireNonNull(particle, "particle");
         Objects.requireNonNull(themeSounds, "themeSounds");
         Objects.requireNonNull(permissions, "permissions");

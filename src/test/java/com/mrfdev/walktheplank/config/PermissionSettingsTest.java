@@ -11,7 +11,8 @@ final class PermissionSettingsTest {
         PermissionSettings settings = settings(
                 "infinityparkour.play",
                 "infinityparkour.queue.join",
-                "infinityparkour.admin.queue");
+                "infinityparkour.admin.queue",
+                "infinityparkour.admin.test");
 
         assertEquals("infinityparkour.queue.join", settings.queueJoin());
         assertEquals("infinityparkour.admin.queue", settings.adminQueue());
@@ -19,6 +20,7 @@ final class PermissionSettingsTest {
         assertEquals("infinityparkour.admin.export", settings.adminExport());
         assertEquals("infinityparkour.admin.reward", settings.adminReward());
         assertEquals("infinityparkour.admin.investigate", settings.adminInvestigate());
+        assertEquals("infinityparkour.admin.test", settings.adminTest());
     }
 
     @Test
@@ -28,19 +30,29 @@ final class PermissionSettingsTest {
                 () -> settings(
                         "InfinityParkour.Admin.Queue",
                         "infinityparkour.queue.join",
-                        "infinityparkour.admin.queue"));
+                        "infinityparkour.admin.queue",
+                        "infinityparkour.admin.test"));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> settings(
                         "infinityparkour.play",
                         "InfinityParkour.Admin.Queue",
-                        "infinityparkour.admin.queue"));
+                        "infinityparkour.admin.queue",
+                        "infinityparkour.admin.test"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> settings(
+                        "infinityparkour.play",
+                        "infinityparkour.queue.join",
+                        "infinityparkour.admin.queue",
+                        "InfinityParkour.Play"));
     }
 
     private static PermissionSettings settings(
             String playGame,
             String queueJoin,
-            String adminQueue) {
+            String adminQueue,
+            String adminTest) {
         return new PermissionSettings(
                 "infinityparkour.opengui",
                 "infinityparkour.leavearena",
@@ -63,6 +75,7 @@ final class PermissionSettingsTest {
                 "infinityparkour.admin.season",
                 "infinityparkour.admin.export",
                 "infinityparkour.admin.reward",
-                "infinityparkour.admin.investigate");
+                "infinityparkour.admin.investigate",
+                adminTest);
     }
 }

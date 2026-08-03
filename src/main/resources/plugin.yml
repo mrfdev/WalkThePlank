@@ -38,6 +38,7 @@ permissions:
       infinityparkour.admin.export: true
       infinityparkour.admin.reward: true
       infinityparkour.admin.investigate: true
+      infinityparkour.admin.test: true
       infinityparkour.preferences: true
       infinityparkour.queue.join: true
   infinityparkour.opengui:
@@ -102,4 +103,7 @@ permissions:
     default: false
   infinityparkour.admin.investigate:
     description: Query redacted UUID-owned retained-run evidence.
+    default: false
+  infinityparkour.admin.test:
+    description: Run explicitly enabled non-scoring administrative gameplay tests.
     default: false
