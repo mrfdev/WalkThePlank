@@ -96,13 +96,13 @@ permissions:
     description: Create and transition explicit WalkThePlank event seasons.
     default: false
   infinityparkour.admin.export:
-    description: Export UUID-owned all-time and season leaderboards.
+    description: Export UUID-owned leaderboards; investigation bundles also require investigate access.
     default: false
   infinityparkour.admin.reward:
     description: Inspect and explicitly resolve uncertain durable reward outcomes.
     default: false
   infinityparkour.admin.investigate:
-    description: Query redacted UUID-owned retained-run evidence.
+    description: Query redacted UUID-owned retained-run evidence and, with export access, bundle it.
     default: false
   infinityparkour.admin.test:
     description: Run explicitly enabled non-scoring administrative gameplay tests.

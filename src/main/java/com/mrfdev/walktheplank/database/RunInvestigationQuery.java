@@ -140,6 +140,37 @@ public record RunInvestigationQuery(
                 limit);
     }
 
+    /** Filters by the exact release identity captured when each run started. */
+    public static RunInvestigationQuery forRelease(String release, int limit) {
+        return filtered(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(release),
+                Optional.empty(),
+                Optional.empty(),
+                limit);
+    }
+
+    /** Filters run starts in the complete half-open interval {@code [start, before)}. */
+    public static RunInvestigationQuery forStartWindow(
+            Instant start,
+            Instant before,
+            int limit) {
+        return filtered(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(Objects.requireNonNull(start, "start")),
+                Optional.of(Objects.requireNonNull(before, "before")),
+                limit);
+    }
+
     public static RunInvestigationQuery filtered(
             Optional<RunStatus> status,
             Optional<UUID> playerId,

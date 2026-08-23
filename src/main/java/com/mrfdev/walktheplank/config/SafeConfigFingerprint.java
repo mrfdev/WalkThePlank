@@ -54,6 +54,7 @@ final class SafeConfigFingerprint {
             "permissions.adminSeason",
             "permissions.adminExport",
             "permissions.adminReward",
+            "permissions.adminInvestigate",
             "permissions.adminTest",
             "database.type",
             "database.sqlite.busyTimeoutMillis");

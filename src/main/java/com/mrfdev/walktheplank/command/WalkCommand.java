@@ -240,7 +240,7 @@ public final class WalkCommand {
                 sender,
                 permissions.adminExport(),
                 "/walk admin export",
-                "Write UUID-only CSV/JSON snapshots");
+                "Write UUID-only snapshots; run bundles also need investigate access");
         support.addAdminHelp(
                 sender,
                 permissions.adminReward(),
@@ -250,7 +250,7 @@ public final class WalkCommand {
                 sender,
                 permissions.adminInvestigate(),
                 "/walk admin run",
-                "Query redacted retained-run evidence");
+                "Query redacted evidence; bundles also need export access");
         support.addAdminHelp(
                 sender,
                 permissions.adminTest(),

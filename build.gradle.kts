@@ -684,6 +684,28 @@ val verifyReleaseDrift = tasks.register("verifyReleaseDrift") {
         check("Paper beta status" !in checklist) {
             "Acceptance checklist still describes the current stable Paper release as beta"
         }
+
+        val currentCandidatePatterns = listOf(
+            Regex("Qualify and commit the build-(\\d{3}) candidate"),
+            Regex("current(?: uncommitted)? build-(\\d{3}) source(?: suite)?"),
+            Regex("against the build-(\\d{3}) frozen candidate"),
+            Regex("repeat it for the clean build-(\\d{3}) candidate", RegexOption.IGNORE_CASE),
+        )
+        val maintainedReleaseDocs = listOf(
+            file("README.md").readText(Charsets.UTF_8),
+            checklist,
+            file("feature-improvements-walktheplank.md").readText(Charsets.UTF_8),
+        )
+        for (content in maintainedReleaseDocs) {
+            for (pattern in currentCandidatePatterns) {
+                for (match in pattern.findAll(content)) {
+                    check(match.groupValues[1] == buildNumber) {
+                        "Maintained release documentation contains a stale current-candidate build reference: " +
+                            match.value
+                    }
+                }
+            }
+        }
     }
 }
 

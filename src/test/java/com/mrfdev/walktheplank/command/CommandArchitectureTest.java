@@ -54,6 +54,13 @@ class CommandArchitectureTest {
         assertTrue(tree.contains("Commands.literal(\"enabled\")"));
         assertTrue(tree.contains("Commands.literal(\"test\")"));
         assertTrue(tree.contains("Commands.literal(\"fast-forward\")"));
+        assertTrue(tree.contains("Commands.literal(\"release\")"));
+        assertTrue(tree.contains("Commands.literal(\"started\")"));
+        assertTrue(tree.contains("Commands.literal(\"export\")"));
+        assertTrue(tree.contains("new InstantArgument()"));
+        assertTrue(tree.contains("StringArgumentType.string()"));
+        assertTrue(tree.contains(".adminInvestigate())"));
+        assertTrue(tree.contains(".adminExport())"));
         assertTrue(tree.contains("context.getSource(), command.tests::help"));
         assertTrue(tests.contains(
                 "Started a non-scoring fast-forward toward score"));
@@ -74,6 +81,7 @@ class CommandArchitectureTest {
                 "SeasonCommands.java",
                 "RewardCommands.java",
                 "InvestigationCommands.java",
+                "InstantArgument.java",
                 "TestCommands.java",
                 "DatabaseCommands.java")) {
             assertTrue(Files.isRegularFile(COMMANDS.resolve(module)), module);

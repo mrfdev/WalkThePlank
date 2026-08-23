@@ -310,7 +310,7 @@ permissions:
   adminSeason: infinityparkour.admin.season
   adminExport: infinityparkour.admin.export
   adminReward: infinityparkour.admin.reward
-  # Read-only UUID-owned retained-run evidence; separate from reward resolution.
+  # UUID-owned retained-run evidence; bundle export additionally requires adminExport.
   adminInvestigate: infinityparkour.admin.investigate
   # Separately gated non-scoring run fast-forward controls; also requires adminTesting.enabled.
   adminTest: infinityparkour.admin.test

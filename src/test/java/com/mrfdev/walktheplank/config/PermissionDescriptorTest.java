@@ -35,6 +35,15 @@ final class PermissionDescriptorTest {
                     "permissions.infinityparkour.admin.children.infinityparkour.admin.test"));
             assertFalse(descriptor.getBoolean(
                     "permissions.infinityparkour.admin.test.default"));
+
+            assertTrue(descriptor.getBoolean(
+                    "permissions.infinityparkour.admin.children.infinityparkour.admin.investigate"));
+            assertFalse(descriptor.getBoolean(
+                    "permissions.infinityparkour.admin.investigate.default"));
+            assertTrue(descriptor.getBoolean(
+                    "permissions.infinityparkour.admin.children.infinityparkour.admin.export"));
+            assertFalse(descriptor.getBoolean(
+                    "permissions.infinityparkour.admin.export.default"));
         }
     }
 }

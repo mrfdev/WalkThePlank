@@ -141,6 +141,10 @@ public final class OperationsIoWorker {
                 executor.isTerminated());
     }
 
+    boolean ownsCurrentThread() {
+        return Thread.currentThread() == workerThread;
+    }
+
     /**
      * Stops acceptance and waits for accepted work to drain.
      *

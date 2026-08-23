@@ -63,6 +63,22 @@ final class RunInvestigationQueryTest {
                                         Optional.of(BASE_TIME.plus(Duration.ofDays(366))),
                                         100)
                                 .limit()),
+                () -> assertEquals(
+                        Optional.of("release-a"),
+                        RunInvestigationQuery.forRelease("release-a", 20).release()),
+                () -> assertEquals(
+                        Optional.of(BASE_TIME),
+                        RunInvestigationQuery.forStartWindow(
+                                        BASE_TIME,
+                                        BASE_TIME.plus(Duration.ofDays(366)),
+                                        20)
+                                .startedAtInclusive()),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> RunInvestigationQuery.forStartWindow(
+                                BASE_TIME,
+                                BASE_TIME.plus(Duration.ofDays(366)).plusMillis(1L),
+                                20)),
                 () -> assertThrows(
                         IllegalArgumentException.class,
                         () -> RunInvestigationQuery.forArena(" ", 20)),
@@ -124,23 +140,14 @@ final class RunInvestigationQueryTest {
                     repository, RunInvestigationQuery.forArena(INJECTION, 100));
             List<RunInvestigationRecord> injectedRelease = investigate(
                     repository,
-                    RunInvestigationQuery.filtered(
-                            Optional.empty(),
-                            Optional.empty(),
-                            Optional.empty(),
-                            Optional.empty(),
-                            Optional.empty(),
-                            Optional.of(INJECTION),
-                            Optional.empty(),
-                            Optional.empty(),
-                            100));
+                    RunInvestigationQuery.forRelease(INJECTION, 100));
             List<RunInvestigationRecord> season = investigate(
                     repository, RunInvestigationQuery.forSeason(SEASON, 100));
             List<RunInvestigationRecord> window = investigate(
                     repository,
-                    queryWithWindow(
-                            Optional.of(BASE_TIME.plusSeconds(60)),
-                            Optional.of(BASE_TIME.plusSeconds(180)),
+                    RunInvestigationQuery.forStartWindow(
+                            BASE_TIME.plusSeconds(60),
+                            BASE_TIME.plusSeconds(180),
                             100));
             List<RunInvestigationRecord> limited = investigate(
                     repository, RunInvestigationQuery.all(2));

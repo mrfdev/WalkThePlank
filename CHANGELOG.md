@@ -2,6 +2,20 @@
 
 This changelog records source milestones. A listed feature is not production approval; release evidence and the Paper/live-data acceptance result belong in [checklist-walktheplank.md](checklist-walktheplank.md).
 
+## [2.9.0-030] — 2026-08-23
+
+Expected artifact: `1MB-WalkThePlank-v2.9.0-030-j25-26.2.jar`
+
+### Bounded retained-run investigation bundles
+
+- Exposed the repository's existing exact-release and complete half-open start-time filters through typed `/walk admin run release` and `/walk admin run started` command branches. Release identities remain exact and case-sensitive; RFC 3339 instants are normalized to SQLite millisecond precision, windows are limited to 366 days, and results remain newest-first with a 100-row maximum.
+- Added mirrored `/walk admin run export` filters for list/status, exact run, player UUID, arena, season UUID, release, and start window. An export requires both the investigation and export permissions at command discovery, query start, and immediately before off-thread file I/O.
+- Investigation export writes one JSON-only schema-v1 bundle through the bounded operations worker. The service verifies the immutable query/result relationship, strict newest-first ordering, unique run IDs, safe evidence fields, UUID ownership, and row bound before parent-directory sync, same-directory file fsync, no-replace atomic hard-link publication, temporary-name cleanup, and export-directory sync.
+- Bundles contain canonical UUID/status/time query metadata, SHA-256 representations of free-form arena/release selectors, generator provenance, redacted run fields, and linked reward plan ID/status only. The same selector digests protect audit filters from arbitrary operator text. Player names, operator identity, raw commands/arguments, reward steps, idempotency keys, and filesystem paths are excluded. Each successful export durably audits the exact output basename and SHA-256 inside the same required worker task before reporting success. A publication, cleanup, directory-sync, or required-audit ambiguity is reported as commit-uncertain with the safe basename and expected digest instead of being treated as a clean retry.
+- Added bounded per-operator cooldowns for retained-run reads and bundle exports so an expensive staff surface cannot flood either I/O queue. Successful empty and nonempty queries now include the explicit `player`/`system` actor category in the tamper-evident audit stream.
+- Reviewed every newly resolved dependency-metadata artifact against its published Maven Central checksum sidecar, recorded the stronger SHA-256 identities in Gradle's strict verification allow-list, and passed the complete refreshed source suite without relaxing verification mode.
+- The SQLite schema remains v4. Classic, season, Combo, Flawless, UUID ownership, run retention, and conservative reward-uncertainty behavior are unchanged.
+
 ## [2.8.4-029] — 2026-08-03
 
 Expected artifact: `1MB-WalkThePlank-v2.8.4-029-j25-26.2.jar`

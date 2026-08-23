@@ -81,4 +81,36 @@ class OperationalContextTest {
         assertTrue(context.close(Duration.ofSeconds(2)));
         assertEquals(0, Files.size(auditLog.currentFile()));
     }
+
+    @Test
+    void requiredAuditCanOnlyAppendInsideRequiredWorkerWork() throws Exception {
+        StructuredAuditLog auditLog = StructuredAuditLog.open(
+                temporaryDirectory, "v2.9.0 / build 030", 16_384, 3, FIXED_CLOCK);
+        OperationsIoWorker worker = new OperationsIoWorker(4);
+        OperationalContext context = new OperationalContext(
+                new OperationalMetrics(), auditLog, worker, Logger.getAnonymousLogger());
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> context.auditRequiredOnWorker(
+                        "run.investigation_export",
+                        null,
+                        null,
+                        Map.of("result", "exported")));
+        context.submitRequired(() -> {
+                    context.auditRequiredOnWorker(
+                            "run.investigation_export",
+                            null,
+                            null,
+                            Map.of("result", "exported"));
+                    return null;
+                })
+                .get(2, TimeUnit.SECONDS);
+        assertTrue(context.close(Duration.ofSeconds(2)));
+
+        List<String> lines = Files.readAllLines(auditLog.currentFile());
+        assertEquals(1, lines.size());
+        assertTrue(lines.getFirst().contains("\"result\":\"exported\""));
+        assertEquals(0, context.metrics().snapshot().auditFailures());
+    }
 }

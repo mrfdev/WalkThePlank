@@ -17,6 +17,7 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.command.brigadier.argument.ArgumentTypes;
 import io.papermc.paper.command.brigadier.argument.resolvers.selector.PlayerSelectorArgumentResolver;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -693,6 +694,17 @@ final class WalkCommandTree {
                                         sender,
                                         Optional.empty(),
                                         DEFAULT_LIMIT)));
+        list.then(Commands.argument(
+                        "limit",
+                        IntegerArgumentType.integer(1, 100))
+                .executes(context -> {
+                    int limit = IntegerArgumentType.getInteger(
+                            context, "limit");
+                    return command.execute(
+                            context.getSource(),
+                            sender -> command.investigations.list(
+                                    sender, Optional.empty(), limit));
+                }));
         list.then(investigationFilterNode(
                 command, "all", Optional.empty()));
         for (RunStatus status : RunStatus.values()) {
@@ -716,6 +728,9 @@ final class WalkCommandTree {
         run.then(uuidInvestigationNode(command, "player"));
         run.then(arenaInvestigationNode(command));
         run.then(uuidInvestigationNode(command, "season"));
+        run.then(releaseInvestigationNode(command, false));
+        run.then(startedInvestigationNode(command, false));
+        run.then(investigationExportNode(command));
         return run;
     }
 
@@ -806,6 +821,239 @@ final class WalkCommandTree {
                     return command.execute(
                             context.getSource(),
                             sender -> command.investigations.arena(
+                                    sender, arena, limit));
+                }));
+        node.then(identifier);
+        return node;
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack>
+            releaseInvestigationNode(
+                    WalkCommand command,
+                    boolean exporting) {
+        LiteralArgumentBuilder<CommandSourceStack> node =
+                Commands.literal("release");
+        var release = Commands.argument(
+                        "release", StringArgumentType.string())
+                .executes(context -> executeReleaseInvestigation(
+                        command, context, exporting, DEFAULT_LIMIT));
+        release.then(Commands.argument(
+                        "limit",
+                        IntegerArgumentType.integer(1, 100))
+                .executes(context -> executeReleaseInvestigation(
+                        command,
+                        context,
+                        exporting,
+                        IntegerArgumentType.getInteger(context, "limit"))));
+        node.then(release);
+        return node;
+    }
+
+    private static int executeReleaseInvestigation(
+            WalkCommand command,
+            CommandContext<CommandSourceStack> context,
+            boolean exporting,
+            int limit) {
+        String release = StringArgumentType.getString(context, "release");
+        return command.execute(context.getSource(), sender -> {
+            if (exporting) {
+                command.investigations.exportRelease(
+                        sender, release, limit);
+            } else {
+                command.investigations.release(sender, release, limit);
+            }
+        });
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack>
+            startedInvestigationNode(
+                    WalkCommand command,
+                    boolean exporting) {
+        LiteralArgumentBuilder<CommandSourceStack> node =
+                Commands.literal("started");
+        var from = Commands.argument("from-inclusive", new InstantArgument());
+        var before = Commands.argument(
+                        "before-exclusive", new InstantArgument())
+                .executes(context -> executeStartedInvestigation(
+                        command, context, exporting, DEFAULT_LIMIT));
+        before.then(Commands.argument(
+                        "limit",
+                        IntegerArgumentType.integer(1, 100))
+                .executes(context -> executeStartedInvestigation(
+                        command,
+                        context,
+                        exporting,
+                        IntegerArgumentType.getInteger(context, "limit"))));
+        from.then(before);
+        node.then(from);
+        return node;
+    }
+
+    private static int executeStartedInvestigation(
+            WalkCommand command,
+            CommandContext<CommandSourceStack> context,
+            boolean exporting,
+            int limit) {
+        Instant from = context.getArgument("from-inclusive", Instant.class);
+        Instant before = context.getArgument("before-exclusive", Instant.class);
+        return command.execute(context.getSource(), sender -> {
+            if (exporting) {
+                command.investigations.exportStarted(
+                        sender, from, before, limit);
+            } else {
+                command.investigations.started(
+                        sender, from, before, limit);
+            }
+        });
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack>
+            investigationExportNode(WalkCommand command) {
+        LiteralArgumentBuilder<CommandSourceStack> export =
+                Commands.literal("export")
+                        .requires(source -> command.adminPermission(
+                                        source,
+                                        command.support.permissions()
+                                                .adminInvestigate())
+                                && command.adminPermission(
+                                        source,
+                                        command.support.permissions()
+                                                .adminExport()));
+
+        LiteralArgumentBuilder<CommandSourceStack> list =
+                Commands.literal("list")
+                        .executes(context -> command.execute(
+                                context.getSource(),
+                                sender -> command.investigations.exportList(
+                                        sender,
+                                        Optional.empty(),
+                                        DEFAULT_LIMIT)));
+        list.then(Commands.argument(
+                        "limit",
+                        IntegerArgumentType.integer(1, 100))
+                .executes(context -> {
+                    int limit = IntegerArgumentType.getInteger(
+                            context, "limit");
+                    return command.execute(
+                            context.getSource(),
+                            sender -> command.investigations.exportList(
+                                    sender, Optional.empty(), limit));
+                }));
+        list.then(exportInvestigationFilterNode(
+                command, "all", Optional.empty()));
+        for (RunStatus status : RunStatus.values()) {
+            list.then(exportInvestigationFilterNode(
+                    command,
+                    status.name().toLowerCase(Locale.ROOT),
+                    Optional.of(status)));
+        }
+        export.then(list);
+
+        export.then(Commands.literal("inspect")
+                .then(Commands.argument("run", ArgumentTypes.uuid())
+                        .executes(context -> {
+                            UUID runId = context.getArgument(
+                                    "run", UUID.class);
+                            return command.execute(
+                                    context.getSource(),
+                                    sender -> command.investigations
+                                            .exportInspect(sender, runId));
+                        })));
+        export.then(exportUuidInvestigationNode(command, "player"));
+        export.then(exportArenaInvestigationNode(command));
+        export.then(exportUuidInvestigationNode(command, "season"));
+        export.then(releaseInvestigationNode(command, true));
+        export.then(startedInvestigationNode(command, true));
+        return export;
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack>
+            exportInvestigationFilterNode(
+                    WalkCommand command,
+                    String literal,
+                    Optional<RunStatus> status) {
+        LiteralArgumentBuilder<CommandSourceStack> node =
+                Commands.literal(literal)
+                        .executes(context -> command.execute(
+                                context.getSource(),
+                                sender -> command.investigations.exportList(
+                                        sender, status, DEFAULT_LIMIT)));
+        node.then(Commands.argument(
+                        "limit",
+                        IntegerArgumentType.integer(1, 100))
+                .executes(context -> {
+                    int limit = IntegerArgumentType.getInteger(
+                            context, "limit");
+                    return command.execute(
+                            context.getSource(),
+                            sender -> command.investigations.exportList(
+                                    sender, status, limit));
+                }));
+        return node;
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack>
+            exportUuidInvestigationNode(
+                    WalkCommand command,
+                    String kind) {
+        LiteralArgumentBuilder<CommandSourceStack> node =
+                Commands.literal(kind);
+        var identifier = Commands.argument(kind, ArgumentTypes.uuid())
+                .executes(context -> executeExportUuidInvestigation(
+                        command, context, kind, DEFAULT_LIMIT));
+        identifier.then(Commands.argument(
+                        "limit",
+                        IntegerArgumentType.integer(1, 100))
+                .executes(context -> executeExportUuidInvestigation(
+                        command,
+                        context,
+                        kind,
+                        IntegerArgumentType.getInteger(context, "limit"))));
+        node.then(identifier);
+        return node;
+    }
+
+    private static int executeExportUuidInvestigation(
+            WalkCommand command,
+            CommandContext<CommandSourceStack> context,
+            String kind,
+            int limit) {
+        UUID identifier = context.getArgument(kind, UUID.class);
+        return command.execute(context.getSource(), sender -> {
+            if (kind.equals("player")) {
+                command.investigations.exportPlayer(
+                        sender, identifier, limit);
+            } else {
+                command.investigations.exportSeason(
+                        sender, identifier, limit);
+            }
+        });
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack>
+            exportArenaInvestigationNode(WalkCommand command) {
+        LiteralArgumentBuilder<CommandSourceStack> node =
+                Commands.literal("arena");
+        var identifier = arenaIdArgument(command)
+                .executes(context -> {
+                    String arena = StringArgumentType.getString(
+                            context, "arena");
+                    return command.execute(
+                            context.getSource(),
+                            sender -> command.investigations.exportArena(
+                                    sender, arena, DEFAULT_LIMIT));
+                });
+        identifier.then(Commands.argument(
+                        "limit",
+                        IntegerArgumentType.integer(1, 100))
+                .executes(context -> {
+                    String arena = StringArgumentType.getString(
+                            context, "arena");
+                    int limit = IntegerArgumentType.getInteger(
+                            context, "limit");
+                    return command.execute(
+                            context.getSource(),
+                            sender -> command.investigations.exportArena(
                                     sender, arena, limit));
                 }));
         node.then(identifier);

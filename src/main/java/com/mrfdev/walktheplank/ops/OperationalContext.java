@@ -85,6 +85,31 @@ public final class OperationalContext {
         }
     }
 
+    /**
+     * Durably appends an audit event as part of required work already running on the operations
+     * writer.
+     *
+     * <p>This is intentionally rejected on every other thread so callers cannot turn audit I/O
+     * into a main-thread fallback.</p>
+     */
+    public void auditRequiredOnWorker(
+            String event,
+            UUID playerId,
+            String arenaId,
+            Map<String, ?> fields) throws IOException {
+        if (!ioWorker.ownsCurrentThread()) {
+            throw new IllegalStateException(
+                    "Required audit append must run on the operations writer");
+        }
+        try {
+            auditLog.record(event, playerId, arenaId, fields);
+            auditFailureReported.set(false);
+        } catch (IOException | RuntimeException failure) {
+            reportAuditFailure(failure);
+            throw failure;
+        }
+    }
+
     /** Enqueues required operational I/O without blocking or falling back to the caller. */
     public <T> CompletableFuture<T> submitRequired(Callable<T> operation) {
         return ioWorker.submitRequired(operation);
